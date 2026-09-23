@@ -1,0 +1,563 @@
+// Grant × Program × GL Allocation Tool — data model (Jira JPH-5)
+//
+// Layer A (source mirror) is populated ONLY by DataSource adapters through the
+// ImportService. The app never mutates these rows except to mark deletedAt.
+// Layer B (overlay) is user-defined configuration + materialized compute output.
+//
+// Money: integer cents (Int, 32-bit → max ±$21,474,836.47 per row; enforced by
+// zod at every boundary). Percentages: integer basis points (10000 = 100%).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy
+// ---------------------------------------------------------------------------
+
+model Org {
+  id                   String   @id @default(cuid())
+  name                 String
+  fiscalYearStartMonth Int      @default(1)
+  currency             String   @default("USD")
+  settings             Json     @default("{}")
+  createdAt            DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Layer A — source mirror
+// ---------------------------------------------------------------------------
+
+enum SourceSystem {
+  csv
+  qbo
+}
+
+enum ImportStatus {
+  running
+  succeeded
+  failed
+}
+
+model ImportBatch {
+  id           String       @id @default(cuid())
+  orgId        String
+  sourceSystem SourceSystem
+  startedAt    DateTime     @default(now())
+  finishedAt   DateTime?
+  status       ImportStatus @default(running)
+  rangeFrom    DateTime?
+  rangeTo      DateTime?
+  fullRange    Boolean      @default(true)
+  counts       Json         @default("{}")
+  errors       Json         @default("[]")
+  fileHashes   Json         @default("{}")
+
+  accounts     Account[]
+  classes      TrackingClass[]
+  locations    TrackingLocation[]
+  parties      Party[]
+  transactions Transaction[]
+  rowVersions  SourceRowVersion[]
+
+  @@index([orgId, startedAt])
+}
+
+enum AccountType {
+  Income
+  Expense
+  Asset
+  Liability
+  Equity
+  COGS
+  OtherExpense
+  OtherIncome
+}
+
+model Account {
+  id               String       @id @default(cuid())
+  orgId            String
+  sourceSystem     SourceSystem
+  externalId       String
+  importBatchId    String
+  importedAt       DateTime     @default(now())
+  contentHash      String       @default("")
+  deletedAt        DateTime?
+  number           String?
+  name             String
+  type             AccountType
+  detailType       String?
+  parentExternalId String?
+  active           Boolean      @default(true)
+
+  importBatch ImportBatch       @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
+  lines       TransactionLine[]
+
+  @@unique([orgId, sourceSystem, externalId])
+  @@index([orgId, type])
+}
+
+model TrackingClass {
+  id               String       @id @default(cuid())
+  orgId            String
+  sourceSystem     SourceSystem
+  externalId       String
+  importBatchId    String
+  importedAt       DateTime     @default(now())
+  contentHash      String       @default("")
+  deletedAt        DateTime?
+  name             String
+  parentExternalId String?
+  active           Boolean      @default(true)
+
+  importBatch ImportBatch       @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
+  lines       TransactionLine[]
+
+  @@unique([orgId, sourceSystem, externalId])
+}
+
+model TrackingLocation {
+  id            String       @id @default(cuid())
+  orgId         String
+  sourceSystem  SourceSystem
+  externalId    String
+  importBatchId String
+  importedAt    DateTime     @default(now())
+  contentHash   String       @default("")
+  deletedAt     DateTime?
+  name          String
+  active        Boolean      @default(true)
+
+  importBatch ImportBatch       @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
+  lines       TransactionLine[]
+
+  @@unique([orgId, sourceSystem, externalId])
+}
+
+enum PartyKind {
+  customer
+  project
+  vendor
+  employee
+}
+
+model Party {
+  id               String       @id @default(cuid())
+  orgId            String
+  sourceSystem     SourceSystem
+  externalId       String
+  importBatchId    String
+  importedAt       DateTime     @default(now())
+  contentHash      String       @default("")
+  deletedAt        DateTime?
+  kind             PartyKind
+  displayName      String
+  parentExternalId String?
+
+  importBatch  ImportBatch       @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
+  transactions Transaction[]
+  lines        TransactionLine[]
+
+  @@unique([orgId, sourceSystem, externalId])
+}
+
+enum TxnType {
+  Bill
+  Expense
+  Check
+  JournalEntry
+  Deposit
+  Invoice
+  SalesReceipt
+  Payroll
+  CreditCardCredit
+  VendorCredit
+}
+
+model Transaction {
+  id                       String       @id @default(cuid())
+  orgId                    String
+  sourceSystem             SourceSystem
+  externalId               String
+  importBatchId            String
+  importedAt               DateTime     @default(now())
+  contentHash              String       @default("")
+  deletedAt                DateTime?
+  txnType                  TxnType
+  txnDate                  DateTime     @db.Date
+  docNumber                String?
+  memo                     String?
+  partyId                  String?
+  paymentAccountExternalId String?
+  totalCents               Int
+
+  importBatch ImportBatch       @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
+  party       Party?            @relation(fields: [partyId], references: [id], onDelete: Restrict)
+  lines       TransactionLine[]
+
+  @@unique([orgId, sourceSystem, externalId])
+  @@index([orgId, txnDate])
+}
+
+enum PostingType {
+  debit
+  credit
+}
+
+/// The atomic unit. Sign convention: amountCents is the *natural* amount for
+/// the account — expenses are positive when they increase expense (debit),
+/// income is positive when it increases income (credit). postingType records
+/// the raw side so a reversal (credit to an expense account) is negative.
+model TransactionLine {
+  id            String      @id @default(cuid())
+  orgId         String
+  transactionId String
+  lineNumber    Int
+  accountId     String
+  classId       String?
+  locationId    String?
+  partyId       String?
+  description   String?
+  amountCents   Int
+  postingType   PostingType
+
+  transaction Transaction       @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  account     Account           @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  class       TrackingClass?    @relation(fields: [classId], references: [id], onDelete: Restrict)
+  location    TrackingLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  party       Party?            @relation(fields: [partyId], references: [id], onDelete: Restrict)
+  allocated   AllocatedLine[]
+
+  @@unique([transactionId, lineNumber])
+  @@index([orgId, accountId])
+  @@index([orgId, classId])
+}
+
+/// History of every changed/deleted source row (JPH-15).
+model SourceRowVersion {
+  id            String   @id @default(cuid())
+  orgId         String
+  entity        String
+  externalId    String
+  version       Int
+  hash          String
+  payload       Json
+  importBatchId String
+  createdAt     DateTime @default(now())
+
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
+
+  @@unique([orgId, entity, externalId, version])
+}
+
+// ---------------------------------------------------------------------------
+// Layer B — overlay
+// ---------------------------------------------------------------------------
+
+enum FunctionalCategory {
+  program
+  management_general
+  fundraising
+}
+
+model Program {
+  id                 String             @id @default(cuid())
+  orgId              String
+  code               String
+  name               String
+  description        String?
+  functionalCategory FunctionalCategory @default(program)
+  active             Boolean            @default(true)
+  matchClassIds      String[]           @default([])
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  grantPrograms  GrantProgram[]
+  budgetLines    GrantBudgetLine[]
+  allocTargets   AllocationTarget[]
+  allocatedLines AllocatedLine[]
+
+  @@unique([orgId, code])
+}
+
+enum RestrictionType {
+  purpose
+  time
+  both
+  unrestricted
+}
+
+enum GrantStatus {
+  draft
+  active
+  closed
+  archived
+}
+
+model Grant {
+  id               String          @id @default(cuid())
+  orgId            String
+  name             String
+  funder           String
+  funderPartyId    String?
+  awardNumber      String?
+  startDate        DateTime        @db.Date
+  endDate          DateTime        @db.Date
+  awardAmountCents Int
+  restrictionType  RestrictionType @default(purpose)
+  status           GrantStatus     @default(active)
+  revenueAccountId String?
+  matchPartyIds    String[]        @default([])
+  matchClassIds    String[]        @default([])
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  programs       GrantProgram[]
+  budgetLines    GrantBudgetLine[]
+  allocatedLines AllocatedLine[]
+  narratives     Narrative[]
+
+  @@index([orgId, status])
+}
+
+model GrantProgram {
+  grantId         String
+  programId       String
+  plannedShareBps Int?
+
+  grant   Grant   @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  program Program @relation(fields: [programId], references: [id], onDelete: Restrict)
+
+  @@id([grantId, programId])
+}
+
+model GrantBudgetLine {
+  id          String  @id @default(cuid())
+  orgId       String
+  grantId     String
+  code        String
+  name        String
+  budgetCents Int
+  programId   String?
+  sortOrder   Int     @default(0)
+
+  grant          Grant              @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  program        Program?           @relation(fields: [programId], references: [id], onDelete: SetNull)
+  crosswalkRules CrosswalkRule[]
+  allocTargets   AllocationTarget[]
+  allocatedLines AllocatedLine[]
+
+  @@unique([grantId, code])
+}
+
+/// Matchers are stored as JSON with the shape validated by src/domain/matchers.ts:
+/// { programIds?, accountIds?, accountRange?: {from,to}, classIds?, locationIds?,
+///   partyIds?, descriptionContains?, dateFrom?, dateTo? }
+model CrosswalkRule {
+  id                String   @id @default(cuid())
+  orgId             String
+  name              String?
+  matchers          Json
+  grantBudgetLineId String
+  priority          Int      @default(100)
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  grantBudgetLine GrantBudgetLine @relation(fields: [grantBudgetLineId], references: [id], onDelete: Cascade)
+  allocatedLines  AllocatedLine[]
+
+  @@index([orgId, active])
+}
+
+enum AllocationMethod {
+  fixed_pct
+  ratio_of_driver
+}
+
+model AllocationRule {
+  id            String           @id @default(cuid())
+  orgId         String
+  name          String
+  matchers      Json
+  method        AllocationMethod @default(fixed_pct)
+  driverKey     String?
+  priority      Int              @default(100)
+  effectiveFrom DateTime?        @db.Date
+  effectiveTo   DateTime?        @db.Date
+  active        Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  targets        AllocationTarget[]
+  allocatedLines AllocatedLine[]
+
+  @@index([orgId, active])
+}
+
+model AllocationTarget {
+  id                String  @id @default(cuid())
+  allocationRuleId  String
+  sortOrder         Int
+  programId         String?
+  grantBudgetLineId String?
+  shareBps          Int
+
+  rule            AllocationRule   @relation(fields: [allocationRuleId], references: [id], onDelete: Cascade)
+  program         Program?         @relation(fields: [programId], references: [id], onDelete: Restrict)
+  grantBudgetLine GrantBudgetLine? @relation(fields: [grantBudgetLineId], references: [id], onDelete: Restrict)
+
+  @@index([allocationRuleId])
+}
+
+/// Driver values for ratio_of_driver rules: e.g. driverKey="fte_hours",
+/// period "2026-01", per program.
+model AllocationDriverValue {
+  id        String @id @default(cuid())
+  orgId     String
+  driverKey String
+  period    String
+  programId String
+  value     Int
+
+  @@unique([orgId, driverKey, period, programId])
+}
+
+enum RunStatus {
+  running
+  succeeded
+  failed
+  superseded
+}
+
+model ComputeRun {
+  id             String    @id @default(cuid())
+  orgId          String
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  status         RunStatus @default(running)
+  configHash     String
+  sourceBatchIds String[]  @default([])
+  warnings       Json      @default("[]")
+  checks         Json      @default("[]")
+  stale          Boolean   @default(false)
+  isCurrent      Boolean   @default(false)
+
+  allocatedLines AllocatedLine[]
+  periodLocks    PeriodLock[]
+  narratives     Narrative[]
+
+  @@index([orgId, startedAt])
+}
+
+enum AllocatedStatus {
+  ok
+  allocation_conflict
+  crosswalk_conflict
+  unassigned_program
+}
+
+/// Materialized output. Invariant: Σ amountCents per sourceLineId within a run
+/// equals TransactionLine.amountCents exactly.
+model AllocatedLine {
+  id                String          @id @default(cuid())
+  orgId             String
+  computeRunId      String
+  sourceLineId      String
+  pieceIndex        Int
+  allocationRuleId  String?
+  crosswalkRuleId   String?
+  programId         String?
+  grantId           String?
+  grantBudgetLineId String?
+  amountCents       Int
+  status            AllocatedStatus @default(ok)
+  conflictRuleIds   String[]        @default([])
+
+  run             ComputeRun       @relation(fields: [computeRunId], references: [id], onDelete: Cascade)
+  sourceLine      TransactionLine  @relation(fields: [sourceLineId], references: [id], onDelete: Restrict)
+  allocationRule  AllocationRule?  @relation(fields: [allocationRuleId], references: [id], onDelete: SetNull)
+  crosswalkRule   CrosswalkRule?   @relation(fields: [crosswalkRuleId], references: [id], onDelete: SetNull)
+  program         Program?         @relation(fields: [programId], references: [id], onDelete: Restrict)
+  grant           Grant?           @relation(fields: [grantId], references: [id], onDelete: Restrict)
+  grantBudgetLine GrantBudgetLine? @relation(fields: [grantBudgetLineId], references: [id], onDelete: Restrict)
+
+  @@unique([computeRunId, sourceLineId, pieceIndex])
+  @@index([computeRunId, programId])
+  @@index([computeRunId, grantId])
+  @@index([computeRunId, grantBudgetLineId])
+}
+
+model AuditEvent {
+  id       String   @id @default(cuid())
+  orgId    String
+  entity   String
+  entityId String
+  action   String
+  before   Json?
+  after    Json?
+  actor    String   @default("local-user")
+  at       DateTime @default(now())
+
+  @@index([orgId, entity, entityId])
+  @@index([orgId, at])
+}
+
+model SavedView {
+  id          String   @id @default(cuid())
+  orgId       String
+  name        String
+  path        String
+  queryString String
+  createdAt   DateTime @default(now())
+}
+
+model PeriodLock {
+  id           String   @id @default(cuid())
+  orgId        String
+  name         String
+  periodFrom   DateTime @db.Date
+  periodTo     DateTime @db.Date
+  lockedAt     DateTime @default(now())
+  computeRunId String
+  note         String?
+
+  run ComputeRun @relation(fields: [computeRunId], references: [id], onDelete: Restrict)
+}
+
+enum NarrativeStatus {
+  draft
+  approved
+}
+
+model Narrative {
+  id            String          @id @default(cuid())
+  orgId         String
+  grantId       String
+  computeRunId  String
+  template      String
+  promptVersion String
+  model         String
+  periodFrom    DateTime        @db.Date
+  periodTo      DateTime        @db.Date
+  contextNotes  String?
+  packetJson    Json
+  draftJson     Json
+  editedJson    Json?
+  verification  Json            @default("[]")
+  status        NarrativeStatus @default(draft)
+  approvedBy    String?
+  approvedAt    DateTime?
+  version       Int             @default(1)
+  createdAt     DateTime        @default(now())
+
+  grant Grant      @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  run   ComputeRun @relation(fields: [computeRunId], references: [id], onDelete: Restrict)
+
+  @@index([grantId])
+}

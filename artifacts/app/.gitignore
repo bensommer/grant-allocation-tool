@@ -1,0 +1,5 @@
+.next/
+src/generated/
+playwright-report/
+test-results/
+.env

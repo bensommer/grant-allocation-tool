@@ -1,0 +1,34 @@
+kind = "web"
+previewPath = "/"
+title = "Grant Allocation Tool"
+description = "Server-rendered Next.js web app for nonprofit CPAs: imports QuickBooks-shaped accounting data, defines grants/programs/budget lines and a crosswalk to GL accounts, applies shared-cost allocation rules, and produces grant × program × GL reports, budget-vs-actual, restricted-fund balances, and AI-drafted funder narratives."
+version = "1.0.0"
+id = "artifacts/app"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23863
+
+[services.development]
+run = "pnpm --filter @workspace/app run dev"
+
+[services.production]
+
+[services.production.build]
+args = [ "pnpm", "--filter", "@workspace/app", "run", "build" ]
+
+[services.production.build.env]
+NODE_ENV = "production"
+
+[services.production.run]
+args = [ "pnpm", "--filter", "@workspace/app", "run", "start" ]
+
+[services.production.run.env]
+PORT = "23863"
+NODE_ENV = "production"
+
+[services.env]
+PORT = "23863"
+BASE_PATH = "/"

@@ -1,0 +1,927 @@
+stdout:
+executed 200 executed 200
+JPH-3: Epic | To Do | Grant × Program × GL Allocation Tool — MVP
+DESC:
+ Problem
+Nonprofit CPAs are repeatedly asked "how much of Grant X maps to Program Y, broken down by GL expense category?" QuickBooks Online allows effectively one classification per transaction, so the same dollar can't be simultaneously "Salaries & Wages" (GL/accounting view) and "Culinary Training Personnel" (grant-budget view). Today every request is a 1–2 hour one-off spreadsheet rebuild.
+Goal
+A server-rendered web app that ingests QuickBooks-shaped accounting data, lets the user define grants, programs, grant budget lines, and a crosswalk from grant budget lines to GL accounts/classes, applies shared-cost allocation rules, and regenerates grant × program × GL reports, budget-vs-actual, restricted-fund balances, and AI-drafted funder narratives on demand.
+Approach
+Phase 1 (bulk of MVP): no live QuickBooks. All data enters through a pluggable DataSource interface with a CSV adapter and a realistic dummy dataset.
+
+Phase 2: live QuickBooks Online adapter implementing the same interface.
+
+Architectural constraints (apply to every story)
+Not a single-page app. Next.js App Router, server components by default, real URL per page, server actions for mutations, forms work without client JS. Client components only for small interactive islands (allocation split editor, report filters). No client-side global state library, no client-side router-driven "app shell".
+
+TypeScript strict mode end to end.
+
+Postgres + Prisma. All money stored as integer cents (BigInt/Int), never floats. All allocation math uses integer cents with a deterministic remainder rule (largest-remainder, ties to lowest ID).
+
+QuickBooks is the source of truth for transactions; the app never mutates source transactions. Allocations/mappings are an overlay with a full audit trail back to source line IDs.
+
+Single organization per deployment is acceptable for MVP, but every table carries orgId so multi-tenant is additive later.
+
+Tests: Vitest for unit/domain, Playwright for page flows. The dummy dataset (see test-data story) has hand-computed expected totals that tests assert against.
+
+Out of scope for MVP
+Multi-tenant CPA portal, write-back to QuickBooks, billing, QuickBooks Desktop.
+Definition of done (epic)
+Using only the dummy CSVs, a user can import data, configure grants/programs/crosswalk/allocation rules, and produce a crosstab report, a budget-vs-actual report, and a restricted-fund balance view that match the documented expected totals, plus export them and generate a draft funder narrative. The live QBO adapter can pull a QBO sandbox company into the same pipeline.
+
+subtasks: 
+links: []
+comments: 
+
+RELATED (13):
+
+== JPH-3 [Epic] [To Do] parent=- :: Grant × Program × GL Allocation Tool — MVP
+Problem
+Nonprofit CPAs are repeatedly asked "how much of Grant X maps to Program Y, broken down by GL expense category?" QuickBooks Online allows effectively one classification per transaction, so the same dollar can't be simultaneously "Salaries & Wages" (GL/accounting view) and "Culinary Training Personnel" (grant-budget view). Today every request is a 1–2 hour one-off spreadsheet rebuild.
+Goal
+A server-rendered web app that ingests QuickBooks-shaped accounting data, lets the user define grants, programs, grant budget lines, and a crosswalk from grant budget lines to GL accounts/classes, applies shared-cost allocation rules, and regenerates grant × program × GL reports, budget-vs-actual, restricted-fund balances, and AI-drafted funder narratives on demand.
+Approach
+Phase 1 (bulk of MVP): no live QuickBooks. All data enters through a pluggable DataSource interface with a CSV adapter and a realistic dummy dataset.
+
+Phase 2: live QuickBooks Online adapter implementing the same interface.
+
+Architectural constraints (apply to every story)
+Not a single-page app. Next.js App Router, server components by default, real URL per page, server actions for mutations, forms work without client JS. Client components only for small interactive islands (allocation split editor, report filters). No client-side global state library, no client-side router-driven "app shell".
+
+TypeScript strict mode end to end.
+
+Postgres + Prisma. All money stored as integer cents (BigInt/Int), never floats. All allocation math uses integer cents with a deterministic remainder rule (largest-remainder, ties to lowest ID).
+
+QuickBooks is the source of truth for transactions; the app never mutates source transactions. Allocations/mappings are an overlay with a full audit trail back to source line IDs.
+
+Single organization per deployment is acceptable for MVP, but every table carries orgId so multi-tenant is additive later.
+
+Tests: Vitest for unit/domain, Playwright for page flows. The dummy dataset (see test-data story) has hand-computed expected totals that tests assert against.
+
+Out of scope for MVP
+Multi-tenant CPA portal, write-back to QuickBooks, billing, QuickBooks Desktop.
+Definition of done (epic)
+Using only the dummy CSVs, a user can import data, configure grants/programs/crosswalk/allocation rules, and produce a crosstab report, a budget-vs-actual report, and a restricted-fund balance view that match the documented expected totals, plus export them and generate a draft funder narrative. The live QBO adapter can pull a QBO sandbox company into the same pipeline.
+
+== JPH-4 [Story] [To Do] parent=JPH-3 :: 01 · Project scaffold: server-rendered Next.js (no SPA), Postgres/Prisma, test harness, CI
+Story
+As the developer, I want a working, server-rendered skeleton with database, tests, and CI so every later story lands on a consistent foundation.
+Scope
+Next.js (latest stable) App Router, TypeScript strict: true, ESLint + Prettier.
+
+Rendering model: server components by default; mutations via server actions; every screen is its own route. Forms use native <form action={serverAction}> and must work with JS disabled. Client components allowed only as leaf islands and must be marked and justified in a code comment.
+
+No SPA patterns: no client-side global store (Redux/Zustand/etc.), no single catch-all client route, no client-side data fetching for page data (no SWR/React Query for primary page loads).
+
+Postgres via Docker Compose for local dev; Prisma ORM + migrations.
+
+Styling: plain CSS modules or Tailwind — pick one and document. Minimal, accessible, print-friendly (reports get printed).
+
+Layout shell: server-rendered nav with links to Import, Accounts, Grants, Programs, Crosswalk, Allocation Rules, Reports, Narratives, Settings.
+
+Env config via .env + zod-validated env.ts.
+
+Test harness: Vitest (unit/domain), Playwright (e2e) including one e2e test that runs with JavaScript disabled.
+
+GitHub Actions: install, typecheck, lint, unit, e2e against a Postgres service container.
+
+README.md: setup, scripts, architecture notes (the no-SPA rule and why).
+
+Tooling note: the developer uses tcsh. Any shell snippets in README must be tcsh-compatible (setenv, not export) or be npm scripts that avoid shell-specific syntax.
+
+Acceptance criteria
+npm run dev serves the nav shell; each nav link resolves to a distinct server-rendered placeholder page returning HTML with content in the initial response (verify via curl).
+
+npm run db:migrate applies an initial migration cleanly.
+
+npm test and npm run e2e pass locally and in CI.
+
+Playwright JS-disabled test: navigating between two pages works.
+
+README contains no bash-only snippets.
+
+Test cases
+curl localhost:3000/grants returns HTML containing the page heading (proves SSR).
+
+CI fails if typecheck fails (introduce deliberate type error on a branch to confirm).
+
+== JPH-5 [Story] [To Do] parent=JPH-3 :: 02 · Domain data model: source ledger mirror + grant/program/crosswalk/allocation overlay
+Story
+As the developer, I want a Prisma schema that cleanly separates (a) a read-only mirror of QuickBooks-shaped source data from (b) the user-defined grant/program/allocation overlay, so the app never mutates source data and every derived number traces back to a source line.
+Layer A — Source mirror (populated only by DataSource adapters)
+All rows carry orgId, sourceSystem (csv | qbo), externalId (the source system's ID), importBatchId, importedAt. Unique on (orgId, sourceSystem, externalId).
+Account — chart of accounts. number, name, type (Income/Expense/Asset/Liability/Equity/COGS/OtherExpense/OtherIncome), detailType, parentExternalId, active.
+
+TrackingClass — QBO Class. name, parentExternalId, active.
+
+TrackingLocation — QBO Location/Department. name, active.
+
+Party — QBO Customer/Project/Vendor/Employee unified. kind (customer | project | vendor | employee), displayName, parentExternalId (projects/sub-customers).
+
+Transaction — header. txnType (Bill, Expense, Check, JournalEntry, Deposit, Invoice, SalesReceipt, Payroll, CreditCardCredit, VendorCredit), txnDate, docNumber, memo, partyId?, totalCents.
+
+TransactionLine — the atomic unit everything else references. transactionId, lineNumber, accountId, classId?, locationId?, partyId? (line-level customer/project), description, amountCents (signed: expenses positive debit, income positive credit — document convention precisely), postingType (debit | credit).
+
+Layer B — Overlay (user-defined, editable, versioned)
+Program — name, code, description, functionalCategory (program | management_general | fundraising), active, optional matchClassIds[] (classes that map to this program by default).
+
+Grant — name, funder, awardNumber, startDate, endDate, awardAmountCents, restrictionType (purpose | time | both | unrestricted), status (draft | active | closed), revenueAccountId?, optional matchPartyIds[] / matchClassIds[].
+
+GrantProgram — many-to-many with optional plannedShareBps (basis points).
+
+GrantBudgetLine — the funder's budget categories. grantId, code, name (e.g. "Culinary Training Personnel"), budgetCents, programId?, sortOrder.
+
+CrosswalkRule — maps source lines to a GrantBudgetLine. Matchers (all optional, AND-combined): accountIds[], accountRange (number from/to), classIds[], locationIds[], partyIds[], descriptionContains, dateFrom/dateTo. Target: grantBudgetLineId. priority (lower wins), active.
+
+AllocationRule — splits a matched pool of lines across targets. See story 07 for semantics. name, matchers (same shape as CrosswalkRule), method (fixed_pct | ratio_of_driver), effectiveFrom/To, targets[] → AllocationTarget { programId?, grantBudgetLineId?, shareBps }.
+
+AllocatedLine — materialized output: sourceLineId, allocationRuleId?, crosswalkRuleId?, programId?, grantId?, grantBudgetLineId?, amountCents, computeRunId. Sum of AllocatedLine.amountCents per sourceLineId must equal the source line amount exactly (invariant).
+
+ComputeRun — each recompute: startedAt, finishedAt, configHash, sourceBatchIds[], status, warnings JSON.
+
+AuditEvent — every overlay create/update/delete: entity, entityId, before JSON, after JSON, actor, at.
+
+ImportBatch — see story 03.
+
+Narrative — see story 10.
+
+Acceptance criteria
+Prisma schema + migration committed; ERD (Mermaid) in docs/data-model.md.
+
+Money columns are integer cents. Percentages are integer basis points (10000 = 100%).
+
+A domain-level invariant checker assertAllocationBalanced(runId) exists and is covered by tests.
+
+Overlay tables never have FK cascades that delete source rows; deleting an import batch is blocked if a closed ComputeRun references it.
+
+Test cases
+Insert a source line of 1000 cents, allocate 3 ways at 3333/3333/3334 bps → AllocatedLine sums to exactly 1000 (remainder rule: largest remainder, ties to lowest target ID).
+
+Unique constraint rejects duplicate (orgId,sourceSystem,externalId).
+
+AuditEvent written for Grant update with correct before/after.
+
+== JPH-6 [Story] [To Do] parent=JPH-3 :: 03 · DataSource abstraction + CSV import adapter (dummy data path, no live QuickBooks)
+Story
+As a finance user without a live QuickBooks connection, I want to import QuickBooks-shaped CSV files so I can use the whole app against realistic data. As the developer, I want the import path to go through a pluggable interface so the live QBO adapter (story 11) is a drop-in.
+DataSource interface (src/datasource/types.ts)
+interface DataSource {
+  kind: 'csv' | 'qbo';
+  describe(): Promise<SourceDescriptor>;          // company name, fiscal year start, currency
+  fetchAccounts(): AsyncIterable<SourceAccount>;
+  fetchClasses(): AsyncIterable<SourceClass>;
+  fetchLocations(): AsyncIterable<SourceLocation>;
+  fetchParties(): AsyncIterable<SourceParty>;
+  fetchTransactions(range: { from: Date; to: Date }): AsyncIterable<SourceTransaction>; // header + lines
+}Source* DTOs are zod schemas; adapters must emit validated DTOs.
+
+A single ImportService.run(dataSource, range) does upserts into the source mirror (story 02), inside a transaction per entity type, creating an ImportBatch { id, sourceSystem, startedAt, finishedAt, status, counts JSON, errors JSON, fileHashes JSON }.
+
+The ImportService knows nothing about CSV vs QBO.
+
+CSV adapter
+Accepts the file set defined in story 04: company.csv, accounts.csv, classes.csv, locations.csv, parties.csv, transactions.csv (one row per transaction line; header fields repeated). Optional overlay seed files are handled separately (story 04 seed command), not by the adapter.
+
+Parsing: papaparse or csv-parse in streaming mode; UTF-8 with or without BOM; tolerant of CRLF.
+
+Amounts accepted as 1234.56, $1,234.56, (1,234.56) (negative); converted to integer cents without float math (string parse).
+
+Dates accepted as YYYY-MM-DD and MM/DD/YYYY.
+
+Referential validation: every line's account/class/location/party external ID must exist in the same batch or already in the mirror; otherwise row-level error.
+
+Transaction integrity check: for JournalEntry, debits must equal credits per transaction; otherwise transaction-level error.
+
+Errors are collected (not fail-fast) with file, row number, column, message. Import is all-or-nothing per batch: any error → nothing committed, error report shown.
+
+UI (server-rendered pages)
+/import — upload form (multipart, server action), shows last 10 ImportBatches with status and counts.
+
+/import/[batchId] — batch detail: counts per entity, error table (paginated server-side), download errors as CSV.
+
+Also a CLI: npm run import:csv -- --dir ./fixtures/demo for tests and seeding.
+
+Acceptance criteria
+Importing the story-04 dataset succeeds with counts matching the documented fixture counts.
+
+Re-importing the identical files is idempotent (no duplicate rows; batch recorded with 0 inserts, N unchanged). Full idempotency/change handling is story 12; here, duplicates must simply not be created.
+
+A deliberately broken fixture (fixtures/broken/) produces the documented list of errors and commits nothing.
+
+The upload page works with JavaScript disabled.
+
+Test cases
+Unit: amount parser table test ("(1,234.56)" → -123456, "$0.10" → 10, "1e3" → error).
+
+Unit: unbalanced JE rejected.
+
+Integration: CSV adapter + ImportService against Postgres test DB with demo fixtures.
+
+e2e: upload demo zip/files → batch page shows "Succeeded".
+
+== JPH-7 [Story] [To Do] parent=JPH-3 :: 04 · Dummy test dataset: QuickBooks-shaped CSVs for a fictional nonprofit + golden expected totals
+Story
+As the developer and tester, I want a realistic, hand-verifiable dummy dataset so every feature (import, allocation, crosswalk, reports, BvA, restricted balances) can be tested end to end without QuickBooks, with exact expected numbers to assert against.
+Deliverables
+fixtures/demo/ — source CSVs (consumed by the CSV adapter, story 03).
+
+fixtures/demo/overlay/ — overlay seed CSVs (programs, grants, budget lines, crosswalk, allocation rules) loaded by npm run seed:demo.
+
+fixtures/demo/EXPECTED.md + fixtures/demo/expected.json — golden totals below, machine-readable for tests.
+
+fixtures/generated/ — optional larger dataset from a seeded, deterministic generator (npm run fixtures:generate -- --seed 42 --months 12) for UI/perf; golden assertions apply only to the hand-authored Q1 data.
+
+fixtures/broken/ — copy of demo with injected errors (listed at bottom) + EXPECTED_ERRORS.json.
+
+The fictional org
+Harbor Kitchen Collective — fiscal year = calendar year 2026, USD. Runs a culinary job-training program and a youth meals program.
+Source file schemas
+company.csv: name,fiscal_year_start_month,currency → Harbor Kitchen Collective,1,USD
+
+accounts.csv: external_id,number,name,type,detail_type,parent_external_id,active
+
+classes.csv: external_id,name,parent_external_id,active
+
+locations.csv: external_id,name,active (single row LOC-MAIN,Main Kitchen,true)
+
+parties.csv: external_id,kind,display_name,parent_external_id
+
+transactions.csv (one row per line; header columns repeated on each line): txn_external_id,txn_type,txn_date,doc_number,txn_memo,txn_party_external_id,payment_account_external_id,line_number,account_external_id,class_external_id,location_external_id,line_party_external_id,description,amount,posting_type
+JournalEntry: every line present incl. the balancing credit; debits = credits.
+
+Expense/Bill/Deposit: lines are the distribution lines only; the bank/AP account is payment_account_external_id on the header (mirrors QBO).
+
+
+Accounts
+ext id
+#
+name
+type
+A1000
+1000
+Operating Checking
+Asset
+A2000
+2000
+Accounts Payable
+Liability
+A4010
+4010
+Grant Revenue – Restricted
+Income
+A4020
+4020
+Contributions – Unrestricted
+Income
+A6010
+6010
+Salaries & Wages
+Expense
+A6020
+6020
+Payroll Taxes
+Expense
+A6110
+6110
+Food & Kitchen Supplies
+Expense
+A6210
+6210
+Rent
+Expense
+A6220
+6220
+Utilities
+Expense
+A6310
+6310
+Instructor Contract Services
+Expense
+A6410
+6410
+Office Supplies
+Expense
+Classes
+C-CT Culinary Training · C-YM Youth Meals · C-ADMIN Admin/Shared · C-FUND Fundraising
+Parties
+Customers (funders): P-MWSC Mass. Workforce Skills Cabinet · P-HCF Hanover Community Foundation · P-RFF Rivera Family Foundation.
+Vendors: V-FOOD Coastal Food Service · V-LAND Harborside Properties LLC · V-UTIL Eversource · V-CHEF Chef D. Alvarez (contractor) · V-OFFICE Staples.
+Employees: E-CHEF Maria Santos (Chef Instructor) · E-YC Jordan Lee (Youth Coordinator) · E-ED Pat Morgan (Executive Director).
+Golden Q1 2026 transactions (hand-authored; materialize exactly)
+Payroll — one JournalEntry per month dated the last day of Jan/Feb/Mar (JE-PR-2026-01 etc.), credit A1000 for the total:
+line
+account
+class
+party
+amount
+Chef salary
+A6010
+C-CT
+E-CHEF
+5,000.00
+Youth coord salary
+A6010
+C-YM
+E-YC
+4,000.00
+ED salary
+A6010
+C-ADMIN
+E-ED
+8,000.00
+Chef taxes
+A6020
+C-CT
+E-CHEF
+382.50
+YC taxes
+A6020
+C-YM
+E-YC
+306.00
+ED taxes
+A6020
+C-ADMIN
+E-ED
+612.00
+credit
+A1000
+–
+–
+18,300.50
+Rent — Bill from V-LAND on the 1st of each month: A6210, C-ADMIN, 3,000.00.
+Utilities — Bill from V-UTIL on the 15th: A6220, C-ADMIN: Jan 600.00, Feb 600.00, Mar 600.01 (deliberate rounding test).
+Food — Expenses from V-FOOD, A6110: C-CT Jan 2,400.00 / Feb 1,850.25 / Mar 2,120.75; C-YM Jan 1,100.00 / Feb 980.50 / Mar 1,215.50 (6 separate transactions, mid-month).
+Contract instructor — Bill from V-CHEF, 2026-02-20, A6310, C-CT, 1,500.00.
+Office supplies — Expense from V-OFFICE, 2026-01-12, A6410, C-ADMIN, 250.10.
+Grant receipts — Deposits to A1000:
+2026-01-10, P-MWSC, A4010, C-CT, 60,000.00
+
+2026-02-05, P-HCF, A4010, C-YM, 25,000.00
+
+2026-03-03, P-RFF, A4020, no class, 30,000.00
+
+Overlay seed
+Programs: CT Culinary Training (program, matchClass C-CT) · YM Youth Meals (program, C-YM) · MG Management & General (management_general, C-ADMIN) · FR Fundraising (fundraising, C-FUND).
+Allocation rules (applied before class default mapping; a line matched by an allocation rule is split, otherwise it goes 100% to the program whose matchClass it carries):
+AR-ED "ED salary & taxes": class C-ADMIN AND party E-ED AND accounts {A6010, A6020} → CT 4000 bps, YM 2000, MG 3000, FR 1000.
+
+AR-OCC "Occupancy by square footage": class C-ADMIN AND accounts {A6210, A6220} → CT 5000, YM 2000, MG 3000.
+
+Grants:
+G-MWSC Culinary Workforce Grant, funder P-MWSC, award 120,000.00, 2026-01-01→2026-12-31, purpose-restricted, program CT, revenue match party P-MWSC.
+Budget lines: PERS Culinary Training Personnel 72,000 · SUPP Training Supplies 24,000 · CONT Contract Instructors 12,000 · OCC Occupancy 12,000.
+
+
+G-HCF Youth Meals Grant, funder P-HCF, award 50,000.00, 2026-01-01→2026-12-31, purpose-restricted, program YM, revenue match party P-HCF.
+Budget lines: STAFF Youth Program Staff 36,000 · MEALS Meals & Food 14,000. (Deliberately no occupancy line → YM occupancy remains unfunded.)
+
+
+G-RFF Rivera general operating gift, 30,000.00, unrestricted, no budget lines.
+
+Crosswalk rules (applied after allocation; match on allocated program + account):
+G-MWSC/PERS ← program CT, accounts {A6010, A6020}
+
+G-MWSC/SUPP ← program CT, account A6110
+
+G-MWSC/CONT ← program CT, account A6310
+
+G-MWSC/OCC ← program CT, accounts {A6210, A6220}
+
+G-HCF/STAFF ← program YM, accounts {A6010, A6020}
+
+G-HCF/MEALS ← program YM, account A6110
+
+Golden expected results — Q1 2026 (2026-01-01 → 2026-03-31)
+Expense by program × GL
+GL
+CT
+YM
+MG
+FR
+Total
+6010 Salaries
+24,600.00
+16,800.00
+7,200.00
+2,400.00
+51,000.00
+6020 Payroll Taxes
+1,881.90
+1,285.20
+550.80
+183.60
+3,901.50
+6110 Food
+6,371.00
+3,296.00
+–
+–
+9,667.00
+6210 Rent
+4,500.00
+1,800.00
+2,700.00
+–
+9,000.00
+6220 Utilities
+900.01
+360.00
+540.00
+–
+1,800.01
+6310 Contract
+1,500.00
+–
+–
+–
+1,500.00
+6410 Office
+–
+–
+250.10
+–
+250.10
+Total
+39,752.91
+23,541.20
+11,240.90
+2,583.60
+77,118.61
+Rounding check: March utilities 600.01 split 50/20/30 → CT 300.01, YM 120.00, MG 180.00 (the 1¢ remainder goes to the largest fractional remainder, CT).
+Grant budget vs actual
+Grant / line
+Budget
+Actual Q1
+Remaining
+% used
+G-MWSC PERS
+72,000.00
+26,481.90
+45,518.10
+36.8%
+G-MWSC SUPP
+24,000.00
+6,371.00
+17,629.00
+26.5%
+G-MWSC CONT
+12,000.00
+1,500.00
+10,500.00
+12.5%
+G-MWSC OCC
+12,000.00
+5,400.01
+6,599.99
+45.0%
+G-MWSC total
+120,000.00
+39,752.91
+80,247.09
+33.1%
+G-HCF STAFF
+36,000.00
+18,085.20
+17,914.80
+50.2%
+G-HCF MEALS
+14,000.00
+3,296.00
+10,704.00
+23.5%
+G-HCF total
+50,000.00
+21,381.20
+28,618.80
+42.8%
+Restricted fund balances at 2026-03-31 (received − spent):
+G-MWSC 60,000.00 − 39,752.91 = 20,247.09 · G-HCF 25,000.00 − 21,381.20 = 3,618.80 · G-RFF excluded (unrestricted).
+Unmapped program expense (allocated to a program but no grant budget line): YM Rent 1,800.00 + YM Utilities 360.00 = 2,160.00. MG and FR expenses (13,824.50) are expected to be non-grant and reported separately, not flagged as errors.
+Broken fixture (fixtures/broken/) — expected errors
+transactions.csv row with account A9999 (unknown account).
+
+Payroll JE for Feb with credit 18,300.00 (unbalanced by 0.50).
+
+Amount 12,3.45 (malformed).
+
+Date 2026-02-30 (invalid).
+
+Duplicate external_id in accounts.csv.
+
+Acceptance criteria
+npm run import:csv -- --dir fixtures/demo && npm run seed:demo loads cleanly.
+
+expected.json covers every number in the three golden tables; a Vitest suite (golden.test.ts) recomputes and asserts all of them to the cent. Stories 07/08/09 must keep this suite green.
+
+Generator is deterministic: same seed → byte-identical CSVs (hash asserted in test).
+
+Broken fixture produces exactly the 5 documented errors and commits nothing.
+
+== JPH-8 [Story] [To Do] parent=JPH-3 :: 05 · Grants, programs & budget lines — management pages
+Story
+As a nonprofit CPA, I want to define programs, grants, and each grant's funder budget lines, so the app knows the reporting structure funders expect.
+Pages (all server-rendered, each its own route)
+/programs — table: code, name, functional category, default classes, active. Link to detail.
+
+/programs/new, /programs/[id] — form: name, code (unique), description, functional category, default class mapping (multi-select of imported TrackingClasses), active toggle.
+
+/grants — table: name, funder, award amount, period, restriction type, status, % spent (from latest ComputeRun, blank if none). Filter by status via query string (?status=active) — server-side, no client filtering.
+
+/grants/new, /grants/[id] — form: name, funder (select from imported Parties of kind customer, or free text), award number, award amount, start/end, restriction type, status, programs (multi-select with optional planned share %), revenue matchers (party and/or class).
+
+/grants/[id]/budget — budget line editor: code, name, budget amount, linked program, sort order. Add/remove rows via server actions (one row per form submit is acceptable; a small client island for "add row" is permitted). Shows sum of lines vs award amount with a warning when they differ.
+
+/grants/[id]/budget/import — paste or upload a CSV of budget lines (code,name,budget,program_code) — funders often send budgets as spreadsheets.
+
+Validation (zod, server-side, errors rendered inline on the page)
+Grant end ≥ start. Award > 0. Budget line codes unique within a grant.
+
+Program code unique per org. A class may be the default for at most one program (show conflict).
+
+Money inputs accept 1,234.56 / $1,234.56, stored as cents.
+
+Behavior
+Every create/update/delete writes an AuditEvent (story 02). /grants/[id]/history shows the audit trail.
+
+Soft-delete only (status archived) for grants referenced by any ComputeRun.
+
+Editing overlay config marks the latest ComputeRun as stale; a banner on report pages says "Configuration changed — recompute" (recompute defined in story 07).
+
+Acceptance criteria
+After seed:demo, all 4 programs, 3 grants, and 6 budget lines from story 04 appear correctly.
+
+Budget-sum-vs-award warning appears for a grant whose lines total ≠ award.
+
+All forms work with JS disabled; validation errors render server-side.
+
+Test cases
+e2e: create grant → add 3 budget lines → sum warning clears when lines equal award.
+
+e2e: duplicate program code rejected with inline error.
+
+Unit: money input parser shared with story 03.
+
+Audit: editing award amount creates AuditEvent with before/after.
+
+== JPH-9 [Story] [To Do] parent=JPH-3 :: 06 · Crosswalk: map grant budget lines ↔ programs ↔ GL accounts (with coverage & conflict checks)
+Story
+As a CPA, I want to declare once that e.g. "Culinary Training Personnel" = program CT × accounts {6010, 6020}, so the same source dollar keeps its GL identity ("Salaries & Wages") while also counting toward the funder's budget line — without re-tagging anything in QuickBooks.
+Model changes (amends story 02)
+CrosswalkRule gains programIds[] as a matcher. Crosswalk is evaluated after allocation (story 07) against each AllocatedLine, so matchers see the allocated program, not only the source class. Matchers: programIds[], accountIds[], accountRange, classIds[], partyIds[], descriptionContains, dateFrom/dateTo (AND across fields, OR within a list). Target: one grantBudgetLineId. priority integer; lowest wins.
+Resolution semantics
+For each AllocatedLine, find active rules whose matchers all pass and whose grant period contains the line date.
+
+If none → line is "unmapped" (not an error; reported in the coverage view).
+
+If multiple → lowest priority wins; if tied → conflict (the line is flagged, excluded from grant totals, and listed on /crosswalk/conflicts). Never silently pick.
+
+A line maps to at most one budget line (no double-counting across grants in MVP). Splitting one expense across two grants is done with an allocation rule (story 07) targeting budget lines directly.
+
+Pages
+/crosswalk — rules grouped by grant → budget line; each shows matchers in plain English ("Program is Culinary Training AND account is 6010 or 6020").
+
+/crosswalk/new, /crosswalk/[id] — rule form. Preview panel (server-rendered on submit of a "Preview" button, not live client fetching): shows the count and total of lines the rule would capture for a chosen date range, and the first 25 lines.
+
+/crosswalk/matrix — the key screen: a server-rendered matrix, rows = GL accounts, columns = programs, each cell lists which grant budget line(s) it maps to, colored: mapped / unmapped / conflict. Clicking a cell (plain link with query params) drills into matching lines.
+
+/crosswalk/coverage?from&to — totals of mapped vs unmapped program expense per program; unmapped detail.
+
+/crosswalk/conflicts — conflicted lines with the competing rules and a link to edit each.
+
+Acceptance criteria
+With demo data + seed, the matrix shows CT×6010/6020→PERS, CT×6110→SUPP, CT×6310→CONT, CT×6210/6220→OCC, YM×6010/6020→STAFF, YM×6110→MEALS; YM×6210/6220 shown unmapped; coverage shows 2,160.00 unmapped for YM in Q1.
+
+Adding a second rule with equal priority matching YM×6110 produces conflicts that appear on /crosswalk/conflicts and removes those lines from G-HCF totals.
+
+Rule preview totals equal what the rule contributes after recompute.
+
+Test cases
+Unit: matcher evaluation truth table (each field, lists, empty = wildcard).
+
+Unit: priority resolution and tie → conflict.
+
+Unit: grant-period filter excludes out-of-period lines.
+
+Golden: after recompute, G-MWSC and G-HCF budget-line actuals equal story-04 expected values.
+
+== JPH-10 [Story] [To Do] parent=JPH-3 :: 07 · Allocation rules engine + recompute pipeline (shared costs, penny-exact, audit trail)
+Story
+As a CPA, I want shared costs (ED salary, rent, utilities) split across programs/grants by rule, recomputed deterministically whenever data or config changes, so I never hand-build a monthly allocation spreadsheet or journal entry again.
+Recompute pipeline (src/engine/recompute.ts)
+Pure, deterministic function core + thin DB wrapper:
+Load source expense/income lines for the org (all periods) and active overlay config.
+
+Allocation stage: for each source line, find matching AllocationRule (matchers as in story 06 minus programIds, plus effectiveFrom/To). Priority → lowest wins; tie → conflict (line flagged, falls through to default). Matched line is split across targets by shareBps (must sum to 10000; validated at save time).
+
+Default stage: unmatched lines go 100% to the program whose matchClassIds includes the line's class; if none → program = null ("unassigned program").
+
+Crosswalk stage (story 06) assigns grant budget lines.
+
+Write AllocatedLine rows under a new ComputeRun; compute configHash (stable hash of overlay config) and record source batch IDs. Previous run retained (for diff), marked superseded.
+
+Assert invariant: per source line, Σ allocated = source amount. Fail the run (status failed, nothing promoted) if violated.
+
+Allocation methods
+fixed_pct — static bps per target (MVP must-have).
+
+ratio_of_driver — shares computed per period from a driver table (e.g. FTE hours or square footage by program) entered on /allocation/drivers; shares recalculated per month. Stretch within this story; if deferred, create a follow-up ticket.
+
+Targets may be a program, or a program + specific grant budget line (lets one expense be split across two grants explicitly).
+
+Rounding
+Integer cents, largest-remainder method; ties to lowest target sort order. Must reproduce story-04 March utilities result exactly (CT 300.01 / YM 120.00 / MG 180.00).
+Pages
+/allocation — list of rules; plain-English summary; last run's total allocated per rule.
+
+/allocation/new, /allocation/[id] — form with a split editor (permitted client island: live running total of shares with "must equal 100%" indicator; server re-validates). Server-rendered preview of affected lines for a date range.
+
+/allocation/drivers — driver table editor (if ratio_of_driver is built).
+
+/runs — ComputeRun history: time, status, duration, config hash, warnings, conflicts count. "Recompute now" button (server action).
+
+/runs/[id]/diff?against=[id] — per program × GL deltas between two runs (answers "why did this number change?").
+
+/lines/[sourceLineId] — audit trail view: the source line as imported, which allocation rule split it, resulting allocated pieces, which crosswalk rule mapped each, with links. Every number on every report must be drillable to this page.
+
+Execution
+Recompute runs synchronously for datasets under ~50k lines (demo is tiny). Structure the code so a background job runner can be dropped in later; do not add a queue now.
+Acceptance criteria
+Golden suite (story 04) passes: all program × GL figures match to the cent.
+
+Changing AR-OCC to 60/10/30 and recomputing changes CT Rent Q1 from 4,500.00 to 5,400.00; run diff page shows the delta.
+
+Invariant failure (inject a bug via test double) marks run failed and leaves the previous run as current.
+
+Reports always read from the latest successful run and show the run timestamp.
+
+Test cases
+Property test (fast-check): random amounts × random bps vectors summing to 10000 → allocated sum always equals source.
+
+Unit: priority/tie conflict handling.
+
+Unit: effective-date windows (rule effective from 2026-02-01 doesn't touch January lines).
+
+Integration: recompute on demo data < 2s.
+
+== JPH-11 [Story] [To Do] parent=JPH-3 :: 08 · Crosstab reporting: grant × program × GL, drill-down, saved views, CSV/XLSX/PDF export
+Story
+As a CPA, when a funder or board member asks "how much of Grant X went to Program Y by expense category," I want to answer in under a minute with an exportable, drillable report — replacing the 1–2 hour spreadsheet rebuild.
+Report engine (src/reports/)
+Single query layer over AllocatedLine of the latest successful ComputeRun (or a pinned run ID).
+
+Dimensions: grant, grantBudgetLine, program, functionalCategory, glAccount, glAccountType, class, month, quarter. Measure: sum cents.
+
+Any two dimensions as rows × columns, optional third as a filter or page-break ("one table per grant").
+
+Filters: date range, grants, programs, accounts, restricted-only, include/exclude unmapped.
+
+Row and column totals; grand total; zero rows hidden by default (toggle).
+
+Pages (server-rendered; state lives in the URL query string so every view is bookmarkable/shareable)
+/reports — landing with preset reports:
+Program × GL (Statement-of-Functional-Expenses-style)
+
+Grant budget line × GL ("show me the GL identity behind each funder line")
+
+Grant × Program
+
+Monthly trend by grant (month × grant budget line)
+
+
+/reports/custom?rows=program&cols=glAccount&from=2026-01-01&to=2026-03-31&grant=... — builder form (GET form, no JS required) + result table.
+
+Every cell is a link to /reports/lines?... listing contributing allocated lines, each linking to /lines/[sourceLineId] (story 07).
+
+Saved views: name + query string, stored per org, listed on /reports.
+
+Header shows ComputeRun timestamp and "stale config" banner if applicable.
+
+Exports
+CSV (raw, one row per cell and flattened).
+
+XLSX via exceljs: formatted table, totals as SUM formulas (not hardcoded values), a second sheet with the contributing detail lines, and a "Parameters" sheet (filters, run ID, generated-at).
+
+PDF: print-optimized CSS route rendered with Playwright/Chromium server-side, letterhead with org name, report title, period, page numbers. Landscape for wide tables.
+
+Exports are plain GET routes (route handlers) so they work as links.
+
+Acceptance criteria
+Program × GL preset for Q1 equals story-04 table exactly (every cell and total).
+
+Grant budget line × GL preset for G-MWSC shows PERS = 6010: 24,600.00 + 6020: 1,881.90 = 26,481.90.
+
+XLSX totals are live formulas; opening in Excel shows the same numbers.
+
+PDF of the Program × GL report fits on landscape Letter pages with repeated header rows.
+
+Drill-down from any cell sums to that cell's value.
+
+Pages render with JS disabled.
+
+Test cases
+Golden: every preset for Q1 asserted against expected.json.
+
+Unit: pivot function with 2 and 3 dimensions, totals, zero-suppression.
+
+e2e: build a custom report via the form → export XLSX → parse with exceljs in test → values match.
+
+Perf: generated 12-month dataset report renders < 1.5s server time.
+
+== JPH-12 [Story] [To Do] parent=JPH-3 :: 09 · Budget vs. actual + restricted-fund balances + burn-rate pacing
+Story
+As a CPA, I want each grant's budget vs. actual by budget line, its restricted balance (received minus spent), and whether spending is on pace for the grant period, so I catch over/under-spending before the funder does.
+Definitions (document in docs/definitions.md and show as tooltips/footnotes)
+Actual (spent) — Σ AllocatedLine mapped to the grant's budget lines within the period (expense accounts only).
+
+Received — Σ income source lines matching the grant's revenue matchers (party and/or class, account type Income) within the grant period, up to as-of date. Shown separately from the award.
+
+Restricted balance — Received − Spent, for grants with restrictionType ≠ unrestricted. Negative = spent ahead of receipts (reimbursement-basis situation) — show as a labeled state, not an error.
+
+Remaining budget — Budget − Actual, per line and total.
+
+Expected spend to date — straight-line: award × (elapsed days ÷ total grant days) as of the report date, days counted inclusive. Pacing variance = Actual − Expected. Flag >15% under or >10% over (thresholds configurable in /settings).
+
+Over-budget line — Actual > Budget on any line; always flagged regardless of total.
+
+Pages
+/grants/[id]/bva?asOf=2026-03-31 — table per budget line: budget, actual, remaining, % used, plus monthly actuals columns; totals; pacing section; drill-down links per cell (story 08 pattern).
+
+/restricted?asOf= — all restricted grants: award, received, spent, restricted balance, remaining award, pacing flag, end date, days remaining. Sort via query string.
+
+/dashboard (home page) — cards: restricted balances total, grants flagged (pacing/over-budget), unmapped program expense (story 06 coverage), last import and last compute times. Server-rendered; small inline SVG sparklines rendered server-side are fine; no client chart library.
+
+All BvA/restricted pages export CSV/XLSX/PDF using story 08's export machinery.
+
+Acceptance criteria (golden, as of 2026-03-31)
+G-MWSC and G-HCF BvA per line match the story-04 table (budget, actual, remaining, % used to one decimal).
+
+/restricted shows G-MWSC balance 20,247.09 and G-HCF 3,618.80; G-RFF not listed.
+
+Pacing, 90 of 365 days elapsed:
+G-MWSC expected 29,589.04 (120,000 × 90/365, round half-up to cents); actual 39,752.91; variance +10,163.87 (+34.4%) → flagged over pace.
+
+G-HCF expected 12,328.77; actual 21,381.20; variance +9,052.43 (+73.4%) → flagged over pace.
+
+
+Dashboard shows 2 flagged grants on demo data.
+
+A line-level overspend (test fixture variant) flags the line even when the grant total is under budget.
+
+Test cases
+Unit: pacing math incl. leap years and grants spanning fiscal years.
+
+Unit: received-amount matcher (party-based and class-based).
+
+Golden: all numbers above.
+
+e2e: dashboard flagged-grant count = 2; restricted page values match.
+
+== JPH-13 [Story] [To Do] parent=JPH-3 :: 10 · AI-drafted funder report narratives (grounded in computed figures, number-verified, human-edited)
+Story
+As a CPA, I want a first-draft financial narrative for a funder report ("spending to date, variances and why, remaining plan") generated from the computed numbers, which I then edit and approve — so the prose part of grant reporting stops eating my time, without risking invented figures.
+Design
+Server-side only. Anthropic Messages API via @anthropic-ai/sdk; key in ANTHROPIC_API_KEY; model in NARRATIVE_MODEL env (no hardcoded model string). Feature disabled cleanly (UI explains why) when no key is set.
+
+Grounding packet built deterministically from the ComputeRun: grant metadata, period, BvA per line, restricted balance, pacing, month-by-month actuals, top 10 largest contributing lines per budget line (description, vendor, amount), and user-entered context notes (free text: "hired second instructor in Feb", "kitchen equipment delayed"). Serialized as JSON; stored with the narrative for reproducibility.
+
+Prompt template in src/narratives/prompts/ (versioned files, version recorded on each narrative). Instructions: use only figures in the packet; plain, factual register; no advocacy or promotional language; flag any variance > threshold with its cause only if a context note explains it, otherwise write "[CPA: explain variance]" placeholder; output structured JSON { sections: [{ heading, body }] } validated with zod.
+
+Templates: "Quarterly financial narrative", "Final grant close-out summary", "Budget modification justification". Selectable per generation.
+
+Number verification (hard gate): extract every currency amount and percentage from the draft; each must match a value (or a derivable sum/difference listed in the packet's derived section) within 1¢ / 0.1%. Unverified numbers are highlighted in the editor and block the "Approve" action until edited or explicitly acknowledged.
+
+Pages
+/grants/[id]/narratives — list: template, period, status (draft | approved), created, approved by.
+
+/grants/[id]/narratives/new — form: template, period, context notes → server action generates (show server-rendered progress page; streaming optional, not required).
+
+/grants/[id]/narratives/[nid] — editor: plain <textarea> per section (no rich-text SPA editor), verification panel listing each number and its match status, "Regenerate section", "Approve". Approved narratives are immutable (new version on edit).
+
+Export narrative + BvA table together as DOCX (docx npm package) and PDF (story 08 machinery).
+
+Data model
+Narrative { id, grantId, computeRunId, template, promptVersion, model, periodFrom, periodTo, contextNotes, packetJson, draftJson, editedJson, verification JSON, status, approvedBy, approvedAt, version }.
+Acceptance criteria
+With demo data, a Q1 narrative for G-MWSC cites 39,752.91 spent and 20,247.09 restricted balance, and mentions over-pace spending; all numbers verify.
+
+A test with a mocked model response containing an invented figure (e.g. "$41,000") shows it unverified and blocks approval.
+
+No API calls in unit/e2e tests — model client is injected and mocked; one optional live smoke test gated by env var.
+
+Approved narrative cannot be edited in place.
+
+Test cases
+Unit: number extractor (currency formats, negatives in parentheses, percentages).
+
+Unit: verifier against packet incl. derived values.
+
+Unit: zod rejects malformed model output → user sees retry option, nothing saved as draft.
+
+e2e (mocked model): generate → edit → approve → export DOCX.
+
+== JPH-14 [Story] [To Do] parent=JPH-3 :: 11 · Live QuickBooks Online connector: OAuth 2.0, read-only sync via DataSource interface (sandbox first)
+Story
+As a CPA, I want to connect my client's QuickBooks Online company and pull its data directly, so I stop exporting CSVs — with everything downstream (allocation, crosswalk, reports, narratives) working unchanged.
+Prerequisites (manual, document in docs/qbo-setup.md)
+Intuit Developer account + app; sandbox company; Client ID/Secret in env (QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI, QBO_ENV=sandbox|production).
+
+Scope: com.intuit.quickbooks.accounting only. Read-only usage; the app must never call create/update/delete endpoints.
+
+Verify current Intuit API requirements (minor version, token lifetimes, rate limits, app-review requirements for production) against Intuit's docs at build time — do not rely on this ticket's assumptions.
+
+OAuth
+/settings/quickbooks page: "Connect to QuickBooks" button (plain link to /api/qbo/connect), connection status, company name, realmId, last sync, "Disconnect".
+
+Authorization-code flow with state (CSRF) stored server-side; callback /api/qbo/callback exchanges code, stores tokens.
+
+QboConnection { orgId, realmId, accessTokenEnc, refreshTokenEnc, accessExpiresAt, refreshExpiresAt, companyName, connectedBy, connectedAt, lastSyncAt, status }. Tokens encrypted at rest (AES-256-GCM, key from env). Auto-refresh before expiry; on refresh failure set status needs_reauth and show a banner app-wide.
+
+Disconnect revokes tokens with Intuit and deletes them locally; source mirror data retained.
+
+QboDataSource (implements story-03 DataSource)
+HTTP client with retries/backoff on 429/5xx, respects per-realm throttling, pagination via query STARTPOSITION/MAXRESULTS.
+
+Entity mapping:
+Account → Account (AcctNum, Name, AccountType, AccountSubType, ParentRef, Active)
+
+Class → TrackingClass; Department → TrackingLocation
+
+Customer (incl. sub-customers/projects via ParentRef/Job), Vendor, Employee → Party
+
+Transactions: Purchase (Expense/Check/CreditCard), Bill, VendorCredit, JournalEntry, Deposit, Invoice, SalesReceipt → Transaction + TransactionLine, mapping line-level AccountRef, ClassRef, DepartmentRef (header-level for some types), and line-level CustomerRef/Entity where present.
+
+
+Document which QBO types/fields are NOT mapped in MVP (e.g., item-based lines resolved via Item → IncomeAccount/ExpenseAccount; payroll paycheck detail if not exposed through the accounting API — note that payroll often lands as JEs or summarized postings, and test accordingly).
+
+externalId = QBO Id prefixed by entity type (e.g. Bill:123); SyncToken/MetaData.LastUpdatedTime captured for story 12.
+
+Sync UX
+/settings/quickbooks → "Sync now" with date range (default: current fiscal year + prior year) → creates an ImportBatch exactly like CSV. Batch page shows per-entity counts and API call stats.
+
+Same all-or-nothing batch semantics as the CSV path.
+
+Acceptance criteria
+Connect to an Intuit sandbox company, sync, and see accounts/classes/transactions in the mirror; run recompute; reports render.
+
+A mapping parity test: seed the sandbox with a subset of the story-04 golden transactions (script npm run qbo:seed-sandbox using the API against sandbox only, guarded so it refuses to run when QBO_ENV=production), sync, recompute → Program × GL figures for those transactions match the CSV path.
+
+Token refresh works across an expired access token (simulate by forcing expiry).
+
+Static check / test asserts the QBO client exposes no write methods outside the sandbox seeding script.
+
+Test cases
+Unit: mappers for each transaction type from recorded JSON fixtures (fixtures/qbo/*.json, captured from sandbox, secrets scrubbed).
+
+Unit: HTTP client retry/backoff on 429.
+
+Integration (nock/msw): full sync against recorded responses — no live calls in CI.
+
+Manual: live sandbox run documented with screenshots in the PR.
+
+== JPH-15 [Story] [To Do] parent=JPH-3 :: 12 · Incremental re-import/sync, change detection & reconciliation checks (CSV and QBO)
+Story
+As a CPA, I want to re-import or re-sync as the books change (edits, deletions, late entries, closed-period adjustments) and have the app tell me exactly what changed and whether its totals still tie to QuickBooks — so I can trust the numbers I send to funders.
+Change handling (both adapters, in ImportService)
+Per entity, compare incoming vs mirror by (sourceSystem, externalId): new, changed (content hash of normalized fields differs), unchanged, missing (in mirror, absent from a full-range import → mark deletedAt, never hard-delete).
+
+Changed/deleted rows keep history: SourceRowVersion { entity, externalId, version, hash, payload, importBatchId }.
+
+ImportBatch summary: counts per entity per bucket; /import/[batchId]/changes lists every changed/deleted transaction with a field-level diff.
+
+QBO: support incremental sync using the Change Data Capture endpoint (or LastUpdatedTime filters) since lastSyncAt; deleted entities surfaced by CDC are soft-deleted. Full resync available as a button. Verify CDC lookback limits in Intuit docs; fall back to full sync when exceeded.
+
+Period locks
+/settings/periods — user can lock a reporting period (e.g. "Q1 2026 reported to funder on 2026-04-20"). Locking snapshots the ComputeRun ID.
+
+If a later import changes any source line dated inside a locked period, the batch is still applied but flagged: banner + /periods/[id]/drift page listing affected lines and the per grant/program/GL delta vs the locked snapshot. This is the "someone edited Q1 after we reported it" alarm.
+
+Reconciliation checks (run automatically after each recompute; shown on /runs/[id] and dashboard)
+Allocation completeness — Σ AllocatedLine = Σ source expense lines for the period (story 07 invariant, reported here for visibility).
+
+Trial-balance tie-out — per GL expense account, Σ mirror lines for the period vs. source-reported account totals. CSV: optional trial_balance.csv (account_external_id,period_end,balance). QBO: pull the TrialBalance or ProfitAndLoss report for the period via Reports API. Differences listed per account.
+
+Unassigned program — lines with no program after allocation/default stage.
+
+Unmapped program expense and crosswalk conflicts (from story 06).
+
+Grant revenue sanity — income lines for a grant's funder party outside the grant period.
+Each check: pass / warn / fail with drill-down.
+
+Acceptance criteria
+Re-import identical demo files → 0 new/changed/deleted.
+
+Demo variant fixtures/demo-edited/ (Feb food CT changed 1,850.25 → 1,950.25; one March utility bill deleted) → exactly 1 changed + 1 deleted, diffs shown; after recompute CT Food Q1 = 6,471.00.
+
+Lock Q1, then import demo-edited → drift page shows CT Food +100.00 and Utilities deltas by program (CT −300.01, YM −120.00, MG −180.00).
+
+Trial-balance check passes on demo with a matching trial_balance.csv, fails with a 1¢ mismatch variant and names the account.
+
+Test cases
+Unit: normalization + hashing stable across whitespace/amount-format differences.
+
+Unit: soft-delete path on full-range vs partial-range imports (partial-range must NOT delete lines outside the range).
+
+Integration: QBO CDC flow against recorded fixtures incl. a deleted Bill.
+
+Golden: after demo-edited, update expected values in a separate expected-edited.json and assert.
