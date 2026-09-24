@@ -1,2 +1,4 @@
 - [GitHub push + Jira sync](github-jira-sync.md) — push via Git Data API replay (no token in shell); workflow scope missing so CI YAML can't be pushed; Jira transition ids.
 - [Replit toolchain quirks](toolchain-quirks.md) — Playwright needs PLAYWRIGHT_CHROMIUM_PATH=/repl/tools/bin/chromium; eslint must stay v9; prisma 8 rc resolves from `latest`.
+- [Report pivot keys](report-keys.md) — keys are test/view contracts; display names live in labels/secondary metadata.
+- [Visual baselines](visual-baselines.md) — visual.spec.ts must run against pristine demo data before mutating specs.

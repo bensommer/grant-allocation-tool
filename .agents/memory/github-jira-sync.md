@@ -12,3 +12,8 @@ description: How code reaches bensommer/grant-allocation-tool and how Jira stori
 Two subagents running DB tests / demo restores concurrently created duplicate Org rows and flaky
 e2e runs. Either serialize DB-touching verification or have the main agent do the final restore
 and full test pass itself.
+
+## Pushing binaries (PNG baselines, woff2)
+Read files with node:fs inside the "use impure" function and base64 there; passing base64 through
+the durable scope blows the 3 MB per-block budget. Parse `git diff --name-status -z` (tabs are lost
+in shellExec output).
