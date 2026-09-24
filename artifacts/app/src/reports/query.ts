@@ -27,19 +27,21 @@ export async function loadReport(orgId: string, p: ReportParams) {
     where: {
       orgId,
       computeRunId: run.id,
-      ...(p.grant.length ? { grantId: { in: p.grant } } : {}),
-      ...(p.program.length ? { programId: { in: p.program } } : {}),
-      ...(p.restricted ? { grant: { restrictionType: { not: 'unrestricted' } } } : {}),
-      ...(!p.unmapped
-        ? { grantId: { not: null }, status: { not: 'crosswalk_conflict' as const } }
-        : {}),
+      AND: [
+        p.grant.length ? { grantId: { in: p.grant } } : {},
+        p.program.length ? { programId: { in: p.program } } : {},
+        p.restricted ? { grant: { restrictionType: { not: 'unrestricted' } } } : {},
+        // Mapped-only: pieces attributed to a grant budget line. Conflict pieces never carry a grant.
+        p.unmapped ? {} : { grantId: { not: null } },
+      ],
       sourceLine: {
         orgId,
         ...(p.account.length
           ? { accountId: { in: p.account } }
-          : { account: { type: 'Expense' as const } }),
+          : { account: { type: { in: ['Expense', 'COGS', 'OtherExpense'] } } }),
         transaction: {
           orgId,
+          deletedAt: null,
           ...(p.from || p.to
             ? {
                 txnDate: {

@@ -32,7 +32,7 @@ export default async function BvaPage({
     }
     months.push(`${year}-${String(month + 1).padStart(2, '0')}`);
   }
-  const drill = (lineId: string, month?: string) => {
+  const drill = (lineCode: string, month?: string) => {
     const q = new URLSearchParams({
       run: run?.id ?? '',
       grant: id,
@@ -41,9 +41,9 @@ export default async function BvaPage({
         ? `${month}-${new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate()}`
         : label,
       rows: 'grantBudgetLine',
-      cols: 'month',
-      rowKey: lineId,
-      colKey: month ?? '',
+      cols: month ? 'month' : 'grant',
+      rowKey: lineCode,
+      colKey: month ?? grant.awardNumber ?? grant.name,
     });
     return `/reports/lines?${q}`;
   };
@@ -115,13 +115,13 @@ export default async function BvaPage({
                 </td>
                 <td className="num">{formatCents(r.budgetCents)}</td>
                 <td className="num">
-                  <Link href={drill(r.id)}>{formatCents(r.actual)}</Link>
+                  <Link href={drill(r.code)}>{formatCents(r.actual)}</Link>
                 </td>
                 <td className="num">{formatCents(r.remaining)}</td>
                 <td className="num">{formatPct1(r.actual, r.budgetCents)}</td>
                 {months.map((m) => (
                   <td className="num" key={m}>
-                    <Link href={drill(r.id, m)}>{formatCents(r.monthly[m] ?? 0)}</Link>
+                    <Link href={drill(r.code, m)}>{formatCents(r.monthly[m] ?? 0)}</Link>
                   </td>
                 ))}
               </tr>

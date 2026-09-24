@@ -30,7 +30,7 @@ export default async function DashboardPage({
           status: 'ok',
           sourceLine: {
             account: { type: { in: ['Expense', 'COGS', 'OtherExpense'] } },
-            transaction: { orgId, deletedAt: null },
+            transaction: { orgId, deletedAt: null, txnDate: { lte: date } },
           },
         },
         select: {
@@ -59,7 +59,7 @@ export default async function DashboardPage({
         status: 'ok',
         sourceLine: {
           account: { type: { in: ['Expense', 'COGS', 'OtherExpense'] } },
-          transaction: { orgId, deletedAt: null },
+          transaction: { orgId, deletedAt: null, txnDate: { lte: date } },
         },
       },
       select: {

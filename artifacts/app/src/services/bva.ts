@@ -28,6 +28,7 @@ export async function bvaData(orgId: string, asOf: Date, grantId?: string) {
             computeRunId: run.id,
             status: 'ok',
             grantBudgetLineId: { not: null },
+            ...(grantId ? { grantBudgetLine: { grantId } } : {}),
             sourceLine: {
               account: { type: { in: ['Expense', 'COGS', 'OtherExpense'] } },
               transaction: { orgId, deletedAt: null, txnDate: { lte: asOf } },
@@ -49,6 +50,7 @@ export async function bvaData(orgId: string, asOf: Date, grantId?: string) {
       select: {
         accountId: true,
         classId: true,
+        partyId: true,
         amountCents: true,
         account: { select: { type: true } },
         transaction: { select: { txnDate: true, partyId: true } },
@@ -61,7 +63,9 @@ export async function bvaData(orgId: string, asOf: Date, grantId?: string) {
       const rows = grant.budgetLines.map((line) => {
         const applicable = pieces.filter(
           (p) =>
-            p.grantBudgetLineId === line.id && p.sourceLine.transaction.txnDate >= grant.startDate,
+            p.grantBudgetLineId === line.id &&
+            p.sourceLine.transaction.txnDate >= grant.startDate &&
+            p.sourceLine.transaction.txnDate <= grant.endDate,
         );
         const actual = applicable.reduce((n, p) => n + p.amountCents, 0);
         const monthly: Record<string, number> = {};
@@ -89,6 +93,7 @@ export async function bvaData(orgId: string, asOf: Date, grantId?: string) {
               accountType: r.account.type,
               classId: r.classId,
               transactionPartyId: r.transaction.partyId,
+              linePartyId: r.partyId,
             }),
         )
         .reduce((n, r) => n + r.amountCents, 0);

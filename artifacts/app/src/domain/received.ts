@@ -12,12 +12,14 @@ export function matchesReceived(
     accountType: string;
     classId: string | null;
     transactionPartyId: string | null;
+    /** line-level party (e.g. a deposit line) takes precedence over the header party */
+    linePartyId?: string | null;
   },
 ) {
   return (
     (line.accountType === 'Income' || line.accountType === 'OtherIncome') &&
     (!grant.revenueAccountId || grant.revenueAccountId === line.accountId) &&
-    (grant.matchPartyIds.includes(line.transactionPartyId ?? '') ||
+    (grant.matchPartyIds.includes(line.linePartyId ?? line.transactionPartyId ?? '') ||
       grant.matchClassIds.includes(line.classId ?? ''))
   );
 }

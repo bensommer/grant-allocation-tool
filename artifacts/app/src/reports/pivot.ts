@@ -2,6 +2,7 @@ import type { Dimension } from './params';
 import type { Fact } from './query';
 
 export const cellId = (row: string, col: string) => JSON.stringify([row, col]);
+const splitCellId = (key: string) => JSON.parse(key) as [string, string];
 export function pivot(
   facts: Fact[],
   opts: { rows: Dimension; cols: Dimension; page?: Dimension; pageKey?: string; zeros?: boolean },
@@ -24,11 +25,17 @@ export function pivot(
     grandTotal += f.amountCents;
   }
   const sort = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
-  const rowKeys = [...rowTotals.keys()]
-    .filter((k) => opts.zeros || rowTotals.get(k) !== 0)
-    .sort(sort);
-  const colKeys = [...colTotals.keys()]
-    .filter((k) => opts.zeros || colTotals.get(k) !== 0)
-    .sort(sort);
+  // Zero suppression hides a row/column only when every one of its cells is zero, so
+  // offsetting entries (e.g. a bill and its credit) still reconcile to the visible totals.
+  const nonZeroRows = new Set<string>();
+  const nonZeroCols = new Set<string>();
+  for (const [key, v] of cells) {
+    if (v === 0) continue;
+    const [r, c] = splitCellId(key);
+    nonZeroRows.add(r);
+    nonZeroCols.add(c);
+  }
+  const rowKeys = [...rowTotals.keys()].filter((k) => opts.zeros || nonZeroRows.has(k)).sort(sort);
+  const colKeys = [...colTotals.keys()].filter((k) => opts.zeros || nonZeroCols.has(k)).sort(sort);
   return { rowKeys, colKeys, cells, rowTotals, colTotals, grandTotal };
 }

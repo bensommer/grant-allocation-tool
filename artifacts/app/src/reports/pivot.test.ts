@@ -21,6 +21,22 @@ describe('pivot', () => {
       'ZERO',
     );
   });
+  it('keeps rows whose cells offset to zero so visible cells reconcile to totals', () => {
+    const offset = [
+      { program: 'CT', glAccount: '6010', grant: 'A', amountCents: 100 },
+      { program: 'CT', glAccount: '6020', grant: 'A', amountCents: -100 },
+    ] as Fact[];
+    const t = pivot(offset, { rows: 'program', cols: 'glAccount', zeros: false });
+    expect(t.rowKeys).toEqual(['CT']);
+    expect(t.colKeys).toEqual(['6010', '6020']);
+    expect(t.rowTotals.get('CT')).toBe(0);
+    // A row that is zero in every cell is still suppressed.
+    const u = pivot(
+      [...offset, { program: 'Z', glAccount: '6010', grant: 'A', amountCents: 0 }] as Fact[],
+      { rows: 'program', cols: 'glAccount', zeros: false },
+    );
+    expect(u.rowKeys).toEqual(['CT']);
+  });
   it('page-breaks on a third dimension', () => {
     const x = pivot(facts, { rows: 'program', cols: 'glAccount', page: 'grant', pageKey: 'B' });
     expect(x.grandTotal).toBe(200);

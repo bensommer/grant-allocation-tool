@@ -60,16 +60,18 @@ export function xlsxResponse(buf: Buffer, filename: string): Response {
   });
 }
 
-/** Render an app page (same origin as the request) to a landscape Letter PDF. */
+/**
+ * Render an app page to a landscape Letter PDF. The page is fetched from the
+ * server's own loopback address (never the request Host header) so the export
+ * cannot be pointed at another host; a non-2xx navigation aborts the export.
+ */
 export async function pdfOfPage(
-  request: Request,
   pathname: string,
+  query: URLSearchParams,
   filename: string,
-  extra: Record<string, string> = {},
 ): Promise<Response> {
-  const url = new URL(request.url);
-  url.pathname = pathname;
-  for (const [k, v] of Object.entries(extra)) url.searchParams.set(k, v);
+  const port = process.env.PORT ?? '3000';
+  const target = `http://127.0.0.1:${port}${pathname}?${query}`;
   const browser = await chromium.launch({
     headless: true,
     executablePath:
@@ -78,7 +80,12 @@ export async function pdfOfPage(
   });
   try {
     const page = await browser.newPage();
-    await page.goto(url.toString(), { waitUntil: 'networkidle' });
+    const res = await page.goto(target, { waitUntil: 'networkidle' });
+    if (!res || !res.ok()) {
+      return new Response(`Could not render ${pathname} (${res?.status() ?? 'no response'})`, {
+        status: 502,
+      });
+    }
     const pdf = await page.pdf({
       format: 'Letter',
       landscape: true,

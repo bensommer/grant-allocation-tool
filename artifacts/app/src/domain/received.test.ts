@@ -9,6 +9,12 @@ describe('received matching', () => {
     expect(matchesReceived(grant, { ...line, classId: 'c' })).toBe(true);
     expect(matchesReceived(grant, line)).toBe(false);
   });
+  it('prefers the line-level party over the transaction party', () => {
+    expect(matchesReceived(grant, { ...line, linePartyId: 'p' })).toBe(true);
+    expect(matchesReceived(grant, { ...line, transactionPartyId: 'p', linePartyId: 'x' })).toBe(
+      false,
+    );
+  });
   it('restricts to income and optional revenue account', () => {
     expect(
       matchesReceived({ ...grant, revenueAccountId: 'other' }, { ...line, classId: 'c' }),

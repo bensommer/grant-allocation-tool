@@ -66,6 +66,15 @@ describe('reports golden Q1', () => {
         .reduce((n, f) => n + f.amountCents, 0),
     ).toBe(table.cells.get(cellId('PERS', wages)));
   });
+  it('grant filter still applies when unmapped pieces are excluded', async () => {
+    const q = new URLSearchParams(`${period}&grant=${grantId}&unmapped=0`);
+    const { facts } = await loadReport(orgId, parseParams(q));
+    expect(facts.length).toBeGreaterThan(0);
+    expect(new Set(facts.map((f) => f.grant))).toEqual(new Set(['MWSC-2026-117']));
+    expect(facts.reduce((n, f) => n + f.amountCents, 0)).toBe(
+      expected.budgetVsActual['G-MWSC'].total.actual,
+    );
+  });
   it('grant × program and monthly × budget line presets reconcile to golden grant actuals', async () => {
     const { facts } = await loadReport(orgId, parseParams(new URLSearchParams(period)));
     const byGrant = pivot(facts, { rows: 'grant', cols: 'program' });
