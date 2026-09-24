@@ -40,6 +40,7 @@ pnpm run dev                            # http://localhost:3000
 | `pnpm run e2e`               | Playwright e2e (projects: `chromium`, `chromium-nojs`)    |
 | `pnpm run import:csv -- --dir <folder>` | Import a CSV bundle from the CLI (`--from`/`--to` for a partial range) |
 | `pnpm run seed:demo`         | Load the demo overlay (programs, grants, budget lines, rules) |
+| `pnpm run recompute`         | Run the allocation pipeline once (same as "Recompute now" on `/runs`) |
 | `pnpm run fixtures:generate -- --seed 42 --months 12` | Deterministic larger dataset into `fixtures/generated` |
 
 `pnpm run test` truncates every table in `DATABASE_URL`; set `TEST_DATABASE_URL` to use a
@@ -72,6 +73,28 @@ so run `setenv PLAYWRIGHT_CHROMIUM_PATH /repl/tools/bin/chromium` first.
   `src/app/globals.css`, including a print stylesheet. Chosen over CSS modules to keep
   server components free of per-file style plumbing.
 - **Env:** `src/env.ts` validates `process.env` with zod at first use.
+
+## Allocation engine
+
+`src/engine/core.ts` is a pure function `allocate(lines, config) → pieces`; `src/engine/recompute.ts`
+wraps it with the database: load source lines + overlay config → new `ComputeRun` → bulk-insert
+`AllocatedLine` → verify in SQL that Σ pieces = source amount for every line → promote (previous
+current run becomes `superseded`; a failed check leaves the previous run current). Stages per line:
+
+1. **Allocation** — lowest-priority active `AllocationRule` whose matchers pass and whose effective
+   window contains the line date splits the amount across its targets (`fixed_pct` by basis points,
+   `ratio_of_driver` by that month's driver values). Equal lowest priority = conflict: the line is
+   flagged and falls through.
+2. **Default** — 100% to the program whose default classes include the line's class; none →
+   `unassigned_program`.
+3. **Crosswalk** — expense pieces are matched against `CrosswalkRule`s (matchers see the *allocated*
+   program) whose grant period contains the date. Lowest priority wins; a tie is a
+   `crosswalk_conflict` (excluded from grant totals); no match = unmapped (not an error).
+
+Rounding is integer-cent largest-remainder with ties to the lowest target sort order
+(`src/domain/split.ts`). Saving any rule/program/grant marks the current run stale; nothing is
+recomputed until you press **Recompute now** on `/runs` (or run `pnpm run recompute`). `/runs/[id]/diff`
+shows program × GL and budget-line deltas between two runs; `/lines/[id]` is the per-line audit trail.
 
 ## Importing data
 

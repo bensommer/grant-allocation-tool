@@ -19,6 +19,7 @@
     "e2e": "playwright test",
     "import:csv": "tsx src/cli/import-csv.ts",
     "seed:demo": "tsx src/cli/seed-demo.ts",
+    "recompute": "tsx src/cli/recompute.ts",
     "fixtures:generate": "tsx src/cli/generate-fixtures.ts"
   },
   "dependencies": {

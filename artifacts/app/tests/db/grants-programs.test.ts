@@ -41,7 +41,13 @@ describe('programs & grants services (JPH-8)', () => {
       data: { orgId, sourceSystem: 'csv', status: 'succeeded' },
     });
     const cls = await prisma.trackingClass.create({
-      data: { orgId, sourceSystem: 'csv', externalId: 'C1', importBatchId: batch.id, name: 'Class 1' },
+      data: {
+        orgId,
+        sourceSystem: 'csv',
+        externalId: 'C1',
+        importBatchId: batch.id,
+        name: 'Class 1',
+      },
     });
     await createProgram(orgId, program('CT', [cls.id]));
     await expect(createProgram(orgId, program('CT'))).rejects.toMatchObject({
