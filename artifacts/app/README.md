@@ -27,21 +27,21 @@ pnpm run dev                            # http://localhost:3000
 
 ## Scripts
 
-| Script                       | What it does                                              |
-| ---------------------------- | --------------------------------------------------------- |
-| `pnpm run dev`               | Next.js dev server on `$PORT`                             |
-| `pnpm run build` / `start`   | Production build / serve                                  |
-| `pnpm run typecheck`         | `prisma generate` + `tsc --noEmit` (strict)               |
-| `pnpm run lint`              | ESLint (next/core-web-vitals + typescript)                |
-| `pnpm run format`            | Prettier check                                            |
-| `pnpm run db:migrate`        | `prisma migrate deploy`                                   |
-| `pnpm run db:migrate:dev`    | `prisma migrate dev` (creates a new migration)            |
-| `pnpm run test`              | Vitest unit + domain tests (golden dataset included)      |
-| `pnpm run e2e`               | Playwright e2e (projects: `chromium`, `chromium-nojs`)    |
-| `pnpm run import:csv -- --dir <folder>` | Import a CSV bundle from the CLI (`--from`/`--to` for a partial range) |
-| `pnpm run seed:demo`         | Load the demo overlay (programs, grants, budget lines, rules) |
-| `pnpm run recompute`         | Run the allocation pipeline once (same as "Recompute now" on `/runs`) |
-| `pnpm run fixtures:generate -- --seed 42 --months 12` | Deterministic larger dataset into `fixtures/generated` |
+| Script                                                | What it does                                                           |
+| ----------------------------------------------------- | ---------------------------------------------------------------------- |
+| `pnpm run dev`                                        | Next.js dev server on `$PORT`                                          |
+| `pnpm run build` / `start`                            | Production build / serve                                               |
+| `pnpm run typecheck`                                  | `prisma generate` + `tsc --noEmit` (strict)                            |
+| `pnpm run lint`                                       | ESLint (next/core-web-vitals + typescript)                             |
+| `pnpm run format`                                     | Prettier check                                                         |
+| `pnpm run db:migrate`                                 | `prisma migrate deploy`                                                |
+| `pnpm run db:migrate:dev`                             | `prisma migrate dev` (creates a new migration)                         |
+| `pnpm run test`                                       | Vitest unit + domain tests (golden dataset included)                   |
+| `pnpm run e2e`                                        | Playwright e2e (projects: `chromium`, `chromium-nojs`)                 |
+| `pnpm run import:csv -- --dir <folder>`               | Import a CSV bundle from the CLI (`--from`/`--to` for a partial range) |
+| `pnpm run seed:demo`                                  | Load the demo overlay (programs, grants, budget lines, rules)          |
+| `pnpm run recompute`                                  | Run the allocation pipeline once (same as "Recompute now" on `/runs`)  |
+| `pnpm run fixtures:generate -- --seed 42 --months 12` | Deterministic larger dataset into `fixtures/generated`                 |
 
 `pnpm run test` truncates every table in `DATABASE_URL`; set `TEST_DATABASE_URL` to use a
 separate database (tcsh: `setenv TEST_DATABASE_URL postgresql://...`).
@@ -60,9 +60,9 @@ so run `setenv PLAYWRIGHT_CHROMIUM_PATH /repl/tools/bin/chromium` first.
   are leaf islands only, and each carries a comment justifying why it needs the browser.
   _Why:_ the users are accountants working in printable reports and long forms; SSR gives
   correct printing, deep-linkable filters, back-button behavior, and zero hydration surprises.
-- **Two data layers** (`prisma/schema.prisma`): a read-only *source mirror* of
+- **Two data layers** (`prisma/schema.prisma`): a read-only _source mirror_ of
   QuickBooks-shaped data (accounts, classes, locations, parties, transactions, lines) that only
-  `DataSource` adapters write through the import service, and a user-owned *overlay*
+  `DataSource` adapters write through the import service, and a user-owned _overlay_
   (programs, grants, budget lines, crosswalk rules, allocation rules) plus materialized compute
   output (`ComputeRun`, `AllocatedLine`). Source rows are never mutated by the app.
 - **Money is integer cents** everywhere (`src/domain/money.ts`). Percentages are basis points.
@@ -87,7 +87,7 @@ current run becomes `superseded`; a failed check leaves the previous run current
    flagged and falls through.
 2. **Default** — 100% to the program whose default classes include the line's class; none →
    `unassigned_program`.
-3. **Crosswalk** — expense pieces are matched against `CrosswalkRule`s (matchers see the *allocated*
+3. **Crosswalk** — expense pieces are matched against `CrosswalkRule`s (matchers see the _allocated_
    program) whose grant period contains the date. Lowest priority wins; a tie is a
    `crosswalk_conflict` (excluded from grant totals); no match = unmapped (not an error).
 
@@ -121,6 +121,22 @@ pnpm run seed:demo
 `fixtures/demo/EXPECTED.md` lists the golden totals asserted by `tests/db/golden.test.ts`;
 `fixtures/broken/` reproduces the five documented import errors. The QuickBooks Online adapter
 (`src/datasource/qbo/adapter.ts`) is a stub pending the live-connector story.
+
+## Crosstab reports (JPH-11)
+
+Open `/reports` for four Q1 presets, saved views and the GET-based custom builder.
+Choose row and column dimensions, optional page-break dimension, dates and filters;
+the URL is shareable and works with JavaScript disabled. Each nonzero cell drills
+into contributing pieces and source lines. Download CSV, formula-backed XLSX
+(with Detail and Parameters sheets), or landscape Letter PDF from the report.
+Totals use integer cents until export. Reports use the current ComputeRun unless
+`run` pins an org-owned run; stale configuration is flagged in the header.
+PDF export requires Chromium; on Replit set
+`PLAYWRIGHT_CHROMIUM_PATH=/repl/tools/bin/chromium`.
+
+## Budget vs actual (JPH-12)
+
+Open the dashboard at `/`, a grant's budget vs actual at `/grants/[id]/bva`, or all restricted grants at `/restricted`. Set an as-of date with the server-rendered date filter. Budget and restricted tables offer CSV downloads; XLSX and PDF integration is pending the shared report exporter. Pacing thresholds default to 15% under and 10% over, editable in `/settings`. Definitions and sign conventions are in `docs/definitions.md`. Recompute after changing configuration to refresh current-run allocations.
 
 ## Layout
 

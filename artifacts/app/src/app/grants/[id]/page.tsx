@@ -34,6 +34,12 @@ export default async function GrantPage({
             <Link href="/grants" className="btn btn-secondary btn-sm">
               All grants
             </Link>
+            <Link href={`/grants/${id}/bva`} className="btn btn-secondary btn-sm">
+              Budget vs actual
+            </Link>
+            <Link href={`/grants/${id}/narratives`} className="btn btn-secondary btn-sm">
+              Narratives
+            </Link>
             <form action={deleteGrantAction.bind(null, id)}>
               <button type="submit" className="btn btn-danger btn-sm">
                 Delete / archive
