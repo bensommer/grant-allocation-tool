@@ -9,7 +9,12 @@ export const DEFAULT_ORG_NAME = 'Default Organization';
 let cachedOrgId: string | undefined;
 
 export async function getOrgId(): Promise<string> {
-  if (cachedOrgId) return cachedOrgId;
+  if (cachedOrgId) {
+    // Re-validate: a test run or manual reset may have recreated the Org row.
+    const still = await prisma.org.findUnique({ where: { id: cachedOrgId }, select: { id: true } });
+    if (still) return cachedOrgId;
+    cachedOrgId = undefined;
+  }
   const existing = await prisma.org.findFirst({ orderBy: { createdAt: 'asc' } });
   if (existing) {
     cachedOrgId = existing.id;

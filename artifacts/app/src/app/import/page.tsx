@@ -31,8 +31,7 @@ export default async function ImportPage({
 
       <form
         action={uploadCsvBundle}
-        method="post"
-        encType="multipart/form-data"
+
         className="card mb-6"
       >
         <h2 className="mb-3">Upload CSV bundle</h2>
