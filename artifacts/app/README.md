@@ -38,8 +38,12 @@ pnpm run dev                            # http://localhost:3000
 | `pnpm run db:migrate:dev`    | `prisma migrate dev` (creates a new migration)            |
 | `pnpm run test`              | Vitest unit + domain tests (golden dataset included)      |
 | `pnpm run e2e`               | Playwright e2e (projects: `chromium`, `chromium-nojs`)    |
-| `pnpm run import:csv -- --dir <folder>` | Import a CSV bundle from the CLI               |
-| `pnpm run seed:demo`         | Load the Harbor Kitchen Collective demo dataset           |
+| `pnpm run import:csv -- --dir <folder>` | Import a CSV bundle from the CLI (`--from`/`--to` for a partial range) |
+| `pnpm run seed:demo`         | Load the demo overlay (programs, grants, budget lines, rules) |
+| `pnpm run fixtures:generate -- --seed 42 --months 12` | Deterministic larger dataset into `fixtures/generated` |
+
+`pnpm run test` truncates every table in `DATABASE_URL`; set `TEST_DATABASE_URL` to use a
+separate database (tcsh: `setenv TEST_DATABASE_URL postgresql://...`).
 
 Playwright notes: set `E2E_BASE_URL` to test an already-running server; otherwise the
 config starts `pnpm run dev` on `$PORT`. On Replit the bundled Chromium lacks system libs,
@@ -68,6 +72,32 @@ so run `setenv PLAYWRIGHT_CHROMIUM_PATH /repl/tools/bin/chromium` first.
   `src/app/globals.css`, including a print stylesheet. Chosen over CSS modules to keep
   server components free of per-file style plumbing.
 - **Env:** `src/env.ts` validates `process.env` with zod at first use.
+
+## Importing data
+
+The app never talks to QuickBooks directly; it consumes a `DataSource` (`src/datasource/types.ts`).
+The CSV adapter (`src/datasource/csv/adapter.ts`) reads a six-file bundle shaped like QuickBooks
+exports — `company.csv, accounts.csv, classes.csv, locations.csv, parties.csv, transactions.csv`
+(one row per transaction line, header columns repeated). Amounts may be `1234.56`, `$1,234.56`
+or `(1,234.56)`; dates `YYYY-MM-DD` or `MM/DD/YYYY`; UTF-8 with or without BOM; CRLF fine.
+
+`ImportService.run` (`src/datasource/import-service.ts`) is adapter-agnostic. It validates
+references, checks JournalEntry balance, and either commits the whole batch or nothing. Every row is
+content-hashed so re-imports report `new / changed / unchanged / deleted`; changed and deleted rows
+keep history in `SourceRowVersion`, and deletions are soft (`deletedAt`). A full import (no date
+range) treats the files as the complete truth; a ranged import only reconciles transactions inside
+the range.
+
+Demo walkthrough:
+
+```
+pnpm run import:csv -- --dir fixtures/demo
+pnpm run seed:demo
+```
+
+`fixtures/demo/EXPECTED.md` lists the golden totals asserted by `tests/db/golden.test.ts`;
+`fixtures/broken/` reproduces the five documented import errors. The QuickBooks Online adapter
+(`src/datasource/qbo/adapter.ts`) is a stub pending the live-connector story.
 
 ## Layout
 

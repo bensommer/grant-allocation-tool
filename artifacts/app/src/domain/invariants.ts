@@ -1,7 +1,9 @@
 import { prisma } from '@/lib/db';
 
 export class AllocationImbalanceError extends Error {
-  constructor(public readonly details: Array<{ sourceLineId: string; expected: number; actual: number }>) {
+  constructor(
+    public readonly details: Array<{ sourceLineId: string; expected: number; actual: number }>,
+  ) {
     super(
       `Allocation imbalance in ${details.length} source line(s): ` +
         details
@@ -45,6 +47,8 @@ export async function assertImportBatchDeletable(importBatchId: string): Promise
     select: { id: true },
   });
   if (run) {
-    throw new Error(`Import batch ${importBatchId} is referenced by compute run ${run.id} and cannot be deleted`);
+    throw new Error(
+      `Import batch ${importBatchId} is referenced by compute run ${run.id} and cannot be deleted`,
+    );
   }
 }

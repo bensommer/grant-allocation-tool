@@ -58,7 +58,9 @@ describe('schema invariants (JPH-5)', () => {
   it('1000 cents allocated 3333/3333/3334 bps sums to exactly 1000 and passes the invariant', async () => {
     const { line, batch } = await seedSourceLine(1000);
     const programs = await Promise.all(
-      ['A', 'B', 'C'].map((code) => prisma.program.create({ data: { orgId, code, name: `Program ${code}` } })),
+      ['A', 'B', 'C'].map((code) =>
+        prisma.program.create({ data: { orgId, code, name: `Program ${code}` } }),
+      ),
     );
     const run = await prisma.computeRun.create({
       data: { orgId, configHash: 'x', sourceBatchIds: [batch.id], status: 'succeeded' },
@@ -131,7 +133,10 @@ describe('schema invariants (JPH-5)', () => {
       },
     });
     const updated = await prisma.$transaction(async (tx) => {
-      const after = await tx.grant.update({ where: { id: grant.id }, data: { awardAmountCents: 1_200_000 } });
+      const after = await tx.grant.update({
+        where: { id: grant.id },
+        data: { awardAmountCents: 1_200_000 },
+      });
       await recordAudit(tx, {
         orgId,
         entity: 'Grant',

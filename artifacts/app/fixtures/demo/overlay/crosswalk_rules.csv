@@ -1,0 +1,7 @@
+grant_code,budget_line_code,priority,program_codes,match_account_external_ids
+G-MWSC,PERS,10,CT,A6010|A6020
+G-MWSC,SUPP,10,CT,A6110
+G-MWSC,CONT,10,CT,A6310
+G-MWSC,OCC,10,CT,A6210|A6220
+G-HCF,STAFF,10,YM,A6010|A6020
+G-HCF,MEALS,10,YM,A6110

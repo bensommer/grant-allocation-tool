@@ -6,7 +6,10 @@
 export const MAX_CENTS = 2_147_483_647; // Int32 column limit
 
 export class MoneyParseError extends Error {
-  constructor(public readonly input: string, message: string) {
+  constructor(
+    public readonly input: string,
+    message: string,
+  ) {
     super(`${message}: "${input}"`);
     this.name = 'MoneyParseError';
   }
@@ -48,7 +51,10 @@ export function parseMoneyToCents(raw: string): number {
   return negative ? -cents : cents;
 }
 
-export function formatCents(cents: number, opts: { blankZero?: boolean; parens?: boolean } = {}): string {
+export function formatCents(
+  cents: number,
+  opts: { blankZero?: boolean; parens?: boolean } = {},
+): string {
   if (opts.blankZero && cents === 0) return '–';
   const negative = cents < 0;
   const abs = Math.abs(cents);

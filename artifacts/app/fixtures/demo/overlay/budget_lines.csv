@@ -1,0 +1,7 @@
+grant_code,code,name,budget,program_code,sort_order
+G-MWSC,PERS,Culinary Training Personnel,72000.00,CT,1
+G-MWSC,SUPP,Training Supplies,24000.00,CT,2
+G-MWSC,CONT,Contract Instructors,12000.00,CT,3
+G-MWSC,OCC,Occupancy,12000.00,CT,4
+G-HCF,STAFF,Youth Program Staff,36000.00,YM,1
+G-HCF,MEALS,Meals & Food,14000.00,YM,2

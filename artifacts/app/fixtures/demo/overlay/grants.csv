@@ -1,0 +1,4 @@
+code,name,funder_party_external_id,award_number,start_date,end_date,award_amount,restriction_type,status,program_codes,match_party_external_ids,match_class_external_ids
+G-MWSC,Culinary Workforce Grant,P-MWSC,MWSC-2026-117,2026-01-01,2026-12-31,120000.00,purpose,active,CT,P-MWSC,
+G-HCF,Youth Meals Grant,P-HCF,HCF-26-042,2026-01-01,2026-12-31,50000.00,purpose,active,YM,P-HCF,
+G-RFF,Rivera general operating gift,P-RFF,,2026-01-01,2026-12-31,30000.00,unrestricted,active,,P-RFF,

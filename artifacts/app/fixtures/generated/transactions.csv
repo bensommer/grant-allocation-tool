@@ -1,0 +1,171 @@
+txn_external_id,txn_type,txn_date,doc_number,txn_memo,txn_party_external_id,payment_account_external_id,line_number,account_external_id,class_external_id,location_external_id,line_party_external_id,description,amount,posting_type
+JE-PR-2026-01,JournalEntry,2026-01-31,JE-PR-2026-01,Payroll 2026-01,,,1,A6010,C-CT,LOC-MAIN,E-CHEF,Chef Instructor salary,5040.44,debit
+JE-PR-2026-01,JournalEntry,2026-01-31,JE-PR-2026-01,Payroll 2026-01,,,2,A6010,C-YM,LOC-MAIN,E-YC,Youth Coordinator salary,3984.49,debit
+JE-PR-2026-01,JournalEntry,2026-01-31,JE-PR-2026-01,Payroll 2026-01,,,3,A6010,C-ADMIN,LOC-MAIN,E-ED,Executive Director salary,8070.50,debit
+JE-PR-2026-01,JournalEntry,2026-01-31,JE-PR-2026-01,Payroll 2026-01,,,4,A6020,C-CT,LOC-MAIN,E-CHEF,Payroll taxes,385.59,debit
+JE-PR-2026-01,JournalEntry,2026-01-31,JE-PR-2026-01,Payroll 2026-01,,,5,A6020,C-YM,LOC-MAIN,E-YC,Payroll taxes,304.81,debit
+JE-PR-2026-01,JournalEntry,2026-01-31,JE-PR-2026-01,Payroll 2026-01,,,6,A6020,C-ADMIN,LOC-MAIN,E-ED,Payroll taxes,617.39,debit
+JE-PR-2026-01,JournalEntry,2026-01-31,JE-PR-2026-01,Payroll 2026-01,,,7,A1000,,LOC-MAIN,,Net payroll + taxes,18403.22,credit
+BILL-RENT-2026-01,Bill,2026-01-01,RENT-01,Rent 2026-01,V-LAND,A2000,1,A6210,C-ADMIN,LOC-MAIN,,Monthly rent,3000.00,debit
+BILL-UTIL-2026-01,Bill,2026-01-15,EVR-01,Utilities 2026-01,V-UTIL,A2000,1,A6220,C-ADMIN,LOC-MAIN,,Electric & gas,697.80,debit
+EXP-FOOD-YM-2026-01-1,Expense,2026-01-10,CFS-011,Food purchase,V-FOOD,A1000,1,A6110,C-YM,LOC-MAIN,,Youth meals food,1711.97,debit
+EXP-FOOD-YM-2026-01-2,Expense,2026-01-16,CFS-012,Food purchase,V-FOOD,A1000,1,A6110,C-YM,LOC-MAIN,,Youth meals food,924.84,debit
+DEP-MWSC-2026-01,Deposit,2026-01-10,DEP-0110,MWSC grant payment,P-MWSC,A1000,1,A4010,C-CT,LOC-MAIN,P-MWSC,Culinary Workforce Grant installment,30000.00,credit
+DEP-HCF-2026-01,Deposit,2026-01-05,DEP-0105,HCF grant payment,P-HCF,A1000,1,A4010,C-YM,LOC-MAIN,P-HCF,Youth Meals Grant installment,12500.00,credit
+JE-PR-2026-02,JournalEntry,2026-02-28,JE-PR-2026-02,Payroll 2026-02,,,1,A6010,C-CT,LOC-MAIN,E-CHEF,Chef Instructor salary,4878.90,debit
+JE-PR-2026-02,JournalEntry,2026-02-28,JE-PR-2026-02,Payroll 2026-02,,,2,A6010,C-YM,LOC-MAIN,E-YC,Youth Coordinator salary,4000.22,debit
+JE-PR-2026-02,JournalEntry,2026-02-28,JE-PR-2026-02,Payroll 2026-02,,,3,A6010,C-ADMIN,LOC-MAIN,E-ED,Executive Director salary,8037.32,debit
+JE-PR-2026-02,JournalEntry,2026-02-28,JE-PR-2026-02,Payroll 2026-02,,,4,A6020,C-CT,LOC-MAIN,E-CHEF,Payroll taxes,373.24,debit
+JE-PR-2026-02,JournalEntry,2026-02-28,JE-PR-2026-02,Payroll 2026-02,,,5,A6020,C-YM,LOC-MAIN,E-YC,Payroll taxes,306.02,debit
+JE-PR-2026-02,JournalEntry,2026-02-28,JE-PR-2026-02,Payroll 2026-02,,,6,A6020,C-ADMIN,LOC-MAIN,E-ED,Payroll taxes,614.85,debit
+JE-PR-2026-02,JournalEntry,2026-02-28,JE-PR-2026-02,Payroll 2026-02,,,7,A1000,,LOC-MAIN,,Net payroll + taxes,18210.55,credit
+BILL-RENT-2026-02,Bill,2026-02-01,RENT-02,Rent 2026-02,V-LAND,A2000,1,A6210,C-ADMIN,LOC-MAIN,,Monthly rent,3000.00,debit
+BILL-UTIL-2026-02,Bill,2026-02-15,EVR-02,Utilities 2026-02,V-UTIL,A2000,1,A6220,C-ADMIN,LOC-MAIN,,Electric & gas,675.93,debit
+EXP-FOOD-CT-2026-02-1,Expense,2026-02-24,CFS-021,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,507.53,debit
+EXP-FOOD-YM-2026-02-2,Expense,2026-02-02,CFS-022,Food purchase,V-FOOD,A1000,1,A6110,C-YM,LOC-MAIN,,Youth meals food,960.61,debit
+BILL-CHEF-2026-02,Bill,2026-02-12,ALV-02,Guest instructor,V-CHEF,A2000,1,A6310,C-CT,LOC-MAIN,,Guest chef instruction,1675.32,debit
+EXP-OFFICE-2026-02,Expense,2026-02-02,STP-02,Office supplies,V-OFFICE,A1000,1,A6410,C-ADMIN,LOC-MAIN,,Office supplies,110.55,debit
+JE-PR-2026-03,JournalEntry,2026-03-31,JE-PR-2026-03,Payroll 2026-03,,,1,A6010,C-CT,LOC-MAIN,E-CHEF,Chef Instructor salary,4995.10,debit
+JE-PR-2026-03,JournalEntry,2026-03-31,JE-PR-2026-03,Payroll 2026-03,,,2,A6010,C-YM,LOC-MAIN,E-YC,Youth Coordinator salary,4092.71,debit
+JE-PR-2026-03,JournalEntry,2026-03-31,JE-PR-2026-03,Payroll 2026-03,,,3,A6010,C-ADMIN,LOC-MAIN,E-ED,Executive Director salary,7963.89,debit
+JE-PR-2026-03,JournalEntry,2026-03-31,JE-PR-2026-03,Payroll 2026-03,,,4,A6020,C-CT,LOC-MAIN,E-CHEF,Payroll taxes,382.13,debit
+JE-PR-2026-03,JournalEntry,2026-03-31,JE-PR-2026-03,Payroll 2026-03,,,5,A6020,C-YM,LOC-MAIN,E-YC,Payroll taxes,313.09,debit
+JE-PR-2026-03,JournalEntry,2026-03-31,JE-PR-2026-03,Payroll 2026-03,,,6,A6020,C-ADMIN,LOC-MAIN,E-ED,Payroll taxes,609.24,debit
+JE-PR-2026-03,JournalEntry,2026-03-31,JE-PR-2026-03,Payroll 2026-03,,,7,A1000,,LOC-MAIN,,Net payroll + taxes,18356.16,credit
+BILL-RENT-2026-03,Bill,2026-03-01,RENT-03,Rent 2026-03,V-LAND,A2000,1,A6210,C-ADMIN,LOC-MAIN,,Monthly rent,3000.00,debit
+BILL-UTIL-2026-03,Bill,2026-03-15,EVR-03,Utilities 2026-03,V-UTIL,A2000,1,A6220,C-ADMIN,LOC-MAIN,,Electric & gas,616.46,debit
+EXP-FOOD-CT-2026-03-1,Expense,2026-03-18,CFS-031,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,1653.13,debit
+EXP-FOOD-CT-2026-03-2,Expense,2026-03-21,CFS-032,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,839.97,debit
+BILL-CHEF-2026-03,Bill,2026-03-21,ALV-03,Guest instructor,V-CHEF,A2000,1,A6310,C-CT,LOC-MAIN,,Guest chef instruction,1788.07,debit
+EXP-OFFICE-2026-03,Expense,2026-03-05,STP-03,Office supplies,V-OFFICE,A1000,1,A6410,C-ADMIN,LOC-MAIN,,Office supplies,149.47,debit
+DEP-GIFT-2026-03,Deposit,2026-03-03,DEP-G03,Unrestricted gift,P-RFF,A1000,1,A4020,,LOC-MAIN,P-RFF,General operating gift,10238.04,credit
+JE-PR-2026-04,JournalEntry,2026-04-30,JE-PR-2026-04,Payroll 2026-04,,,1,A6010,C-CT,LOC-MAIN,E-CHEF,Chef Instructor salary,5072.31,debit
+JE-PR-2026-04,JournalEntry,2026-04-30,JE-PR-2026-04,Payroll 2026-04,,,2,A6010,C-YM,LOC-MAIN,E-YC,Youth Coordinator salary,4057.93,debit
+JE-PR-2026-04,JournalEntry,2026-04-30,JE-PR-2026-04,Payroll 2026-04,,,3,A6010,C-ADMIN,LOC-MAIN,E-ED,Executive Director salary,8085.57,debit
+JE-PR-2026-04,JournalEntry,2026-04-30,JE-PR-2026-04,Payroll 2026-04,,,4,A6020,C-CT,LOC-MAIN,E-CHEF,Payroll taxes,388.03,debit
+JE-PR-2026-04,JournalEntry,2026-04-30,JE-PR-2026-04,Payroll 2026-04,,,5,A6020,C-YM,LOC-MAIN,E-YC,Payroll taxes,310.43,debit
+JE-PR-2026-04,JournalEntry,2026-04-30,JE-PR-2026-04,Payroll 2026-04,,,6,A6020,C-ADMIN,LOC-MAIN,E-ED,Payroll taxes,618.55,debit
+JE-PR-2026-04,JournalEntry,2026-04-30,JE-PR-2026-04,Payroll 2026-04,,,7,A1000,,LOC-MAIN,,Net payroll + taxes,18532.82,credit
+BILL-RENT-2026-04,Bill,2026-04-01,RENT-04,Rent 2026-04,V-LAND,A2000,1,A6210,C-ADMIN,LOC-MAIN,,Monthly rent,3000.00,debit
+BILL-UTIL-2026-04,Bill,2026-04-15,EVR-04,Utilities 2026-04,V-UTIL,A2000,1,A6220,C-ADMIN,LOC-MAIN,,Electric & gas,482.54,debit
+EXP-FOOD-CT-2026-04-1,Expense,2026-04-29,CFS-041,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,688.32,debit
+EXP-FOOD-CT-2026-04-2,Expense,2026-04-02,CFS-042,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,1156.93,debit
+EXP-FOOD-CT-2026-04-3,Expense,2026-04-19,CFS-043,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,2289.08,debit
+EXP-FOOD-CT-2026-04-4,Expense,2026-04-22,CFS-044,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,2363.23,debit
+EXP-FOOD-CT-2026-04-5,Expense,2026-04-22,CFS-045,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,777.20,debit
+DEP-MWSC-2026-04,Deposit,2026-04-10,DEP-0410,MWSC grant payment,P-MWSC,A1000,1,A4010,C-CT,LOC-MAIN,P-MWSC,Culinary Workforce Grant installment,30000.00,credit
+DEP-HCF-2026-04,Deposit,2026-04-05,DEP-0405,HCF grant payment,P-HCF,A1000,1,A4010,C-YM,LOC-MAIN,P-HCF,Youth Meals Grant installment,12500.00,credit
+DEP-GIFT-2026-04,Deposit,2026-04-30,DEP-G04,Unrestricted gift,P-RFF,A1000,1,A4020,,LOC-MAIN,P-RFF,General operating gift,8879.20,credit
+JE-PR-2026-05,JournalEntry,2026-05-31,JE-PR-2026-05,Payroll 2026-05,,,1,A6010,C-CT,LOC-MAIN,E-CHEF,Chef Instructor salary,5166.45,debit
+JE-PR-2026-05,JournalEntry,2026-05-31,JE-PR-2026-05,Payroll 2026-05,,,2,A6010,C-YM,LOC-MAIN,E-YC,Youth Coordinator salary,3980.20,debit
+JE-PR-2026-05,JournalEntry,2026-05-31,JE-PR-2026-05,Payroll 2026-05,,,3,A6010,C-ADMIN,LOC-MAIN,E-ED,Executive Director salary,8015.69,debit
+JE-PR-2026-05,JournalEntry,2026-05-31,JE-PR-2026-05,Payroll 2026-05,,,4,A6020,C-CT,LOC-MAIN,E-CHEF,Payroll taxes,395.23,debit
+JE-PR-2026-05,JournalEntry,2026-05-31,JE-PR-2026-05,Payroll 2026-05,,,5,A6020,C-YM,LOC-MAIN,E-YC,Payroll taxes,304.49,debit
+JE-PR-2026-05,JournalEntry,2026-05-31,JE-PR-2026-05,Payroll 2026-05,,,6,A6020,C-ADMIN,LOC-MAIN,E-ED,Payroll taxes,613.20,debit
+JE-PR-2026-05,JournalEntry,2026-05-31,JE-PR-2026-05,Payroll 2026-05,,,7,A1000,,LOC-MAIN,,Net payroll + taxes,18475.26,credit
+BILL-RENT-2026-05,Bill,2026-05-01,RENT-05,Rent 2026-05,V-LAND,A2000,1,A6210,C-ADMIN,LOC-MAIN,,Monthly rent,3000.00,debit
+BILL-UTIL-2026-05,Bill,2026-05-15,EVR-05,Utilities 2026-05,V-UTIL,A2000,1,A6220,C-ADMIN,LOC-MAIN,,Electric & gas,574.67,debit
+EXP-FOOD-CT-2026-05-1,Expense,2026-05-23,CFS-051,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,1019.94,debit
+EXP-FOOD-CT-2026-05-2,Expense,2026-05-27,CFS-052,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,1859.64,debit
+EXP-FOOD-YM-2026-05-3,Expense,2026-05-28,CFS-053,Food purchase,V-FOOD,A1000,1,A6110,C-YM,LOC-MAIN,,Youth meals food,1306.97,debit
+EXP-FOOD-YM-2026-05-4,Expense,2026-05-10,CFS-054,Food purchase,V-FOOD,A1000,1,A6110,C-YM,LOC-MAIN,,Youth meals food,611.84,debit
+EXP-OFFICE-2026-05,Expense,2026-05-16,STP-05,Office supplies,V-OFFICE,A1000,1,A6410,C-ADMIN,LOC-MAIN,,Office supplies,366.68,debit
+DEP-GIFT-2026-05,Deposit,2026-05-15,DEP-G05,Unrestricted gift,P-RFF,A1000,1,A4020,,LOC-MAIN,P-RFF,General operating gift,12507.31,credit
+JE-PR-2026-06,JournalEntry,2026-06-30,JE-PR-2026-06,Payroll 2026-06,,,1,A6010,C-CT,LOC-MAIN,E-CHEF,Chef Instructor salary,4851.99,debit
+JE-PR-2026-06,JournalEntry,2026-06-30,JE-PR-2026-06,Payroll 2026-06,,,2,A6010,C-YM,LOC-MAIN,E-YC,Youth Coordinator salary,4141.83,debit
+JE-PR-2026-06,JournalEntry,2026-06-30,JE-PR-2026-06,Payroll 2026-06,,,3,A6010,C-ADMIN,LOC-MAIN,E-ED,Executive Director salary,7935.68,debit
+JE-PR-2026-06,JournalEntry,2026-06-30,JE-PR-2026-06,Payroll 2026-06,,,4,A6020,C-CT,LOC-MAIN,E-CHEF,Payroll taxes,371.18,debit
+JE-PR-2026-06,JournalEntry,2026-06-30,JE-PR-2026-06,Payroll 2026-06,,,5,A6020,C-YM,LOC-MAIN,E-YC,Payroll taxes,316.85,debit
+JE-PR-2026-06,JournalEntry,2026-06-30,JE-PR-2026-06,Payroll 2026-06,,,6,A6020,C-ADMIN,LOC-MAIN,E-ED,Payroll taxes,607.08,debit
+JE-PR-2026-06,JournalEntry,2026-06-30,JE-PR-2026-06,Payroll 2026-06,,,7,A1000,,LOC-MAIN,,Net payroll + taxes,18224.61,credit
+BILL-RENT-2026-06,Bill,2026-06-01,RENT-06,Rent 2026-06,V-LAND,A2000,1,A6210,C-ADMIN,LOC-MAIN,,Monthly rent,3000.00,debit
+BILL-UTIL-2026-06,Bill,2026-06-15,EVR-06,Utilities 2026-06,V-UTIL,A2000,1,A6220,C-ADMIN,LOC-MAIN,,Electric & gas,712.49,debit
+EXP-FOOD-CT-2026-06-1,Expense,2026-06-13,CFS-061,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,743.22,debit
+EXP-FOOD-YM-2026-06-2,Expense,2026-06-11,CFS-062,Food purchase,V-FOOD,A1000,1,A6110,C-YM,LOC-MAIN,,Youth meals food,834.60,debit
+EXP-FOOD-YM-2026-06-3,Expense,2026-06-27,CFS-063,Food purchase,V-FOOD,A1000,1,A6110,C-YM,LOC-MAIN,,Youth meals food,1085.39,debit
+EXP-FOOD-YM-2026-06-4,Expense,2026-06-13,CFS-064,Food purchase,V-FOOD,A1000,1,A6110,C-YM,LOC-MAIN,,Youth meals food,675.92,debit
+EXP-OFFICE-2026-06,Expense,2026-06-02,STP-06,Office supplies,V-OFFICE,A1000,1,A6410,C-ADMIN,LOC-MAIN,,Office supplies,308.10,debit
+JE-PR-2026-07,JournalEntry,2026-07-31,JE-PR-2026-07,Payroll 2026-07,,,1,A6010,C-CT,LOC-MAIN,E-CHEF,Chef Instructor salary,5150.37,debit
+JE-PR-2026-07,JournalEntry,2026-07-31,JE-PR-2026-07,Payroll 2026-07,,,2,A6010,C-YM,LOC-MAIN,E-YC,Youth Coordinator salary,4122.45,debit
+JE-PR-2026-07,JournalEntry,2026-07-31,JE-PR-2026-07,Payroll 2026-07,,,3,A6010,C-ADMIN,LOC-MAIN,E-ED,Executive Director salary,7941.79,debit
+JE-PR-2026-07,JournalEntry,2026-07-31,JE-PR-2026-07,Payroll 2026-07,,,4,A6020,C-CT,LOC-MAIN,E-CHEF,Payroll taxes,394.00,debit
+JE-PR-2026-07,JournalEntry,2026-07-31,JE-PR-2026-07,Payroll 2026-07,,,5,A6020,C-YM,LOC-MAIN,E-YC,Payroll taxes,315.37,debit
+JE-PR-2026-07,JournalEntry,2026-07-31,JE-PR-2026-07,Payroll 2026-07,,,6,A6020,C-ADMIN,LOC-MAIN,E-ED,Payroll taxes,607.55,debit
+JE-PR-2026-07,JournalEntry,2026-07-31,JE-PR-2026-07,Payroll 2026-07,,,7,A1000,,LOC-MAIN,,Net payroll + taxes,18531.53,credit
+BILL-RENT-2026-07,Bill,2026-07-01,RENT-07,Rent 2026-07,V-LAND,A2000,1,A6210,C-ADMIN,LOC-MAIN,,Monthly rent,3000.00,debit
+BILL-UTIL-2026-07,Bill,2026-07-15,EVR-07,Utilities 2026-07,V-UTIL,A2000,1,A6220,C-ADMIN,LOC-MAIN,,Electric & gas,673.46,debit
+EXP-FOOD-CT-2026-07-1,Expense,2026-07-03,CFS-071,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,1881.66,debit
+EXP-FOOD-YM-2026-07-2,Expense,2026-07-10,CFS-072,Food purchase,V-FOOD,A1000,1,A6110,C-YM,LOC-MAIN,,Youth meals food,978.52,debit
+EXP-FOOD-CT-2026-07-3,Expense,2026-07-02,CFS-073,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,863.88,debit
+EXP-OFFICE-2026-07,Expense,2026-07-20,STP-07,Office supplies,V-OFFICE,A1000,1,A6410,C-ADMIN,LOC-MAIN,,Office supplies,107.35,debit
+DEP-MWSC-2026-07,Deposit,2026-07-10,DEP-0710,MWSC grant payment,P-MWSC,A1000,1,A4010,C-CT,LOC-MAIN,P-MWSC,Culinary Workforce Grant installment,30000.00,credit
+DEP-HCF-2026-07,Deposit,2026-07-05,DEP-0705,HCF grant payment,P-HCF,A1000,1,A4010,C-YM,LOC-MAIN,P-HCF,Youth Meals Grant installment,12500.00,credit
+DEP-GIFT-2026-07,Deposit,2026-07-18,DEP-G07,Unrestricted gift,P-RFF,A1000,1,A4020,,LOC-MAIN,P-RFF,General operating gift,5095.05,credit
+JE-PR-2026-08,JournalEntry,2026-08-31,JE-PR-2026-08,Payroll 2026-08,,,1,A6010,C-CT,LOC-MAIN,E-CHEF,Chef Instructor salary,4957.86,debit
+JE-PR-2026-08,JournalEntry,2026-08-31,JE-PR-2026-08,Payroll 2026-08,,,2,A6010,C-YM,LOC-MAIN,E-YC,Youth Coordinator salary,3980.32,debit
+JE-PR-2026-08,JournalEntry,2026-08-31,JE-PR-2026-08,Payroll 2026-08,,,3,A6010,C-ADMIN,LOC-MAIN,E-ED,Executive Director salary,7983.67,debit
+JE-PR-2026-08,JournalEntry,2026-08-31,JE-PR-2026-08,Payroll 2026-08,,,4,A6020,C-CT,LOC-MAIN,E-CHEF,Payroll taxes,379.28,debit
+JE-PR-2026-08,JournalEntry,2026-08-31,JE-PR-2026-08,Payroll 2026-08,,,5,A6020,C-YM,LOC-MAIN,E-YC,Payroll taxes,304.49,debit
+JE-PR-2026-08,JournalEntry,2026-08-31,JE-PR-2026-08,Payroll 2026-08,,,6,A6020,C-ADMIN,LOC-MAIN,E-ED,Payroll taxes,610.75,debit
+JE-PR-2026-08,JournalEntry,2026-08-31,JE-PR-2026-08,Payroll 2026-08,,,7,A1000,,LOC-MAIN,,Net payroll + taxes,18216.37,credit
+BILL-RENT-2026-08,Bill,2026-08-01,RENT-08,Rent 2026-08,V-LAND,A2000,1,A6210,C-ADMIN,LOC-MAIN,,Monthly rent,3000.00,debit
+BILL-UTIL-2026-08,Bill,2026-08-15,EVR-08,Utilities 2026-08,V-UTIL,A2000,1,A6220,C-ADMIN,LOC-MAIN,,Electric & gas,703.87,debit
+EXP-FOOD-CT-2026-08-1,Expense,2026-08-28,CFS-081,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,1087.36,debit
+EXP-FOOD-CT-2026-08-2,Expense,2026-08-20,CFS-082,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,1547.36,debit
+EXP-FOOD-YM-2026-08-3,Expense,2026-08-09,CFS-083,Food purchase,V-FOOD,A1000,1,A6110,C-YM,LOC-MAIN,,Youth meals food,1083.27,debit
+BILL-CHEF-2026-08,Bill,2026-08-15,ALV-08,Guest instructor,V-CHEF,A2000,1,A6310,C-CT,LOC-MAIN,,Guest chef instruction,1503.95,debit
+EXP-OFFICE-2026-08,Expense,2026-08-05,STP-08,Office supplies,V-OFFICE,A1000,1,A6410,C-ADMIN,LOC-MAIN,,Office supplies,293.25,debit
+JE-PR-2026-09,JournalEntry,2026-09-30,JE-PR-2026-09,Payroll 2026-09,,,1,A6010,C-CT,LOC-MAIN,E-CHEF,Chef Instructor salary,4849.96,debit
+JE-PR-2026-09,JournalEntry,2026-09-30,JE-PR-2026-09,Payroll 2026-09,,,2,A6010,C-YM,LOC-MAIN,E-YC,Youth Coordinator salary,3944.14,debit
+JE-PR-2026-09,JournalEntry,2026-09-30,JE-PR-2026-09,Payroll 2026-09,,,3,A6010,C-ADMIN,LOC-MAIN,E-ED,Executive Director salary,7908.48,debit
+JE-PR-2026-09,JournalEntry,2026-09-30,JE-PR-2026-09,Payroll 2026-09,,,4,A6020,C-CT,LOC-MAIN,E-CHEF,Payroll taxes,371.02,debit
+JE-PR-2026-09,JournalEntry,2026-09-30,JE-PR-2026-09,Payroll 2026-09,,,5,A6020,C-YM,LOC-MAIN,E-YC,Payroll taxes,301.73,debit
+JE-PR-2026-09,JournalEntry,2026-09-30,JE-PR-2026-09,Payroll 2026-09,,,6,A6020,C-ADMIN,LOC-MAIN,E-ED,Payroll taxes,605.00,debit
+JE-PR-2026-09,JournalEntry,2026-09-30,JE-PR-2026-09,Payroll 2026-09,,,7,A1000,,LOC-MAIN,,Net payroll + taxes,17980.33,credit
+BILL-RENT-2026-09,Bill,2026-09-01,RENT-09,Rent 2026-09,V-LAND,A2000,1,A6210,C-ADMIN,LOC-MAIN,,Monthly rent,3000.00,debit
+BILL-UTIL-2026-09,Bill,2026-09-15,EVR-09,Utilities 2026-09,V-UTIL,A2000,1,A6220,C-ADMIN,LOC-MAIN,,Electric & gas,663.69,debit
+EXP-FOOD-CT-2026-09-1,Expense,2026-09-13,CFS-091,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,1895.31,debit
+EXP-FOOD-YM-2026-09-2,Expense,2026-09-25,CFS-092,Food purchase,V-FOOD,A1000,1,A6110,C-YM,LOC-MAIN,,Youth meals food,1322.66,debit
+BILL-CHEF-2026-09,Bill,2026-09-23,ALV-09,Guest instructor,V-CHEF,A2000,1,A6310,C-CT,LOC-MAIN,,Guest chef instruction,1288.51,debit
+JE-PR-2026-10,JournalEntry,2026-10-31,JE-PR-2026-10,Payroll 2026-10,,,1,A6010,C-CT,LOC-MAIN,E-CHEF,Chef Instructor salary,4980.04,debit
+JE-PR-2026-10,JournalEntry,2026-10-31,JE-PR-2026-10,Payroll 2026-10,,,2,A6010,C-YM,LOC-MAIN,E-YC,Youth Coordinator salary,3893.98,debit
+JE-PR-2026-10,JournalEntry,2026-10-31,JE-PR-2026-10,Payroll 2026-10,,,3,A6010,C-ADMIN,LOC-MAIN,E-ED,Executive Director salary,8023.75,debit
+JE-PR-2026-10,JournalEntry,2026-10-31,JE-PR-2026-10,Payroll 2026-10,,,4,A6020,C-CT,LOC-MAIN,E-CHEF,Payroll taxes,380.97,debit
+JE-PR-2026-10,JournalEntry,2026-10-31,JE-PR-2026-10,Payroll 2026-10,,,5,A6020,C-YM,LOC-MAIN,E-YC,Payroll taxes,297.89,debit
+JE-PR-2026-10,JournalEntry,2026-10-31,JE-PR-2026-10,Payroll 2026-10,,,6,A6020,C-ADMIN,LOC-MAIN,E-ED,Payroll taxes,613.82,debit
+JE-PR-2026-10,JournalEntry,2026-10-31,JE-PR-2026-10,Payroll 2026-10,,,7,A1000,,LOC-MAIN,,Net payroll + taxes,18190.45,credit
+BILL-RENT-2026-10,Bill,2026-10-01,RENT-10,Rent 2026-10,V-LAND,A2000,1,A6210,C-ADMIN,LOC-MAIN,,Monthly rent,3000.00,debit
+BILL-UTIL-2026-10,Bill,2026-10-15,EVR-10,Utilities 2026-10,V-UTIL,A2000,1,A6220,C-ADMIN,LOC-MAIN,,Electric & gas,748.81,debit
+EXP-FOOD-CT-2026-10-1,Expense,2026-10-18,CFS-101,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,2467.44,debit
+EXP-FOOD-CT-2026-10-2,Expense,2026-10-27,CFS-102,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,2170.71,debit
+EXP-OFFICE-2026-10,Expense,2026-10-03,STP-10,Office supplies,V-OFFICE,A1000,1,A6410,C-ADMIN,LOC-MAIN,,Office supplies,109.25,debit
+DEP-MWSC-2026-10,Deposit,2026-10-10,DEP-1010,MWSC grant payment,P-MWSC,A1000,1,A4010,C-CT,LOC-MAIN,P-MWSC,Culinary Workforce Grant installment,30000.00,credit
+DEP-HCF-2026-10,Deposit,2026-10-05,DEP-1005,HCF grant payment,P-HCF,A1000,1,A4010,C-YM,LOC-MAIN,P-HCF,Youth Meals Grant installment,12500.00,credit
+JE-PR-2026-11,JournalEntry,2026-11-30,JE-PR-2026-11,Payroll 2026-11,,,1,A6010,C-CT,LOC-MAIN,E-CHEF,Chef Instructor salary,5070.66,debit
+JE-PR-2026-11,JournalEntry,2026-11-30,JE-PR-2026-11,Payroll 2026-11,,,2,A6010,C-YM,LOC-MAIN,E-YC,Youth Coordinator salary,4078.24,debit
+JE-PR-2026-11,JournalEntry,2026-11-30,JE-PR-2026-11,Payroll 2026-11,,,3,A6010,C-ADMIN,LOC-MAIN,E-ED,Executive Director salary,8098.30,debit
+JE-PR-2026-11,JournalEntry,2026-11-30,JE-PR-2026-11,Payroll 2026-11,,,4,A6020,C-CT,LOC-MAIN,E-CHEF,Payroll taxes,387.91,debit
+JE-PR-2026-11,JournalEntry,2026-11-30,JE-PR-2026-11,Payroll 2026-11,,,5,A6020,C-YM,LOC-MAIN,E-YC,Payroll taxes,311.99,debit
+JE-PR-2026-11,JournalEntry,2026-11-30,JE-PR-2026-11,Payroll 2026-11,,,6,A6020,C-ADMIN,LOC-MAIN,E-ED,Payroll taxes,619.52,debit
+JE-PR-2026-11,JournalEntry,2026-11-30,JE-PR-2026-11,Payroll 2026-11,,,7,A1000,,LOC-MAIN,,Net payroll + taxes,18566.62,credit
+BILL-RENT-2026-11,Bill,2026-11-01,RENT-11,Rent 2026-11,V-LAND,A2000,1,A6210,C-ADMIN,LOC-MAIN,,Monthly rent,3000.00,debit
+BILL-UTIL-2026-11,Bill,2026-11-15,EVR-11,Utilities 2026-11,V-UTIL,A2000,1,A6220,C-ADMIN,LOC-MAIN,,Electric & gas,751.91,debit
+EXP-FOOD-YM-2026-11-1,Expense,2026-11-26,CFS-111,Food purchase,V-FOOD,A1000,1,A6110,C-YM,LOC-MAIN,,Youth meals food,1658.72,debit
+EXP-FOOD-CT-2026-11-2,Expense,2026-11-14,CFS-112,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,2244.60,debit
+EXP-FOOD-YM-2026-11-3,Expense,2026-11-12,CFS-113,Food purchase,V-FOOD,A1000,1,A6110,C-YM,LOC-MAIN,,Youth meals food,2368.82,debit
+EXP-FOOD-YM-2026-11-4,Expense,2026-11-11,CFS-114,Food purchase,V-FOOD,A1000,1,A6110,C-YM,LOC-MAIN,,Youth meals food,2173.81,debit
+BILL-CHEF-2026-11,Bill,2026-11-15,ALV-11,Guest instructor,V-CHEF,A2000,1,A6310,C-CT,LOC-MAIN,,Guest chef instruction,529.95,debit
+EXP-OFFICE-2026-11,Expense,2026-11-14,STP-11,Office supplies,V-OFFICE,A1000,1,A6410,C-ADMIN,LOC-MAIN,,Office supplies,304.23,debit
+JE-PR-2026-12,JournalEntry,2026-12-31,JE-PR-2026-12,Payroll 2026-12,,,1,A6010,C-CT,LOC-MAIN,E-CHEF,Chef Instructor salary,5151.79,debit
+JE-PR-2026-12,JournalEntry,2026-12-31,JE-PR-2026-12,Payroll 2026-12,,,2,A6010,C-YM,LOC-MAIN,E-YC,Youth Coordinator salary,3989.87,debit
+JE-PR-2026-12,JournalEntry,2026-12-31,JE-PR-2026-12,Payroll 2026-12,,,3,A6010,C-ADMIN,LOC-MAIN,E-ED,Executive Director salary,8041.50,debit
+JE-PR-2026-12,JournalEntry,2026-12-31,JE-PR-2026-12,Payroll 2026-12,,,4,A6020,C-CT,LOC-MAIN,E-CHEF,Payroll taxes,394.11,debit
+JE-PR-2026-12,JournalEntry,2026-12-31,JE-PR-2026-12,Payroll 2026-12,,,5,A6020,C-YM,LOC-MAIN,E-YC,Payroll taxes,305.23,debit
+JE-PR-2026-12,JournalEntry,2026-12-31,JE-PR-2026-12,Payroll 2026-12,,,6,A6020,C-ADMIN,LOC-MAIN,E-ED,Payroll taxes,615.17,debit
+JE-PR-2026-12,JournalEntry,2026-12-31,JE-PR-2026-12,Payroll 2026-12,,,7,A1000,,LOC-MAIN,,Net payroll + taxes,18497.67,credit
+BILL-RENT-2026-12,Bill,2026-12-01,RENT-12,Rent 2026-12,V-LAND,A2000,1,A6210,C-ADMIN,LOC-MAIN,,Monthly rent,3000.00,debit
+BILL-UTIL-2026-12,Bill,2026-12-15,EVR-12,Utilities 2026-12,V-UTIL,A2000,1,A6220,C-ADMIN,LOC-MAIN,,Electric & gas,503.70,debit
+EXP-FOOD-CT-2026-12-1,Expense,2026-12-03,CFS-121,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,1011.07,debit
+EXP-FOOD-CT-2026-12-2,Expense,2026-12-19,CFS-122,Food purchase,V-FOOD,A1000,1,A6110,C-CT,LOC-MAIN,,Training kitchen food,1904.38,debit
+EXP-FOOD-YM-2026-12-3,Expense,2026-12-25,CFS-123,Food purchase,V-FOOD,A1000,1,A6110,C-YM,LOC-MAIN,,Youth meals food,811.44,debit
+EXP-OFFICE-2026-12,Expense,2026-12-10,STP-12,Office supplies,V-OFFICE,A1000,1,A6410,C-ADMIN,LOC-MAIN,,Office supplies,214.16,debit

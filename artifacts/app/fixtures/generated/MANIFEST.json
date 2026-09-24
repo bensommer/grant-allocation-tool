@@ -1,0 +1,14 @@
+{
+  "seed": 42,
+  "months": 12,
+  "transactions": 98,
+  "lines": 170,
+  "sha256": {
+    "company.csv": "0e6b04eb967a1af6ce5a241f98f2e05915b37a0683e350e517f14b8189a7f10a",
+    "accounts.csv": "b173625ce20664e46cd06c3c21fcf7d13d2c4cd04250b910dce31f000fb0297c",
+    "classes.csv": "fb4898e3317c8d8ba0c278ffaa0f28adedf92858ff0a88373787b06830484a64",
+    "locations.csv": "6b26d396cd1cfafac3ef0717703dc20484ca735a3fa698c01f00b376087f76ef",
+    "parties.csv": "a053ee358362c5a5a692d442625ff276cbd09e46cb79de0f23aa1813621c59b5",
+    "transactions.csv": "6dd900287abc9900916cd090baaea4650e08da53edbccaff99ed419aede32c58"
+  }
+}

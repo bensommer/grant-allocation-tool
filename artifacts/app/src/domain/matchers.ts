@@ -10,8 +10,14 @@ export const matchersSchema = z
     locationIds: z.array(z.string()).optional(),
     partyIds: z.array(z.string()).optional(),
     descriptionContains: z.string().optional(),
-    dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-    dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    dateFrom: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+    dateTo: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
   })
   .strict();
 
@@ -56,7 +62,10 @@ export function accountNumberInRange(num: string | null, from: string, to: strin
 export function lineMatches(line: MatchableLine, m: Matchers): boolean {
   if (!inSet(line.programId, m.programIds)) return false;
   if (!inSet(line.accountId, m.accountIds)) return false;
-  if (m.accountRange && !accountNumberInRange(line.accountNumber, m.accountRange.from, m.accountRange.to)) {
+  if (
+    m.accountRange &&
+    !accountNumberInRange(line.accountNumber, m.accountRange.from, m.accountRange.to)
+  ) {
     return false;
   }
   if (!inSet(line.classId, m.classIds)) return false;
@@ -77,5 +86,7 @@ export function lineMatches(line: MatchableLine, m: Matchers): boolean {
 }
 
 export function isEmptyMatchers(m: Matchers): boolean {
-  return Object.values(m).every((v) => v === undefined || (Array.isArray(v) && v.length === 0) || v === '');
+  return Object.values(m).every(
+    (v) => v === undefined || (Array.isArray(v) && v.length === 0) || v === '',
+  );
 }

@@ -9,11 +9,15 @@
  * - Negative amounts (reversals) are split by splitting |amount| and negating,
  *   so a reversal mirrors the original split exactly.
  */
-export function splitLargestRemainder(amountCents: number, weights: ReadonlyArray<number>): number[] {
+export function splitLargestRemainder(
+  amountCents: number,
+  weights: ReadonlyArray<number>,
+): number[] {
   if (!Number.isInteger(amountCents)) throw new Error('amountCents must be an integer');
   if (weights.length === 0) throw new Error('At least one target is required');
   for (const w of weights) {
-    if (!Number.isInteger(w) || w < 0) throw new Error(`Weights must be non-negative integers, got ${w}`);
+    if (!Number.isInteger(w) || w < 0)
+      throw new Error(`Weights must be non-negative integers, got ${w}`);
   }
   const total = weights.reduce((a, b) => a + b, 0);
   if (total === 0) throw new Error('Weights sum to zero');

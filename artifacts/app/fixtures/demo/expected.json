@@ -1,0 +1,49 @@
+{
+  "org": { "name": "Harbor Kitchen Collective", "fiscalYearStartMonth": 1, "currency": "USD" },
+  "period": { "from": "2026-01-01", "to": "2026-03-31" },
+  "importCounts": { "accounts": 11, "classes": 4, "locations": 1, "parties": 11, "transactions": 20, "lines": 38 },
+  "overlayCounts": { "programs": 4, "grants": 3, "budgetLines": 6, "allocationRules": 2, "crosswalkRules": 6 },
+  "expenseByProgramGl": {
+    "6010": { "CT": 2460000, "YM": 1680000, "MG": 720000, "FR": 240000, "total": 5100000 },
+    "6020": { "CT": 188190, "YM": 128520, "MG": 55080, "FR": 18360, "total": 390150 },
+    "6110": { "CT": 637100, "YM": 329600, "MG": 0, "FR": 0, "total": 966700 },
+    "6210": { "CT": 450000, "YM": 180000, "MG": 270000, "FR": 0, "total": 900000 },
+    "6220": { "CT": 90001, "YM": 36000, "MG": 54000, "FR": 0, "total": 180001 },
+    "6310": { "CT": 150000, "YM": 0, "MG": 0, "FR": 0, "total": 150000 },
+    "6410": { "CT": 0, "YM": 0, "MG": 25010, "FR": 0, "total": 25010 },
+    "total": { "CT": 3975291, "YM": 2354120, "MG": 1124090, "FR": 258360, "total": 7711861 }
+  },
+  "roundingCheck": {
+    "txnExternalId": "BILL-UTIL-2026-03",
+    "amount": 60001,
+    "split": { "CT": 30001, "YM": 12000, "MG": 18000 }
+  },
+  "budgetVsActual": {
+    "G-MWSC": {
+      "lines": {
+        "PERS": { "budget": 7200000, "actual": 2648190, "remaining": 4551810, "pctUsed": "36.8%" },
+        "SUPP": { "budget": 2400000, "actual": 637100, "remaining": 1762900, "pctUsed": "26.5%" },
+        "CONT": { "budget": 1200000, "actual": 150000, "remaining": 1050000, "pctUsed": "12.5%" },
+        "OCC": { "budget": 1200000, "actual": 540001, "remaining": 659999, "pctUsed": "45.0%" }
+      },
+      "total": { "budget": 12000000, "actual": 3975291, "remaining": 8024709, "pctUsed": "33.1%" }
+    },
+    "G-HCF": {
+      "lines": {
+        "STAFF": { "budget": 3600000, "actual": 1808520, "remaining": 1791480, "pctUsed": "50.2%" },
+        "MEALS": { "budget": 1400000, "actual": 329600, "remaining": 1070400, "pctUsed": "23.5%" }
+      },
+      "total": { "budget": 5000000, "actual": 2138120, "remaining": 2861880, "pctUsed": "42.8%" }
+    }
+  },
+  "restrictedBalances": {
+    "asOf": "2026-03-31",
+    "G-MWSC": { "received": 6000000, "spent": 3975291, "balance": 2024709 },
+    "G-HCF": { "received": 2500000, "spent": 2138120, "balance": 361880 },
+    "excluded": ["G-RFF"]
+  },
+  "unmappedProgramExpense": {
+    "YM": { "6210": 180000, "6220": 36000, "total": 216000 },
+    "nonGrantFunctional": { "MG": 1124090, "FR": 258360, "total": 1382450 }
+  }
+}

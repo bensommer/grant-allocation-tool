@@ -1,0 +1,3 @@
+code,name,priority,match_class_external_ids,match_party_external_ids,match_account_external_ids,method,targets
+AR-ED,ED salary & taxes,10,C-ADMIN,E-ED,A6010|A6020,fixed_pct,CT:4000|YM:2000|MG:3000|FR:1000
+AR-OCC,Occupancy by square footage,20,C-ADMIN,,A6210|A6220,fixed_pct,CT:5000|YM:2000|MG:3000
