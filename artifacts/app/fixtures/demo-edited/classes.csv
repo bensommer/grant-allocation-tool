@@ -1,0 +1,5 @@
+external_id,name,parent_external_id,active
+C-CT,Culinary Training,,true
+C-YM,Youth Meals,,true
+C-ADMIN,Admin/Shared,,true
+C-FUND,Fundraising,,true

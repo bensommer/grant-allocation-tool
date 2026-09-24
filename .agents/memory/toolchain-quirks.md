@@ -6,3 +6,12 @@ description: Environment-specific gotchas for running tests/lint in this workspa
 - `pnpm add -D prisma` resolved to an 8.0.0 release candidate while @prisma/client was 7.x; pin both to ^7.
 - eslint-config-next's plugins break under ESLint 10 (`getFilename is not a function`); keep eslint ^9.
 - **How to apply:** whenever running e2e or upgrading these packages.
+
+## CodeExecution notebook state is not reliable across calls
+Helpers defined in an earlier CodeExecution call (e.g. a GitHub push helper) sometimes fail with
+"executeJs is not defined" in later calls. Redefine the helper in the same call that uses it.
+**Why:** hit twice in one session; the notebook persisted variables for a while, then lost them.
+
+## Screenshot tool hostname
+The Screenshot tool hits 127.0.0.1:80 through the proxy; HMR websocket 502 errors in its browser log
+are noise, not app errors.

@@ -38,7 +38,8 @@ export default async function ImportPage({
         <div className="grid-form">
           <div className="md:col-span-2">
             <label htmlFor="files">
-              Files (company, accounts, classes, locations, parties, transactions)
+              Files (company, accounts, classes, locations, parties, transactions; optional
+              trial_balance)
             </label>
             <input id="files" name="files" type="file" accept=".csv,text/csv" multiple required />
           </div>

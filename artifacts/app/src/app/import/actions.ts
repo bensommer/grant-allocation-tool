@@ -22,10 +22,11 @@ export async function uploadCsvBundle(formData: FormData): Promise<void> {
     const missing: string[] = [];
     const seen = new Set<CsvFileName>();
     for (const f of files) {
-      const name = path.basename(f.name).toLowerCase() as CsvFileName;
-      if (!(CSV_FILES as readonly string[]).includes(name)) continue;
+      const name = path.basename(f.name).toLowerCase();
+      const known = (CSV_FILES as readonly string[]).includes(name) || name === 'trial_balance.csv';
+      if (!known) continue;
       await writeFile(path.join(dir, name), Buffer.from(await f.arrayBuffer()));
-      seen.add(name);
+      if (name !== 'trial_balance.csv') seen.add(name as CsvFileName);
     }
     for (const f of CSV_FILES) if (!seen.has(f)) missing.push(f);
     if (files.length === 0 || missing.length === CSV_FILES.length) {

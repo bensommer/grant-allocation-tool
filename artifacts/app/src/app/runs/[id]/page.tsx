@@ -8,7 +8,13 @@ import { RunStatusPill } from '../status-pill';
 export const dynamic = 'force-dynamic';
 
 type Warning = { code: string; message: string; sourceLineId?: string; ruleIds?: string[] };
-type Check = { name: string; ok: boolean; detail?: unknown };
+type Check = {
+  name: string;
+  ok: boolean;
+  status?: 'pass' | 'warn' | 'fail';
+  detail?: unknown;
+  href?: string;
+};
 
 export default async function RunDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -46,13 +52,15 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
           <tbody>
             {checks.map((c) => (
               <tr key={c.name}>
-                <th>{c.name}</th>
+                <th>
+                  {c.href ? <Link href={c.href}>{c.name.replaceAll('_', ' ')}</Link> : c.name}
+                </th>
                 <td>
-                  {c.ok ? (
-                    <span className="pill pill-ok">ok</span>
-                  ) : (
-                    <span className="pill pill-bad">failed</span>
-                  )}
+                  <span
+                    className={`pill ${c.status === 'warn' ? 'pill-warn' : c.ok ? 'pill-ok' : 'pill-bad'}`}
+                  >
+                    {c.status ?? (c.ok ? 'pass' : 'fail')}
+                  </span>
                 </td>
                 <td>
                   <code className="text-xs">

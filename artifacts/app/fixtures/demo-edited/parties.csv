@@ -1,0 +1,12 @@
+external_id,kind,display_name,parent_external_id
+P-MWSC,customer,Mass. Workforce Skills Cabinet,
+P-HCF,customer,Hanover Community Foundation,
+P-RFF,customer,Rivera Family Foundation,
+V-FOOD,vendor,Coastal Food Service,
+V-LAND,vendor,Harborside Properties LLC,
+V-UTIL,vendor,Eversource,
+V-CHEF,vendor,Chef D. Alvarez,
+V-OFFICE,vendor,Staples,
+E-CHEF,employee,Maria Santos,
+E-YC,employee,Jordan Lee,
+E-ED,employee,Pat Morgan,

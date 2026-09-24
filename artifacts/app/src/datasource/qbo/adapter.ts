@@ -29,4 +29,14 @@ export class QboDataSource implements DataSource {
   fetchTransactions(_range: DateRange): never {
     return this.notImplemented();
   }
+  syncChanges(_since: Date): never {
+    throw new Error(
+      'NotImplemented: QBO CDC sync and Reports API require JPH-14; see README.md, Incremental imports.',
+    );
+  }
+  fetchTrialBalance(): never {
+    throw new Error(
+      'NotImplemented: QBO TrialBalance Reports API requires JPH-14; see README.md, Incremental imports.',
+    );
+  }
 }

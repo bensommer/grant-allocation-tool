@@ -42,7 +42,32 @@ const emptyCounts = (): ImportCounts => ({
 
 /** Stable content hash of the normalized DTO (key order fixed by JSON.stringify on a sorted copy). */
 export function contentHash(value: unknown): string {
-  return createHash('sha256').update(stableStringify(value)).digest('hex');
+  return createHash('sha256')
+    .update(stableStringify(normalizeSource(value)))
+    .digest('hex');
+}
+export function normalizeSource(value: unknown): unknown {
+  if (typeof value === 'string') return value.trim();
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (Array.isArray(value)) return value.map(normalizeSource);
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        key === 'amount' && typeof entry === 'string'
+          ? normalizeAmount(entry)
+          : normalizeSource(entry),
+      ]),
+    );
+  return value;
+}
+function normalizeAmount(raw: string): number | string {
+  const normalized = raw.trim().replace(/,/g, '');
+  if (!/^[+-]?\d+(\.\d+)?$/.test(normalized)) return raw.trim();
+  const [whole, fraction = ''] = normalized.split('.');
+  if (fraction.length > 3 || (fraction.length === 3 && fraction[2] !== '0')) return raw.trim();
+  const cents = Math.abs(Number(whole)) * 100 + Number(fraction.slice(0, 2).padEnd(2, '0'));
+  return normalized.startsWith('-') ? -cents : cents;
 }
 function stableStringify(v: unknown): string {
   if (v instanceof Date) return JSON.stringify(v.toISOString().slice(0, 10));
@@ -117,6 +142,7 @@ export async function runImport(
   const locations: SourceLocation[] = [];
   const parties: SourceParty[] = [];
   const transactions: SourceTransaction[] = [];
+  const trialBalance = source.fetchTrialBalance ? await source.fetchTrialBalance() : [];
   for await (const a of source.fetchAccounts()) accounts.push(a);
   for await (const c of source.fetchClasses()) classes.push(c);
   for await (const l of source.fetchLocations()) locations.push(l);
@@ -366,12 +392,21 @@ export async function runImport(
           where: {
             orgId,
             sourceSystem: sys,
-            ...(fullRange ? {} : { txnDate: { gte: range.from, lte: range.to } }),
           },
           select: { id: true, externalId: true, contentHash: true, deletedAt: true, txnDate: true },
         });
         const txnByExt = new Map(currentTxns.map((t) => [t.externalId, t]));
         const seenTxn = new Set<string>();
+        const locks = await tx.periodLock.findMany({ where: { orgId } });
+        const affectedLocks = new Set<string>();
+        const lockNewIds: Record<string, string[]> = {};
+        const flagLocks = (date: Date, newExternalId?: string) => {
+          for (const lock of locks)
+            if (date >= lock.periodFrom && date <= lock.periodTo) {
+              affectedLocks.add(lock.id);
+              if (newExternalId) (lockNewIds[lock.id] ??= []).push(newExternalId);
+            }
+        };
 
         for (const t of transactions) {
           seenTxn.add(t.externalId);
@@ -408,6 +443,7 @@ export async function runImport(
             totalCents,
           };
           if (!cur) {
+            flagLocks(t.txnDate, t.externalId);
             const created = await tx.transaction.create({
               data: {
                 orgId,
@@ -423,6 +459,8 @@ export async function runImport(
             });
             counts.transactions.new++;
           } else if (cur.contentHash !== hash || cur.deletedAt) {
+            flagLocks(cur.txnDate);
+            flagLocks(t.txnDate);
             const before = await tx.transaction.findUnique({
               where: { id: cur.id },
               include: { lines: { orderBy: { lineNumber: 'asc' } } },
@@ -439,7 +477,18 @@ export async function runImport(
               if (ex) {
                 await tx.transactionLine.update({
                   where: { id: ex.id },
-                  data: { ...l, transactionId: cur.id },
+                  data: {
+                    orgId: l.orgId,
+                    lineNumber: l.lineNumber,
+                    accountId: l.accountId,
+                    classId: l.classId,
+                    locationId: l.locationId,
+                    partyId: l.partyId,
+                    description: l.description,
+                    amountCents: l.amountCents,
+                    postingType: l.postingType,
+                    deletedAt: null,
+                  },
                 });
                 byNo.delete(l.lineNumber);
               } else {
@@ -447,7 +496,10 @@ export async function runImport(
               }
             }
             for (const leftover of byNo.values()) {
-              await tx.transactionLine.delete({ where: { id: leftover.id } });
+              await tx.transactionLine.update({
+                where: { id: leftover.id },
+                data: { deletedAt: new Date() },
+              });
             }
             await tx.transaction.update({
               where: { id: cur.id },
@@ -467,7 +519,8 @@ export async function runImport(
         }
         for (const cur of currentTxns) {
           if (!seenTxn.has(cur.externalId) && !cur.deletedAt) {
-            if (!fullRange && (cur.txnDate < range.from || cur.txnDate > range.to)) continue;
+            if (!fullRange) continue;
+            flagLocks(cur.txnDate);
             const before = await tx.transaction.findUnique({
               where: { id: cur.id },
               include: { lines: true },
@@ -490,7 +543,17 @@ export async function runImport(
 
         await tx.importBatch.update({
           where: { id: batch.id },
-          data: { status: 'succeeded', finishedAt: new Date(), counts: toJson(counts), errors: [] },
+          data: {
+            status: 'succeeded',
+            finishedAt: new Date(),
+            counts: toJson({
+              ...counts,
+              lockIds: [...affectedLocks],
+              lockNewIds,
+              trialBalance,
+            }),
+            errors: [],
+          },
         });
       },
       { timeout: 120_000, maxWait: 10_000 },

@@ -19,6 +19,14 @@ export default async function DashboardPage({
     prisma.importBatch.findFirst({ where: { orgId }, orderBy: { startedAt: 'desc' } }),
   ]);
   const flagged = grants.filter((g) => g.flagged);
+  const checks = (run?.checks ?? []) as unknown as {
+    name: string;
+    status?: string;
+    ok: boolean;
+    href?: string;
+    detail?: string;
+  }[];
+  const latestCounts = lastImport?.counts as { lockIds?: string[] } | undefined;
   const restricted = grants.filter((g) => g.restrictionType !== 'unrestricted');
   const unmapped = run
     ? await prisma.allocatedLine.findMany({
@@ -98,6 +106,16 @@ export default async function DashboardPage({
           No current run — recompute on <Link href="/runs">/runs</Link>.
         </div>
       )}
+      {!!latestCounts?.lockIds?.length && (
+        <div className="banner banner-warn">
+          A recent import changed a locked reporting period.{' '}
+          {latestCounts.lockIds.map((id) => (
+            <Link key={id} href={`/periods/${id}/drift`} className="mr-2">
+              View period drift →
+            </Link>
+          ))}
+        </div>
+      )}
       <form method="get" className="mb-4">
         <label>
           As of <input name="asOf" type="date" defaultValue={label} />
@@ -160,6 +178,30 @@ export default async function DashboardPage({
           </p>
           <Link href="/runs">Compute runs</Link>
         </div>
+      </div>
+      <div className="card mt-4">
+        <h2>
+          <Link href={run ? `/runs/${run.id}` : '/runs'}>Reconciliation checks</Link>
+        </h2>
+        {!run ? (
+          <p className="muted">Recompute to run checks.</p>
+        ) : (
+          <ul>
+            {checks
+              .filter((c) => c.name !== 'stats')
+              .map((c) => (
+                <li key={c.name}>
+                  <span
+                    className={`pill ${c.status === 'warn' ? 'pill-warn' : c.ok ? 'pill-ok' : 'pill-bad'}`}
+                  >
+                    {c.status ?? (c.ok ? 'pass' : 'fail')}
+                  </span>{' '}
+                  <Link href={c.href ?? `/runs/${run.id}`}>{c.name.replaceAll('_', ' ')}</Link>
+                  {c.detail ? ` · ${c.detail}` : ''}
+                </li>
+              ))}
+          </ul>
+        )}
       </div>
       <div className="card mt-4">
         <h2>Monthly expense</h2>

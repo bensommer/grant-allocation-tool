@@ -44,6 +44,7 @@ export async function bvaData(orgId: string, asOf: Date, grantId?: string) {
     prisma.transactionLine.findMany({
       where: {
         orgId,
+        deletedAt: null,
         account: { type: { in: ['Income', 'OtherIncome'] } },
         transaction: { orgId, deletedAt: null, txnDate: { lte: asOf } },
       },

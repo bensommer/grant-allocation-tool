@@ -115,12 +115,22 @@ export interface DataSource {
   fetchTransactions(range: DateRange): AsyncIterable<SourceTransaction>;
   /** Optional: adapters that read files report content hashes for the batch record. */
   fileHashes?(): Promise<Record<string, string>>;
+  /** Optional source-reported expense balances at a reporting period end. */
+  fetchTrialBalance?(): Promise<SourceTrialBalance[]>;
+  /** Incremental CDC hook; QBO implementation is deferred to JPH-14. */
+  syncChanges?(since: Date): Promise<SourceChange[]>;
   /**
    * Optional: adapters that can only report rows changed since a cursor
    * (QBO Change Data Capture) implement this; CSV returns undefined so the
    * ImportService treats the file set as the full truth for the range.
    */
   changedSince?(cursor: string): AsyncIterable<SourceChange>;
+}
+
+export interface SourceTrialBalance {
+  accountExternalId: string;
+  periodEnd: string;
+  balanceCents: number;
 }
 
 export type SourceChange =

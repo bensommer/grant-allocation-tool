@@ -3,6 +3,7 @@ import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'csv-parse';
+import { parse as parseSync } from 'csv-parse/sync';
 import { z } from 'zod';
 import { parseDateInput } from '@/domain/dates';
 import { parseMoneyToCents } from '@/domain/money';
@@ -20,6 +21,7 @@ import {
   type SourceParty,
   type SourceTransaction,
   type SourceTransactionLine,
+  type SourceTrialBalance,
   sourceAccountSchema,
   sourceClassSchema,
   sourceDescriptorSchema,
@@ -537,6 +539,44 @@ export class CsvDataSource implements DataSource {
       }
     }
     return out;
+  }
+
+  async fetchTrialBalance(): Promise<SourceTrialBalance[]> {
+    let content: string;
+    try {
+      content = await readFile(path.join(this.dir, 'trial_balance.csv'), 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    }
+    const records = parseSync(content, {
+      columns: true,
+      skip_empty_lines: true,
+      bom: true,
+      trim: true,
+    }) as Record<string, string>[];
+    return records.flatMap((row, index) => {
+      try {
+        if (!row.account_external_id || !/^\d{4}-\d{2}-\d{2}$/.test(row.period_end ?? ''))
+          throw new Error('account_external_id and period_end (YYYY-MM-DD) required');
+        return [
+          {
+            accountExternalId: row.account_external_id,
+            periodEnd: row.period_end!,
+            balanceCents: parseMoneyToCents(row.balance ?? ''),
+          },
+        ];
+      } catch (error) {
+        this.sink.push({
+          file: 'trial_balance.csv',
+          row: index + 2,
+          column: null,
+          code: 'invalid_trial_balance',
+          message: (error as Error).message,
+        });
+        return [];
+      }
+    });
   }
 }
 

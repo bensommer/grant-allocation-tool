@@ -138,6 +138,18 @@ PDF export requires Chromium; on Replit set
 
 Open the dashboard at `/`, a grant's budget vs actual at `/grants/[id]/bva`, or all restricted grants at `/restricted`. Set an as-of date with the server-rendered date filter. Budget and restricted tables offer CSV downloads; XLSX and PDF integration is pending the shared report exporter. Pacing thresholds default to 15% under and 10% over, editable in `/settings`. Definitions and sign conventions are in `docs/definitions.md`. Recompute after changing configuration to refresh current-run allocations.
 
+## AI-drafted funder narratives (JPH-13)
+
+Set `ANTHROPIC_API_KEY` and `NARRATIVE_MODEL` (an Anthropic model ID) to enable drafting from a grant's Narratives page. Without the key, existing drafts remain readable and generation is disabled. Choose one of three versioned templates, period, and context notes. Drafts store the current compute run's grounding packet and prompt version; all cited amounts and percentages are checked against packet figures and derived sums before approval. Unverified figures must be corrected or explicitly acknowledged. Approved records are immutable; an edit creates a new version. DOCX and printable PDF include a budget-vs-actual table. For local e2e generation only, `NARRATIVE_FAKE_MODEL=1` selects a canned model when `NODE_ENV` is not production; no network model call occurs. The e2e suite can also seed a narrative directly when the dev server was started without this flag.
+
+## Incremental imports, reporting locks and reconciliation (JPH-15)
+
+Import the same CSV bundle twice with `pnpm import:csv -- --dir fixtures/demo`: the second full-range import reports zero new, changed and deleted rows. An import with `--from` and `--to` is partial and never deletes missing transactions; a full import soft-deletes missing rows. Changed and deleted transaction history is visible at `/import/[batchId]/changes`. The optional `trial_balance.csv` has columns `account_external_id,period_end,balance`; balances are year-to-date expense totals in decimal dollars. Missing balances result in a warning, while differences fail the account-level tie-out. Recompute after importing to update checks.
+
+Lock a current, non-stale run at `/settings/periods` before submitting a report. Imports affecting locked dates flag the batch on the dashboard and link to `/periods/[id]/drift`, comparing current allocation cents to the locked snapshot. Recompute to see new deltas. Checks appear on the dashboard and `/runs/[id]`.
+
+QBO CDC incremental sync, full-resync fallback, and QBO TrialBalance Reports API are **NotImplemented** behind `QboDataSource.syncChanges()` and `fetchTrialBalance()` pending JPH-14. Intuit CDC lookback limits must be verified before enabling the connector.
+
 ## Layout
 
 ```

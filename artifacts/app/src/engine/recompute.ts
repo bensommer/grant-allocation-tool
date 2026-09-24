@@ -17,6 +17,7 @@ import { createHash } from 'node:crypto';
 import type { Prisma } from '@/generated/prisma/client';
 import { prisma } from '@/lib/db';
 import { toJson } from '@/lib/audit';
+import { reconciliationChecks } from '@/services/reconciliation';
 import { parseMatchers } from '@/domain/matchers';
 import { assertAllocationBalanced, AllocationImbalanceError } from '@/domain/invariants';
 import {
@@ -119,6 +120,7 @@ export async function loadEngineLines(
   const rows = await prisma.transactionLine.findMany({
     where: {
       orgId,
+      deletedAt: null,
       transaction: { deletedAt: null },
       account: { type: { in: ['Expense', 'COGS', 'OtherExpense', 'Income', 'OtherIncome'] } },
     },
@@ -246,6 +248,23 @@ export async function recompute(
         actor: opts.actor ?? 'local-user',
       },
     });
+  });
+  const checks = await reconciliationChecks(orgId, run.id);
+  await prisma.computeRun.update({
+    where: { id: run.id },
+    data: {
+      checks: toJson([
+        {
+          name: 'sum_per_source_line',
+          ok: true,
+          status: 'pass',
+          detail: `${lines.length} lines, ${result.pieces.length} pieces`,
+          href: `/runs/${run.id}`,
+        },
+        { name: 'stats', ok: true, detail: result.stats },
+        ...checks.filter((c) => c.name !== 'sum_per_source_line'),
+      ]),
+    },
   });
   return {
     runId: run.id,

@@ -8,6 +8,7 @@ export type Fact = Record<Dimension, string> & {
   date: string;
   doc: string;
   description: string;
+  vendor: string;
   status: string;
 };
 export async function loadReport(orgId: string, p: ReportParams) {
@@ -77,6 +78,7 @@ export async function loadReport(orgId: string, p: ReportParams) {
       date: d,
       doc: l.sourceLine.transaction.docNumber ?? '',
       description: l.sourceLine.description ?? l.sourceLine.transaction.memo ?? '',
+      vendor: l.sourceLine.transaction.party?.displayName ?? '',
       status: l.status,
       grant: l.grant?.awardNumber ?? l.grant?.name ?? 'Unmapped',
       grantBudgetLine: l.grantBudgetLine?.code ?? 'Unmapped',

@@ -24,3 +24,26 @@
 - Known limitation: a changed re-import updates source lines in place and marks the current run
   stale; historical runs are not snapshotted, so `/runs/[id]/diff` against a pre-import run reflects
   the new source amounts.
+
+## JPH-13 narratives
+
+- Model client is injected (`NarrativeModel`); `narrativeModel()` returns null without
+  `ANTHROPIC_API_KEY`/`NARRATIVE_MODEL` and the pages explain why generation is disabled.
+  `NARRATIVE_FAKE_MODEL=1` (non-production only) returns a canned draft for local/e2e use.
+- Real model output arrives fenced (```json); the client strips fences and takes the outermost object
+  before the zod gate. Verified live: a Q1 G-MWSC draft cited 45 figures, all verified.
+- Grounding packet separates period figures (rows, actuals for `[from,to]`) from inception-to-date
+  figures (received, restricted balance, pacing as of `to`); derived keys are `period.*` / `itd.*` and
+  include per-line per-account/per-vendor sums so natural sub-totals verify.
+- `($5,000.00)` is negative only when the paren closes right after the amount; `($5,000.00 monthly)`
+  is prose. Malformed precision (`$1,234.567`) is extracted and stays unverified (fail closed).
+
+## JPH-15 re-import and reconciliation
+
+- Change detection hashes normalized rows; missing rows are soft-deleted only on full-range imports.
+  `TransactionLine.deletedAt` was added so a re-imported transaction with fewer lines keeps old
+  `AllocatedLine` references intact; new runs exclude soft-deleted lines.
+- New transactions dated inside a locked period flag the lock too (`counts.lockNewIds`).
+- Reconciliation checks count exactly what the engine counts (unassigned = all pieces without a
+  program, including income); trial-balance tie-out warns on partial account coverage.
+- QBO CDC/TrialBalance pulls are `NotImplemented` stubs behind `DataSource` (JPH-14 skipped).

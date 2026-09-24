@@ -1,3 +1,4 @@
+import { getOrgId } from '@/lib/org';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/page-header';
@@ -18,10 +19,13 @@ export default async function BatchPage({
 }) {
   const { batchId } = await params;
   const { page: pageRaw } = await searchParams;
-  const batch = await prisma.importBatch.findUnique({ where: { id: batchId } });
+  const batch = await prisma.importBatch.findFirst({
+    where: { id: batchId, orgId: await getOrgId() },
+  });
   if (!batch) notFound();
 
   const counts = batch.counts as Partial<ImportCounts>;
+  const lockIds = ((batch.counts as { lockIds?: string[] }).lockIds ?? []).filter(Boolean);
   const errors = batch.errors as unknown as ImportError[];
   const page = Math.max(1, Number(pageRaw ?? '1') || 1);
   const pages = Math.max(1, Math.ceil(errors.length / PAGE_SIZE));
@@ -58,9 +62,20 @@ export default async function BatchPage({
         </div>
       ) : batch.status === 'succeeded' ? (
         <div className="banner banner-ok">
-          Succeeded — {counts.lines ?? 0} transaction lines in this batch.
+          Succeeded — {counts.lines ?? 0} transaction lines in this batch.{' '}
+          <Link href={`/import/${batch.id}/changes`}>View changed and deleted transactions →</Link>
         </div>
       ) : null}
+      {!!lockIds.length && (
+        <div className="banner banner-warn">
+          This import changed source lines inside a locked reporting period:{' '}
+          {lockIds.map((id) => (
+            <Link key={id} className="mr-2" href={`/periods/${id}/drift`}>
+              View period drift →
+            </Link>
+          ))}
+        </div>
+      )}
 
       <div className="card mb-6">
         <h2 className="mb-3">Counts per entity</h2>

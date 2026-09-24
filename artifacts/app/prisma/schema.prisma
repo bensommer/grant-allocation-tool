@@ -218,6 +218,7 @@ model TransactionLine {
   orgId         String
   transactionId String
   lineNumber    Int
+  deletedAt     DateTime?
   accountId     String
   classId       String?
   locationId    String?
