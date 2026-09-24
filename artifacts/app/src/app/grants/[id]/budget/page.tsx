@@ -63,7 +63,7 @@ export default async function BudgetPage({
           Imported {imported} new and {updated} updated budget lines.
         </div>
       ) : null}
-      <div className="card mb-4">
+      <div className="card mb-4 max-w-full overflow-x-auto">
         <table>
           <thead>
             <tr>

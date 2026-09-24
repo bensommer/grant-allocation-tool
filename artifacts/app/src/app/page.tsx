@@ -1,9 +1,21 @@
 import Link from 'next/link';
-import { PageHeader } from '@/components/page-header';
-import { formatCents } from '@/domain/money';
+import {
+  Banner,
+  Card,
+  DateText,
+  FilterBar,
+  KeyFigure,
+  MiniBarChart,
+  Money,
+  Month,
+  PageHeader,
+  StatusPill,
+} from '@/components/ui';
+import { GrantPaceStatus } from '@/components/grant-pace-status';
+import { formatDate, formatMonth, type YearMonth } from '@/domain/format';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
-import { bvaData, reportDate } from '@/services/bva';
+import { bvaData, defaultReportDate } from '@/services/bva';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,12 +25,13 @@ export default async function DashboardPage({
   searchParams: Promise<{ asOf?: string }>;
 }) {
   const orgId = await getOrgId();
-  const { label, date } = reportDate((await searchParams).asOf);
+  const { label, date, coverage } = await defaultReportDate(orgId, (await searchParams).asOf);
   const [{ run, grants }, lastImport] = await Promise.all([
     bvaData(orgId, date),
     prisma.importBatch.findFirst({ where: { orgId }, orderBy: { startedAt: 'desc' } }),
   ]);
   const flagged = grants.filter((g) => g.flagged);
+  const restricted = grants.filter((g) => g.restrictionType !== 'unrestricted');
   const checks = (run?.checks ?? []) as unknown as {
     name: string;
     status?: string;
@@ -27,14 +40,11 @@ export default async function DashboardPage({
     detail?: string;
   }[];
   const latestCounts = lastImport?.counts as { lockIds?: string[] } | undefined;
-  const restricted = grants.filter((g) => g.restrictionType !== 'unrestricted');
-  const unmapped = run
+  const expenses = run
     ? await prisma.allocatedLine.findMany({
         where: {
           orgId,
           computeRunId: run.id,
-          programId: { not: null },
-          grantBudgetLineId: null,
           status: 'ok',
           sourceLine: {
             account: { type: { in: ['Expense', 'COGS', 'OtherExpense'] } },
@@ -44,180 +54,198 @@ export default async function DashboardPage({
         select: {
           amountCents: true,
           programId: true,
-          program: { select: { code: true, name: true } },
+          grantBudgetLineId: true,
+          program: { select: { name: true, code: true, functionalCategory: true } },
           sourceLine: { select: { transaction: { select: { txnDate: true } } } },
         },
       })
     : [];
-  const groups = new Map<string, { name: string; amount: number }>();
-  for (const piece of unmapped) {
-    const key = piece.programId!;
-    const prev = groups.get(key);
-    groups.set(key, {
-      name: `${piece.program?.code} · ${piece.program?.name}`,
-      amount: (prev?.amount ?? 0) + piece.amountCents,
-    });
-  }
-  const monthly = new Map<string, number>();
-  if (run) {
-    const expenses = await prisma.allocatedLine.findMany({
-      where: {
-        orgId,
-        computeRunId: run.id,
-        status: 'ok',
-        sourceLine: {
-          account: { type: { in: ['Expense', 'COGS', 'OtherExpense'] } },
-          transaction: { orgId, deletedAt: null, txnDate: { lte: date } },
-        },
-      },
-      select: {
-        amountCents: true,
-        sourceLine: { select: { transaction: { select: { txnDate: true } } } },
-      },
-    });
-    for (const p of expenses) {
-      const key = p.sourceLine.transaction.txnDate.toISOString().slice(0, 7);
-      monthly.set(key, (monthly.get(key) ?? 0) + p.amountCents);
+  const unmapped = expenses.filter(
+    (p) => p.program?.functionalCategory === 'program' && p.grantBudgetLineId === null,
+  );
+  const nonGrant = expenses.filter(
+    (p) => p.program?.functionalCategory !== 'program' && p.program !== null,
+  );
+  const group = (items: typeof expenses) => {
+    const totals = new Map<string, { name: string; code: string; cents: number }>();
+    for (const item of items) {
+      if (!item.programId || !item.program) continue;
+      const previous = totals.get(item.programId);
+      totals.set(item.programId, {
+        name: item.program.name,
+        code: item.program.code,
+        cents: (previous?.cents ?? 0) + item.amountCents,
+      });
     }
+    return [...totals.values()];
+  };
+  const monthly = new Map<string, number>();
+  for (const item of expenses) {
+    const month = item.sourceLine.transaction.txnDate.toISOString().slice(0, 7);
+    monthly.set(month, (monthly.get(month) ?? 0) + item.amountCents);
   }
-  const values = [...monthly].sort(([a], [b]) => a.localeCompare(b));
-  const max = Math.max(1, ...values.map(([, n]) => n));
-  const points = values
-    .map(
-      ([, n], i) =>
-        `${values.length === 1 ? 100 : (i * 200) / (values.length - 1)},${50 - (n * 45) / max}`,
-    )
-    .join(' ');
+  const months = [...monthly.keys()].sort() as YearMonth[];
+  const points = months.map((ym) => ({
+    label: formatMonthLabel(ym, months),
+    cents: monthly.get(ym)!,
+  }));
   return (
     <>
       <PageHeader
         title="Dashboard"
-        subtitle={`As of ${label} · Current run: ${run ? (run.finishedAt ?? run.startedAt).toISOString().replace('T', ' ').slice(0, 19) + ' UTC' : 'none'}`}
+        subtitle={
+          <>
+            As of <DateText date={date} /> · Current run:{' '}
+            <span data-volatile>
+              {run ? <DateText date={run.finishedAt ?? run.startedAt} time /> : 'none'}
+            </span>
+          </>
+        }
       />
+      {coverage && date > coverage && (
+        <Banner tone="warn">
+          As of {formatDate(date)} is after the last imported transaction ({formatDate(coverage)});
+          pacing will look under pace until newer books are imported.
+        </Banner>
+      )}
       {run?.stale && (
-        <div className="banner banner-warn">
+        <Banner tone="warn">
           Configuration changed since the current run. Reports show numbers from{' '}
-          {(run.finishedAt ?? run.startedAt).toISOString().replace('T', ' ').slice(0, 19)} UTC until
-          you recompute.
-        </div>
+          <DateText date={run.finishedAt ?? run.startedAt} time /> until you recompute.
+        </Banner>
       )}
       {!run && (
-        <div className="banner banner-warn">
-          No current run — recompute on <Link href="/runs">/runs</Link>.
-        </div>
+        <Banner tone="warn">
+          No current run — recompute on <Link href="/runs">Compute runs</Link>.
+        </Banner>
       )}
       {!!latestCounts?.lockIds?.length && (
-        <div className="banner banner-warn">
+        <Banner tone="warn">
           A recent import changed a locked reporting period.{' '}
           {latestCounts.lockIds.map((id) => (
             <Link key={id} href={`/periods/${id}/drift`} className="mr-2">
               View period drift →
             </Link>
           ))}
-        </div>
+        </Banner>
       )}
-      <form method="get" className="mb-4">
-        <label>
-          As of <input name="asOf" type="date" defaultValue={label} />
-        </label>{' '}
-        <button className="btn btn-secondary">Apply</button>
-      </form>
+      <FilterBar>
+        <label htmlFor="dashboard-as-of">As of</label>
+        <input id="dashboard-as-of" name="asOf" type="date" defaultValue={label} />
+      </FilterBar>
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="card">
-          <h2>
-            <Link href={`/restricted?asOf=${label}`}>Restricted balances</Link>
-          </h2>
-          <p className="text-2xl font-semibold">
-            {formatCents(restricted.reduce((n, g) => n + g.balance, 0))}
-          </p>
-          <p className="muted text-sm">
-            Received minus spent on restricted grants. A negative balance means spent ahead of
-            receipts.
-          </p>
-        </div>
-        <div className="card">
-          <h2>Flagged grants</h2>
-          <p className="text-2xl font-semibold">{flagged.length}</p>
-          <ul>
+        <Card
+          title="Restricted balances"
+          action={<Link href={`/restricted?asOf=${label}`}>View funds →</Link>}
+        >
+          <KeyFigure
+            label="Received minus spent"
+            value={<Money cents={restricted.reduce((n, g) => n + g.balance, 0)} dollar />}
+            hint="A negative balance means spending is ahead of receipts."
+          />
+        </Card>
+        <Card title="Flagged grants" action={<Link href="/grants">View grants →</Link>}>
+          <KeyFigure label="Grants requiring attention" value={flagged.length} />
+          <ul className="mt-3 space-y-2">
             {flagged.map((g) => (
               <li key={g.id}>
-                <Link href={`/grants/${g.id}/bva?asOf=${label}`}>{g.name}</Link> · {g.pace.flag}
-                {g.rows.some((r) => r.overBudget) ? ' · over-budget line' : ''}
+                <Link href={`/grants/${g.id}/bva?asOf=${label}`}>{g.name}</Link>{' '}
+                <GrantPaceStatus
+                  pace={g.pace}
+                  overBudgetLines={g.rows.filter((r) => r.overBudget).map((r) => r.name)}
+                />
               </li>
             ))}
           </ul>
-        </div>
-        <div className="card">
-          <h2>
-            <Link href="/crosswalk/coverage">Unmapped program expense</Link>
-          </h2>
-          <p className="text-2xl font-semibold">
-            {formatCents(unmapped.reduce((n, p) => n + p.amountCents, 0))}
-          </p>
-          <ul>
-            {[...groups].map(([key, row]) => (
-              <li key={key}>
-                {row.name}: {formatCents(row.amount)}
+        </Card>
+        <Card
+          title="Unmapped program expense"
+          action={<Link href="/crosswalk/coverage">View coverage →</Link>}
+        >
+          <KeyFigure
+            label="Program-service expense without a grant budget line"
+            value={<Money cents={unmapped.reduce((n, p) => n + p.amountCents, 0)} dollar />}
+          />
+          <ul className="mt-3">
+            {group(unmapped).map((row) => (
+              <li key={row.code}>
+                {row.name} <span className="muted text-sm">{row.code}</span>:{' '}
+                <Money cents={row.cents} dollar />
               </li>
             ))}
           </ul>
-        </div>
-        <div className="card">
-          <h2>Activity</h2>
-          <p>
+        </Card>
+        <Card title="Non-grant expense">
+          <KeyFigure
+            label="M&G and Fundraising · expected, not a warning"
+            value={<Money cents={nonGrant.reduce((n, p) => n + p.amountCents, 0)} dollar />}
+          />
+          <ul className="mt-3">
+            {group(nonGrant).map((row) => (
+              <li key={row.code}>
+                {row.name} <span className="muted text-sm">{row.code}</span>:{' '}
+                <Money cents={row.cents} dollar />
+              </li>
+            ))}
+          </ul>
+        </Card>
+        <Card title="Activity" action={<Link href="/runs">Compute runs →</Link>}>
+          <p data-volatile>
             Last import:{' '}
-            {lastImport
-              ? `${(lastImport.finishedAt ?? lastImport.startedAt).toISOString().replace('T', ' ').slice(0, 19)} UTC · ${lastImport.status}`
-              : 'None'}
+            {lastImport ? (
+              <>
+                <DateText date={lastImport.finishedAt ?? lastImport.startedAt} time /> ·{' '}
+                {lastImport.status}
+              </>
+            ) : (
+              'None'
+            )}
           </p>
-          <p>
+          <p data-volatile>
             Last compute:{' '}
-            {run
-              ? `${(run.finishedAt ?? run.startedAt).toISOString().replace('T', ' ').slice(0, 19)} UTC${run.stale ? ' · stale' : ''}`
-              : 'None'}
+            {run ? (
+              <>
+                <DateText date={run.finishedAt ?? run.startedAt} time />
+                {run.stale ? ' · stale' : ''}
+              </>
+            ) : (
+              'None'
+            )}
           </p>
-          <Link href="/runs">Compute runs</Link>
-        </div>
+        </Card>
+        <Card title="Monthly expense">
+          <MiniBarChart caption="Monthly total expense through as-of" points={points} />
+          <ul className="mt-2 flex flex-wrap gap-x-4 text-sm">
+            {months.map((ym) => (
+              <li key={ym}>
+                <Month ym={ym} context={months} />: <Money cents={monthly.get(ym)!} dollar />
+              </li>
+            ))}
+          </ul>
+        </Card>
       </div>
-      <div className="card mt-4">
-        <h2>
-          <Link href={run ? `/runs/${run.id}` : '/runs'}>Reconciliation checks</Link>
-        </h2>
+      <Card
+        title="Reconciliation checks"
+        action={<Link href={run ? `/runs/${run.id}` : '/runs'}>View run →</Link>}
+      >
         {!run ? (
           <p className="muted">Recompute to run checks.</p>
         ) : (
-          <ul>
+          <ul className="space-y-2">
             {checks
               .filter((c) => c.name !== 'stats')
               .map((c) => (
                 <li key={c.name}>
-                  <span
-                    className={`pill ${c.status === 'warn' ? 'pill-warn' : c.ok ? 'pill-ok' : 'pill-bad'}`}
-                  >
+                  <StatusPill tone={c.status === 'warn' ? 'warn' : c.ok ? 'ok' : 'bad'}>
                     {c.status ?? (c.ok ? 'pass' : 'fail')}
-                  </span>{' '}
+                  </StatusPill>{' '}
                   <Link href={c.href ?? `/runs/${run.id}`}>{c.name.replaceAll('_', ' ')}</Link>
                   {c.detail ? ` · ${c.detail}` : ''}
                 </li>
               ))}
           </ul>
         )}
-      </div>
-      <div className="card mt-4">
-        <h2>Monthly expense</h2>
-        <svg
-          viewBox="0 0 200 55"
-          role="img"
-          aria-label="Monthly total expense sparkline"
-          className="h-16 w-full"
-        >
-          <polyline fill="none" stroke="currentColor" strokeWidth="2" points={points} />
-        </svg>
-        <p className="muted text-sm">
-          {values.map(([month, cents]) => `${month}: ${formatCents(cents)}`).join(' · ') ||
-            'No expense data'}
-        </p>
-      </div>
+      </Card>
       <p className="muted mt-4 text-sm">
         Flagged means spending is outside configured straight-line pacing thresholds or a budget
         line is over budget. Totals use current-run expense allocations; income receipts are read
@@ -225,4 +253,8 @@ export default async function DashboardPage({
       </p>
     </>
   );
+}
+
+function formatMonthLabel(ym: YearMonth, context: YearMonth[]) {
+  return formatMonth(ym, {}, context);
 }

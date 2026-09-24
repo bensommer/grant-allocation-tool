@@ -1,19 +1,18 @@
+import type { ReactNode } from 'react';
+import { PageHeader as NewPageHeader } from './ui/layout';
+
+/** Legacy actions map to secondaryActions; new pages should import from components/ui. */
 export function PageHeader({
-  title,
-  subtitle,
   actions,
+  secondaryActions,
+  ...props
 }: {
   title: string;
-  subtitle?: string;
-  actions?: React.ReactNode;
+  subtitle?: ReactNode;
+  actions?: ReactNode;
+  secondaryActions?: ReactNode;
+  primaryAction?: ReactNode;
+  breadcrumb?: ReactNode;
 }) {
-  return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1>{title}</h1>
-        {subtitle ? <p className="muted mt-1">{subtitle}</p> : null}
-      </div>
-      {actions ? <div className="no-print flex gap-2">{actions}</div> : null}
-    </div>
-  );
+  return <NewPageHeader {...props} secondaryActions={secondaryActions ?? actions} />;
 }

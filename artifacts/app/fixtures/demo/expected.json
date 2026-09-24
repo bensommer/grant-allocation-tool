@@ -1,8 +1,21 @@
 {
   "org": { "name": "Harbor Kitchen Collective", "fiscalYearStartMonth": 1, "currency": "USD" },
   "period": { "from": "2026-01-01", "to": "2026-03-31" },
-  "importCounts": { "accounts": 11, "classes": 4, "locations": 1, "parties": 11, "transactions": 20, "lines": 38 },
-  "overlayCounts": { "programs": 4, "grants": 3, "budgetLines": 6, "allocationRules": 2, "crosswalkRules": 6 },
+  "importCounts": {
+    "accounts": 11,
+    "classes": 4,
+    "locations": 1,
+    "parties": 11,
+    "transactions": 20,
+    "lines": 38
+  },
+  "overlayCounts": {
+    "programs": 4,
+    "grants": 3,
+    "budgetLines": 6,
+    "allocationRules": 2,
+    "crosswalkRules": 6
+  },
   "expenseByProgramGl": {
     "6010": { "CT": 2460000, "YM": 1680000, "MG": 720000, "FR": 240000, "total": 5100000 },
     "6020": { "CT": 188190, "YM": 128520, "MG": 55080, "FR": 18360, "total": 390150 },

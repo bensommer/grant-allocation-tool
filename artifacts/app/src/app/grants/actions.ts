@@ -91,11 +91,12 @@ export async function createGrantAction(formData: FormData): Promise<void> {
 export async function updateGrantAction(id: string, formData: FormData): Promise<void> {
   const orgId = await getOrgId();
   const r = await parseGrant(orgId, formData);
-  if (!r.ok) redirectWithErrors(`/grants/${id}`, r.errors, formData);
+  if (!r.ok) redirectWithErrors(`/grants/${id}/edit`, r.errors, formData);
   try {
     await updateGrant(orgId, id, r.data);
   } catch (e) {
-    if (e instanceof ValidationError) redirectWithErrors(`/grants/${id}`, e.fieldErrors, formData);
+    if (e instanceof ValidationError)
+      redirectWithErrors(`/grants/${id}/edit`, e.fieldErrors, formData);
     throw e;
   }
   redirect(`/grants/${id}?saved=1`);

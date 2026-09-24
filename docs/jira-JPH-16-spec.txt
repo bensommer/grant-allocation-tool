@@ -1,0 +1,183 @@
+WhyThe app computes the right numbers (golden totals from JPH-7 render correctly), but the UI reads like a debug console. It shows codes where it should show the funder's language, and zeros where it should show signal. Pages break on mobile and fail accessibility checks. A CPA can't hand any of it to an ED or a funder, which is the whole point of the product.Audit basis: live deploy 
+grant-allocation-tool-jph-3.replit.app
+, crawled 2026-09-24. That covered 60 routes, full-page screenshots at 1440px and 390px, an axe-core accessibility scan on 12 key pages, a JavaScript-disabled check, and export endpoint tests. The GitHub repo is private, so this audit covers rendered output, not code.FindingsA. Global / shellNavigation.
+ 12 flat top-level links wrap to 2 rows at 1440px and 4 rows (~140px) on a phone before any content. There's no active-page indicator and no grouping by task.Typography.
+ Body declares 
+Inter
+ but the font is never loaded, so it falls back to whatever the OS has. All money renders in a monospace font that sits off-baseline from adjacent text and makes tables look like terminal output.Money formatting.
+ No 
+$
+ anywhere. Zero is printed as 
+0.00
+ in every empty cell (the BvA page shows 54 zero cells for future months), which buries the real numbers.Dates.
+ Raw ISO everywhere (
+2026-01-01 → 2026-12-31
+). Month column headers 
+2026-04
+ wrap into 
+2026-
+ / 
+04
+.Codes instead of names.
+Programs show as 
+CT / FR / MG / YM
+, grants as award numbers (
+MWSC-2026-117
+), budget lines as 
+PERS / SUPP / OCC
+.The product's premise is showing the funder's own words ("Culinary Training Personnel").Names must lead everywhere; codes are secondary.Accessibility.
+ axe reports 
+serious color-contrast violations on 9 of 12 pages
+, 18 on the crosswalk matrix alone (the status pills). There's also a 
+link-in-text-block
+ violation on the dashboard and an empty table header on 
+/import
+.Mobile.
+ The page body overflows horizontally at 390px on 
+/grants
+ (648px), 
+/import
+ (654px), 
+/reports/custom
+ (843px) and 
+/runs
+ (1,090px). Tables aren't in scroll containers.Buttons and actions.
+Three unrelated button styles are in use.Exports are bare text links on some pages and outline buttons on others.Destructive actions
+ ("Delete / archive", "Delete / deactivate") are solid red buttons in the page header, next to navigation buttons.Filters.
+ The dashboard as-of input is a full-width date field with a separate Apply button stacked below it. The crosswalk matrix date filters default to empty 
+mm/dd/yyyy
+.Link prefetch.
+ Every page load fires ~35–45 background requests because each nav 
+<Link>
+ prefetches its route, so the page never goes network-idle. Disable prefetch on nav links.B. Page-levelDashboard (
+/
+)
+As-of defaults to today (2026-09-24), but the books are only imported through 2026-03-31. Both grants are therefore flagged 
+"under pace"
+ purely because data is missing, which is the opposite of the Q1 truth (both are over pace).The "Unmapped program expense" card (15,984.50) counts Management & General plus Fundraising (13,824.50) as unmapped. That contradicts JPH-7, which says M&G and Fundraising expense is expected to be non-grant and is not an error.The sparkline is a flat, unlabeled line.Card headings are inconsistent (some teal links, some black text).The flag reason is the single word "under".Grants list (
+/grants
+)
+"% spent" is a bare number with no bar.No restricted balance or pacing column.Period shown as ISO range.Grant detail (
+/grants/[id]
+)
+Opens straight into an edit form; there's no read-only overview of award, spent, remaining, received, pacing and budget lines.The funder dropdown and the funder free-text field sit side by side with unclear precedence.Program share % inputs are misaligned.Budget vs. actual (
+/grants/[id]/bva
+)
+Nine columns of future months full of 
+0.00
+, with wrapping headers.Pacing is a one-line text blob.No visual of budget used.The drill-link color is applied to some numeric columns but not others.Crosswalk matrix (
+/crosswalk/matrix
+)
+Column headers are program codes.Cells are code pills (
+MWSC-2026-117/PERS
+) with 
+no dollar amounts
+.M&G and Fundraising cells show false "unmapped" warnings.Account names are uppercase and styled like headers.Programs are sorted alphabetically instead of program services first, then support functions.No legend.Allocation rule editor (
+/allocation/[id]
+)
+A 5-column grid mixes unrelated fields."Driver key" shows when the method is Fixed %.Effective dates are free-text 
+(YYYY-MM-DD)
+ fields rather than date inputs.Account range from/to are split across rows.The party list mixes funders, vendors and employees with no grouping.Six fixed blank target rows.No plain-English summary of what the rule does.Custom report (
+/reports/custom
+)
+Grants titled by award number, budget lines by code.Rows sorted alphabetically by code rather than by the budget's own order.Each page-break table has a different column set, so nothing aligns between grants."Unmapped" rendered as if it were a grant.No budget column alongside actuals.The "save view" form is wedged between the filters and the results.Exports.
+ 
+Every PDF export returns HTTP 500:
+ BvA PDF, report PDF and restricted PDF. CSV and XLSX work. Likely a missing headless Chromium in the Replit deployment; fix or switch the renderer.Scope1. Design foundation (do first)Tokens (CSS variables or Tailwind theme): color palette where every text/background pair meets WCAG AA, plus type scale, spacing scale, radii and one shadow.Self-host Inter via 
+next/font
+. Use 
+font-variant-numeric: tabular-nums
+ on the sans font for all numbers; drop the monospace money font.Formatting helpers, each unit-tested:
+<Money cents>
+:
+$
+ shown in headers and total rows; body cells may omit it when the column header says "($)".Thousands separators.Negatives in parentheses.Zero shows as 
+—
+.Each cell carries 
+data-cents
+ so tests assert values, not strings.<Period>
+ renders 
+Jan 1 – Dec 31, 2026
+.<Month>
+ renders 
+Jan
+, 
+Feb
+ (with year where ambiguous).<Pct>
+ renders one decimal place.Components:
+Button
+ (primary / secondary / ghost / danger).StatusPill
+ (AA contrast, icon + text, never color alone).Card
+.PageHeader
+: title, subtitle, one primary action, secondary actions in a small group.DataTable
+:
+wrapped in an 
+overflow-x:auto
+ containersticky header and first columnright-aligned numbers, zero suppression, distinct totals rowone consistent drill-link styleFilterBar
+: a GET form, inline controls, a single Apply, sensible defaults.ProgressBar
+: server-rendered, shows used vs. budget, with an over-budget state.EmptyState
+.Legend
+.Danger zone pattern:
+ destructive actions move out of headers to a bottom section with a confirm step (a server-rendered confirm page is fine; no JS required).2. Shell and information architectureGrouped navigation:
+Overview:
+ DashboardGrants:
+ Grants, Restricted Funds, NarrativesReportsSetup:
+ Programs, Crosswalk, Allocation Rules, AccountsData:
+ Import, RunsSettingsActive-state indicator.Mobile: collapses to a 
+<details>/<summary>
+ menu, which needs no JavaScript.Global status strip under the header: 
+Books through Mar 31, 2026 · Current run Sep 24, 01:00 UTC · Recompute needed
+, when stale.3. Page redesignsDashboard
+As-of defaults to the last imported transaction date. A visible warning appears when as-of is past data coverage.Flag reasons in words: "Over pace: 34% ahead of straight-line".Unmapped card counts 
+program-service
+ expense only. Show M&G and Fundraising as their own "non-grant" line, not as a warning. This is a logic fix; coordinate with JPH-9.Replace the sparkline with a small labeled monthly bar chart (server SVG) or a 3-column mini table.Grants list:
+ name, funder, period, award, spent with a progress bar, restricted balance, pacing pill.Grant overview:
+ a new read-only landing page (
+/grants/[id]
+) with key figures, a budget-lines table with progress bars, pacing, and receipts. Editing moves to 
+/grants/[id]/edit
+.BvA
+Budget lines by name (code secondary) in budget sort order.Monthly columns only through the as-of month; later months hidden, or rendered as "—" when explicitly requested.Pacing as a small labeled panel: expected, actual, variance, pill.Crosswalk matrix
+Program names as column headers, program services first.Each cell shows the Q-to-date 
+$ amount
+ and the budget line name, colored by status, with a legend.M&G and Fundraising columns visually de-emphasized and never flagged as unmapped.Clicking a cell drills to its lines.Allocation editor
+Sectioned layout: 
+What it applies to
+ (conditions) → 
+How it splits
+ (targets) → 
+When
+ (effective dates) → 
+Preview
+.Fields irrelevant to the chosen method are hidden (server-rendered per method, or a tiny client island).Native date inputs.Parties grouped by kind: Funders / Vendors / Employees.Targets start with 1 row plus an "Add target" control.A live plain-English summary: "Splits Pat Morgan's Salaries & Wages and Payroll Taxes coded Admin/Shared: 40% Culinary Training, 20% Youth Meals, 30% M&G, 10% Fundraising".Reports
+Names, not codes.Consistent column set across page-breaks (union of columns, zero-suppressed rows).Optional Budget, Remaining and % columns when rows are budget lines."Unmapped" shown as a clearly labeled separate section, not a grant.Export and save-view controls grouped in a toolbar above the table.Import / Runs / Narratives / Settings:
+ apply the components; fix mobile overflow; fix the empty table header on 
+/import
+.4. Fix PDF exportsMake all PDF routes return 200 with a valid PDF in the deployed environment. If headless Chromium can't run on the host, use a hosted rendering service or a pure-JS renderer. Document the choice.Constraints (unchanged from the epic)Server-rendered pages; not an SPA.Every page and form works with JavaScript disabled.Client components only as small, justified islands.No change to any computed number.
+ This is presentation only, except the dashboard unmapped-definition fix, which must match JPH-7.Acceptance criteriaaxe-core: 
+0 serious or critical violations
+ on every route in the Playwright route list.At 390px width, no route has body horizontal overflow (
+scrollWidth ≤ viewport
+); wide tables scroll inside their container.Nav fits one row at ≥ 1280px; on mobile it's collapsed by default and works without JS.No monospace font in data tables; numbers are tabular and right-aligned; zero shows as 
+—
+.Every report and matrix shows program, grant and budget-line 
+names
+. Codes appear only as secondary text.Dashboard on demo data: as-of defaults to 2026-03-31, and both grants are flagged 
+over pace
+ with the reason in words. The unmapped card shows 
+2,160.00
+ (Youth Meals occupancy). M&G and Fundraising are shown separately as non-grant.Crosswalk matrix cells show dollar amounts that match the Program × GL golden table in JPH-7.Destructive actions appear only in a Danger zone with a confirm step.All PDF export routes return 200 with 
+application/pdf
+.JPH-7 golden suite still passes; tests assert on 
+data-cents
+, not formatted strings.Test casesPlaywright visual snapshots of 12 key pages at 1440px and 390px, committed as the new baseline.Playwright + axe run over the full route list in CI (fail on serious or critical).Playwright with JS disabled: nav menu, one filter form, one create form and one export link all work.Unit tests for 
+Money
+, 
+Period
+, 
+Month
+ and 
+Pct
+ formatters: negatives, zero, large values, rounding.Integration test: each PDF export returns a non-empty PDF whose first bytes are 
+%PDF
+.

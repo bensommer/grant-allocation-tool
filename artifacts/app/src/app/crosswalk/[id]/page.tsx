@@ -1,12 +1,11 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { PageHeader } from '@/components/page-header';
+import { Banner, ButtonLink, DangerZone, PageHeader } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { decodeFormState, pick } from '@/lib/forms';
 import { getOrgId } from '@/lib/org';
 import { parseMatchers } from '@/domain/matchers';
 import { previewRule } from '@/engine/preview';
-import { deleteCrosswalkAction, updateCrosswalkAction } from '../actions';
+import { updateCrosswalkAction } from '../actions';
 import { crosswalkOptions } from '../options';
 import { previewInputMatchers } from '../preview-values';
 import { dateRange } from '../range';
@@ -51,21 +50,16 @@ export default async function CrosswalkRulePage({
     <>
       <PageHeader
         title={rule.name ?? 'Crosswalk rule'}
-        actions={
-          <>
-            <Link href="/crosswalk" className="btn btn-secondary btn-sm">
-              All rules
-            </Link>
-            <form action={deleteCrosswalkAction.bind(null, id)}>
-              <button className="btn btn-danger btn-sm">Delete / deactivate</button>
-            </form>
-          </>
+        secondaryActions={
+          <ButtonLink href="/crosswalk" variant="secondary">
+            All rules
+          </ButtonLink>
         }
       />
       {deactivated ? (
-        <div className="banner banner-warn">
+        <Banner tone="warn">
           This rule is used by a compute run, so it was deactivated rather than deleted.
-        </div>
+        </Banner>
       ) : null}
       <RuleForm
         action={updateCrosswalkAction.bind(null, id)}
@@ -75,6 +69,11 @@ export default async function CrosswalkRulePage({
         options={options}
         preview={preview}
       />
+      <DangerZone>
+        <ButtonLink href={`/crosswalk/${id}/delete`} variant="danger">
+          Delete / deactivate…
+        </ButtonLink>
+      </DangerZone>
     </>
   );
 }

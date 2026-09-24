@@ -1,4 +1,9 @@
 import { expect, test } from '@playwright/test';
+import { prisma } from '../src/lib/db';
+
+test.afterEach(async () => {
+  await prisma.program.deleteMany({ where: { name: 'Temp program' } });
+});
 
 const stamp = () => Date.now().toString(36).toUpperCase().slice(-5);
 
@@ -35,6 +40,7 @@ test('create grant → add budget line → edit award → history shows before/a
   const url = page.url().split('?')[0]!;
 
   // validation: end before start
+  await page.goto(`${url}/edit`);
   await page.fill('input[name="endDate"]', '2025-12-31');
   await page.getByRole('button', { name: 'Save changes' }).click();
   await page.waitForURL(/\?f=/);
@@ -53,7 +59,7 @@ test('create grant → add budget line → edit award → history shows before/a
   await expect(page.locator('tfoot')).toContainText('under award by 4,000.00');
 
   // edit award amount → audit event with before/after
-  await page.goto(url);
+  await page.goto(`${url}/edit`);
   await page.fill('input[name="awardAmount"]', '12000');
   await page.getByRole('button', { name: 'Save changes' }).click();
   await page.waitForURL(/\?saved=1/);
@@ -64,7 +70,8 @@ test('create grant → add budget line → edit award → history shows before/a
   await expect(row.locator('.text-green-800')).toHaveText('1200000');
 
   // delete (no compute run references it) → back to list
-  await page.goto(url);
-  await page.getByRole('button', { name: 'Delete / archive' }).click();
+  await page.goto(`${url}/edit`);
+  await page.getByRole('link', { name: 'Delete / archive grant…' }).click();
+  await page.getByRole('button', { name: 'Delete / archive grant' }).click();
   await page.waitForURL(/\/grants\?deleted=1/);
 });

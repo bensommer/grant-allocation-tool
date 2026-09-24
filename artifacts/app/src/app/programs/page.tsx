@@ -1,5 +1,12 @@
-import Link from 'next/link';
-import { PageHeader } from '@/components/page-header';
+import {
+  Banner,
+  ButtonLink,
+  DataTable,
+  EmptyState,
+  PageHeader,
+  StatusPill,
+  Th,
+} from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { CATEGORY_LABEL } from './labels';
@@ -24,55 +31,53 @@ export default async function ProgramsPage({
       <PageHeader
         title="Programs"
         subtitle="Functional areas that expenses roll up to. Each imported class can be the default for one program."
-        actions={
-          <Link href="/programs/new" className="btn">
-            New program
-          </Link>
-        }
+        primaryAction={<ButtonLink href="/programs/new">New program</ButtonLink>}
       />
-      {deleted ? <div className="banner banner-ok">Program deleted.</div> : null}
-      <div className="card">
-        {programs.length === 0 ? (
-          <p className="muted">
-            No programs yet. Seed the demo (<code>npm run seed:demo</code>) or create one.
-          </p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Name</th>
-                <th>Functional category</th>
-                <th>Default classes</th>
-                <th>Active</th>
+      {deleted ? <Banner tone="ok">Program deleted.</Banner> : null}
+      {programs.length === 0 ? (
+        <EmptyState
+          title="No programs yet"
+          action={<ButtonLink href="/programs/new">New program</ButtonLink>}
+        />
+      ) : (
+        <DataTable caption="Programs">
+          <thead>
+            <tr>
+              <Th>Program</Th>
+              <Th>Functional category</Th>
+              <Th>Default classes</Th>
+              <Th>Status</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {programs.map((p) => (
+              <tr key={p.id}>
+                <td>
+                  <ButtonLink href={`/programs/${p.id}`} variant="ghost">
+                    {p.name}
+                  </ButtonLink>
+                  <span className="muted block text-xs">{p.code}</span>
+                </td>
+                <td>
+                  <StatusPill tone={p.functionalCategory === 'program' ? 'info' : 'muted'}>
+                    {CATEGORY_LABEL[p.functionalCategory]}
+                  </StatusPill>
+                </td>
+                <td>
+                  {p.matchClassIds
+                    .map((id) => className.get(id) ?? '(deleted class)')
+                    .join(', ') || <span className="muted">–</span>}
+                </td>
+                <td>
+                  <StatusPill tone={p.active ? 'ok' : 'muted'}>
+                    {p.active ? 'Active' : 'Inactive'}
+                  </StatusPill>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {programs.map((p) => (
-                <tr key={p.id}>
-                  <td>
-                    <Link href={`/programs/${p.id}`}>{p.code}</Link>
-                  </td>
-                  <td>{p.name}</td>
-                  <td>{CATEGORY_LABEL[p.functionalCategory]}</td>
-                  <td>
-                    {p.matchClassIds
-                      .map((id) => className.get(id) ?? '(deleted class)')
-                      .join(', ') || <span className="muted">–</span>}
-                  </td>
-                  <td>
-                    {p.active ? (
-                      <span className="pill pill-ok">Active</span>
-                    ) : (
-                      <span className="pill pill-muted">Inactive</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+            ))}
+          </tbody>
+        </DataTable>
+      )}
     </>
   );
 }

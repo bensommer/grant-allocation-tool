@@ -1,8 +1,9 @@
 import { CheckboxList, Field, FormBanner } from '@/components/form';
+import { Button, Card, DataTable, DateText, Money, NumTd, Th } from '@/components/ui';
 import { toISODate } from '@/domain/dates';
-import { formatCents } from '@/domain/money';
 import { parseMatchers } from '@/domain/matchers';
-import { pick, pickBool, pickList, type FormState } from '@/lib/forms';
+import { describeMatchers } from '@/lib/matcher-labels';
+import { decodeFormState, pick, pickBool, pickList, type FormState } from '@/lib/forms';
 import { previewRule, type PreviewResult } from '@/engine/preview';
 import { prisma } from '@/lib/db';
 import { SplitTotal } from './split-total';
@@ -40,6 +41,26 @@ type Rule = Awaited<ReturnType<typeof prisma.allocationRule.findFirst>> & {
   }>;
 };
 
+type EditorQuery = Record<string, string | string[] | undefined>;
+
+/** GET editor controls submit the entire form, including repeated matcher fields. */
+export function allocationEditorState(query: EditorQuery): FormState | null {
+  if (query.ui !== 'method' && query.ui !== 'add-target') {
+    return decodeFormState(typeof query.f === 'string' ? query.f : undefined);
+  }
+  const values: FormState['values'] = {};
+  for (const [key, value] of Object.entries(query)) {
+    if (!key.startsWith('$') && key !== 'ui' && key !== 'f' && value !== undefined) {
+      values[key] = value;
+    }
+  }
+  // Unchecked checkboxes are absent from GET submissions; do not fall back to saved matchers.
+  for (const key of ['accountIds', 'classIds', 'locationIds', 'partyIds']) {
+    values[key] ??= [];
+  }
+  return { errors: {}, values };
+}
+
 export async function RuleForm({
   action,
   state,
@@ -47,6 +68,8 @@ export async function RuleForm({
   rule,
   options,
   orgId,
+  editorPath,
+  ui,
 }: {
   action: (form: FormData) => Promise<void>;
   state: FormState | null;
@@ -54,8 +77,35 @@ export async function RuleForm({
   rule: Rule | null;
   options: Options;
   orgId: string;
+  editorPath: string;
+  ui?: string | string[];
 }) {
   const m = parseMatchers(rule?.matchers);
+  const selectedMethod = pick(state, 'method', rule?.method ?? 'fixed_pct');
+  const submittedRows = Math.max(
+    0,
+    ...Object.keys(state?.values ?? {})
+      .filter((key) => /^program_[0-5]$/.test(key))
+      .map((key) => Number(key.slice(-1)) + 1),
+  );
+  const rows = Math.min(
+    6,
+    Math.max(1, submittedRows + (ui === 'add-target' ? 1 : 0), rule?.targets.length || 0),
+  );
+  const accountNames = new Map(options.accounts.map((a) => [a.id, a.name]));
+  const programNames = new Map(options.programs.map((p) => [p.id, p.name]));
+  const budgetNames = new Map(
+    options.grants.flatMap((g) => g.budgetLines.map((b) => [b.id, b.name] as const)),
+  );
+  const summary = rule
+    ? `Splits ${describeMatchers(m, {
+        accounts: accountNames,
+        programs: programNames,
+        classes: new Map(options.classes.map((c) => [c.id, c.name])),
+        locations: new Map(options.locations.map((l) => [l.id, l.name])),
+        parties: new Map(options.parties.map((p) => [p.id, p.displayName])),
+      })}: ${rule.targets.map((t) => `${rule.method === 'fixed_pct' ? `${(t.shareBps / 100).toFixed(1)}% ` : ''}${programNames.get(t.programId ?? '') ?? budgetNames.get(t.grantBudgetLineId ?? '') ?? 'Unknown target'}`).join(', ')}`
+    : 'Choose conditions and targets to describe this split.';
   const field = (name: string, label: string, fallback = '', hint?: string) => (
     <Field name={name} label={label} error={state?.errors[name]} hint={hint}>
       <input id={name} name={name} defaultValue={pick(state, name, fallback)} />
@@ -121,171 +171,254 @@ export async function RuleForm({
       /* invalid dates are reported by the action */
     }
   }
-  const shares = Array.from({ length: 6 }, (_, i) => {
+  const shares = Array.from({ length: rows }, (_, i) => {
     const target = rule?.targets.find((t) => t.sortOrder === i);
     return pick(state, `share_${i}`, target ? (target.shareBps / 100).toFixed(2) : '');
   });
   return (
     <>
-      <form action={action} className="card">
+      <form action={action}>
         <FormBanner state={state} saved={saved} />
-        <div className="grid-form">
-          {field('name', 'Rule name', rule?.name ?? '')}
-          <Field name="method" label="Method" error={state?.errors.method}>
-            <select
-              id="method"
-              name="method"
-              defaultValue={pick(state, 'method', rule?.method ?? 'fixed_pct')}
-            >
-              <option value="fixed_pct">Fixed %</option>
-              <option value="ratio_of_driver">Driver ratio</option>
-            </select>
-          </Field>
-          <Field
-            name="driverKey"
-            label="Driver key"
-            error={state?.errors.driverKey}
-            hint="Required for driver ratio."
-          >
-            <input
-              id="driverKey"
-              name="driverKey"
-              list="driverKeys"
-              defaultValue={pick(state, 'driverKey', rule?.driverKey)}
-            />
-            <datalist id="driverKeys">
-              {options.drivers.map((d) => (
-                <option key={d.driverKey} value={d.driverKey} />
-              ))}
-            </datalist>
-          </Field>
-          {field('priority', 'Priority (lower wins)', String(rule?.priority ?? 100))}
-          {field(
-            'effectiveFrom',
-            'Effective from (YYYY-MM-DD)',
-            rule?.effectiveFrom ? toISODate(rule.effectiveFrom) : '',
-          )}
-          {field(
-            'effectiveTo',
-            'Effective to (YYYY-MM-DD)',
-            rule?.effectiveTo ? toISODate(rule.effectiveTo) : '',
-          )}
-          <Field name="active" label="Active" error={state?.errors.active}>
-            <input
-              id="active"
-              name="active"
-              type="checkbox"
-              defaultChecked={pickBool(state, 'active', rule?.active ?? true)}
-            />
-          </Field>
-        </div>
-        <h2 className="mt-5 mb-2 font-semibold">Conditions</h2>
-        {state?.errors.matchers ? <p className="field-error">{state.errors.matchers}</p> : null}
-        <div className="grid-form">
-          {check(
-            'accountIds',
-            'Accounts (expense and income)',
-            options.accounts.map((a) => ({
-              value: a.id,
-              label: `${a.number ?? ''} ${a.name}`.trim(),
-            })),
-          )}
-          {check(
-            'classIds',
-            'Classes',
-            options.classes.map((c) => ({ value: c.id, label: c.name })),
-          )}
-          {check(
-            'locationIds',
-            'Locations',
-            options.locations.map((l) => ({ value: l.id, label: l.name })),
-          )}
-          {check(
-            'partyIds',
-            'Parties',
-            options.parties.map((p) => ({ value: p.id, label: p.displayName })),
-          )}
-          {field('accountFrom', 'Account range from', m.accountRange?.from)}
-          {field('accountTo', 'Account range to', m.accountRange?.to)}
-          {field('descriptionContains', 'Description contains', m.descriptionContains)}
-          {field('dateFrom', 'Transaction date from', m.dateFrom)}
-          {field('dateTo', 'Transaction date to', m.dateTo)}
-        </div>
-        <h2 className="mt-5 mb-2 font-semibold">Split targets</h2>
-        <p className="muted">
-          Choose a program or a grant budget line for each row; leave unused rows blank. Fixed
-          shares must total 100%.
-        </p>
-        {state?.errors.targets ? <p className="field-error">{state.errors.targets}</p> : null}
-        <SplitTotal initial={shares}>
-          <div className="overflow-x-auto">
-            <table>
-              <thead>
-                <tr>
-                  <th>Program</th>
-                  <th>Grant budget line</th>
-                  <th>Share %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shares.map((share, i) => {
-                  const target = rule?.targets.find((t) => t.sortOrder === i);
-                  return (
-                    <tr key={i}>
-                      <td>
-                        <select
-                          name={`program_${i}`}
-                          aria-label={`Program ${i + 1}`}
-                          defaultValue={pick(state, `program_${i}`, target?.programId)}
-                        >
-                          <option value="">— none —</option>
-                          {options.programs.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.code} {p.name}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <select
-                          name={`budgetLine_${i}`}
-                          aria-label={`Budget line ${i + 1}`}
-                          defaultValue={pick(state, `budgetLine_${i}`, target?.grantBudgetLineId)}
-                        >
-                          <option value="">— none —</option>
-                          {options.grants.map((g) => (
-                            <optgroup key={g.id} label={g.name}>
-                              {g.budgetLines.map((b) => (
-                                <option key={b.id} value={b.id}>
-                                  {b.code} {b.name}
-                                </option>
-                              ))}
-                            </optgroup>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <input
-                          name={`share_${i}`}
-                          aria-label={`Share ${i + 1}`}
-                          inputMode="decimal"
-                          defaultValue={share}
-                        />
-                        {state?.errors[`share_${i}`] ? (
-                          <p className="field-error">{state.errors[`share_${i}`]}</p>
-                        ) : null}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <Card title="What it applies to">
+          <p className="muted">Match the transactions this rule will split.</p>
+          <p className="mb-3">{summary}</p>
+          <div className="grid-form">
+            {field('name', 'Rule name', rule?.name ?? '')}
+            {field('priority', 'Priority (lower wins)', String(rule?.priority ?? 100))}
           </div>
-        </SplitTotal>
-        <h2 className="mt-5 mb-2 font-semibold">Preview affected lines</h2>
-        <div className="grid-form">
-          {field('previewFrom', 'Preview from', '')}
-          {field('previewTo', 'Preview to', '')}
+          {state?.errors.matchers ? <p className="field-error">{state.errors.matchers}</p> : null}
+          <div className="grid-form">
+            {check(
+              'accountIds',
+              'Accounts (expense and income)',
+              options.accounts.map((a) => ({
+                value: a.id,
+                label: `${a.name} ${a.number ?? ''}`.trim(),
+              })),
+            )}
+            {check(
+              'classIds',
+              'Classes',
+              options.classes.map((c) => ({ value: c.id, label: c.name })),
+            )}
+            {check(
+              'locationIds',
+              'Locations',
+              options.locations.map((l) => ({ value: l.id, label: l.name })),
+            )}
+            <Field name="partyIds" label="Parties" error={state?.errors.partyIds}>
+              <select
+                id="partyIds"
+                name="partyIds"
+                multiple
+                defaultValue={pickList(state, 'partyIds', m.partyIds ?? [])}
+              >
+                {(['Funder', 'Vendor', 'Employee'] as const).map((kind) => (
+                  <optgroup key={kind} label={`${kind}s`}>
+                    {options.parties
+                      .filter((p) =>
+                        kind === 'Funder'
+                          ? ['customer', 'project'].includes(p.kind)
+                          : p.kind === kind.toLowerCase(),
+                      )
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.displayName}
+                        </option>
+                      ))}
+                  </optgroup>
+                ))}
+              </select>
+            </Field>
+            <div className="flex gap-2">
+              {field('accountFrom', 'Account range from', m.accountRange?.from)}
+              {field('accountTo', 'Account range to', m.accountRange?.to)}
+            </div>
+            {field('descriptionContains', 'Description contains', m.descriptionContains)}
+            {(['dateFrom', 'dateTo'] as const).map((name) => (
+              <Field
+                key={name}
+                name={name}
+                label={name === 'dateFrom' ? 'Transaction date from' : 'Transaction date to'}
+                error={state?.errors[name]}
+              >
+                <input
+                  id={name}
+                  name={name}
+                  type="date"
+                  defaultValue={pick(state, name, m[name])}
+                />
+              </Field>
+            ))}
+          </div>
+        </Card>
+        <div className="mt-4">
+          <Card title="How it splits">
+            <p className="muted">
+              Choose a program or grant budget line for each target. Fixed shares must total 100%.
+            </p>
+            <div className="mb-3 flex flex-wrap items-end gap-3">
+              <Field name="method" label="Split method" error={state?.errors.method}>
+                <select id="method" name="method" defaultValue={selectedMethod}>
+                  <option value="fixed_pct">Fixed %</option>
+                  <option value="ratio_of_driver">Driver ratio</option>
+                </select>
+              </Field>
+              <Button
+                variant="secondary"
+                formMethod="get"
+                formAction={editorPath}
+                name="ui"
+                value="method"
+              >
+                Change method
+              </Button>
+            </div>
+            {selectedMethod === 'ratio_of_driver' ? (
+              <Field name="driverKey" label="Driver key" error={state?.errors.driverKey}>
+                <input
+                  id="driverKey"
+                  name="driverKey"
+                  list="driverKeys"
+                  defaultValue={pick(state, 'driverKey', rule?.driverKey)}
+                />
+                <datalist id="driverKeys">
+                  {options.drivers.map((d) => (
+                    <option key={d.driverKey} value={d.driverKey} />
+                  ))}
+                </datalist>
+              </Field>
+            ) : null}
+            {state?.errors.targets ? <p className="field-error">{state.errors.targets}</p> : null}
+            <SplitTotal initial={selectedMethod === 'fixed_pct' ? shares : []} rows={rows}>
+              <DataTable caption="Split targets">
+                <thead>
+                  <tr>
+                    <Th>Program</Th>
+                    <Th>Grant budget line</Th>
+                    {selectedMethod === 'fixed_pct' ? <Th>Share %</Th> : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {shares.map((share, i) => {
+                    const target = rule?.targets.find((t) => t.sortOrder === i);
+                    return (
+                      <tr key={i}>
+                        <td>
+                          <select
+                            name={`program_${i}`}
+                            aria-label={`Program ${i + 1}`}
+                            defaultValue={pick(state, `program_${i}`, target?.programId)}
+                          >
+                            <option value="">— none —</option>
+                            {options.programs.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} ({p.code})
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                            name={`budgetLine_${i}`}
+                            aria-label={`Budget line ${i + 1}`}
+                            defaultValue={pick(state, `budgetLine_${i}`, target?.grantBudgetLineId)}
+                          >
+                            <option value="">— none —</option>
+                            {options.grants.map((g) => (
+                              <optgroup key={g.id} label={g.name}>
+                                {g.budgetLines.map((b) => (
+                                  <option key={b.id} value={b.id}>
+                                    {b.name} ({b.code})
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
+                        </td>
+                        {selectedMethod === 'fixed_pct' ? (
+                          <td>
+                            <input
+                              name={`share_${i}`}
+                              aria-label={`Share ${i + 1}`}
+                              inputMode="decimal"
+                              defaultValue={share}
+                            />
+                            {state?.errors[`share_${i}`] ? (
+                              <p className="field-error">{state.errors[`share_${i}`]}</p>
+                            ) : null}
+                          </td>
+                        ) : (
+                          <td hidden>
+                            <input type="hidden" name={`share_${i}`} value={share} />
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </DataTable>
+              {rows < 6 ? (
+                <Button
+                  variant="secondary"
+                  formMethod="get"
+                  formAction={editorPath}
+                  name="ui"
+                  value="add-target"
+                  data-add-target="true"
+                >
+                  Add target
+                </Button>
+              ) : null}
+            </SplitTotal>
+          </Card>
+        </div>
+        <div className="mt-4">
+          <Card title="When">
+            <p className="muted">Limit when this rule is effective, or leave dates blank.</p>
+            <div className="grid-form">
+              {(['effectiveFrom', 'effectiveTo'] as const).map((name) => (
+                <Field
+                  key={name}
+                  name={name}
+                  label={name === 'effectiveFrom' ? 'Effective from' : 'Effective to'}
+                  error={state?.errors[name]}
+                >
+                  <input
+                    id={name}
+                    name={name}
+                    type="date"
+                    defaultValue={pick(state, name, rule?.[name] ? toISODate(rule[name]) : '')}
+                  />
+                </Field>
+              ))}
+              <Field name="active" label="Active" error={state?.errors.active}>
+                <input
+                  id="active"
+                  name="active"
+                  type="checkbox"
+                  defaultChecked={pickBool(state, 'active', rule?.active ?? true)}
+                />
+              </Field>
+            </div>
+          </Card>
+        </div>
+        <div className="mt-4">
+          <Card title="Preview">
+            <p className="muted">See affected lines before saving.</p>
+            <div className="grid-form">
+              {(['previewFrom', 'previewTo'] as const).map((name) => (
+                <Field
+                  key={name}
+                  name={name}
+                  label={name === 'previewFrom' ? 'Preview from' : 'Preview to'}
+                  error={state?.errors[name]}
+                >
+                  <input id={name} name={name} type="date" defaultValue={pick(state, name, '')} />
+                </Field>
+              ))}
+            </div>
+          </Card>
         </div>
         <div className="mt-4 flex gap-2">
           <button className="btn" type="submit" name="intent" value="save">
@@ -305,7 +438,8 @@ export async function RuleForm({
       {preview ? (
         <div className="card mt-4">
           <h2 className="font-semibold">
-            Preview: {preview.count} lines · {formatCents(preview.totalCents)} this rule would split
+            Preview: {preview.count} lines · <Money cents={preview.totalCents} dollar /> this rule
+            would split
             {preview.contested > 0
               ? ` · ${preview.contested} tie with another rule at this priority`
               : ''}
@@ -313,28 +447,30 @@ export async function RuleForm({
           <p className="muted">
             First {preview.sample.length} lines; this preview does not save or recompute.
           </p>
-          <table>
+          <DataTable caption="Affected lines">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Document</th>
-                <th>Account</th>
-                <th>Description</th>
-                <th className="num">Amount</th>
+                <Th>Date</Th>
+                <Th>Document</Th>
+                <Th>Account</Th>
+                <Th>Description</Th>
+                <Th num>Amount ($)</Th>
               </tr>
             </thead>
             <tbody>
               {preview.sample.map((line) => (
                 <tr key={line.sourceLineId}>
-                  <td>{toISODate(line.txnDate)}</td>
+                  <td>
+                    <DateText date={line.txnDate} />
+                  </td>
                   <td>{line.docNumber}</td>
                   <td>{line.account}</td>
                   <td>{line.description}</td>
-                  <td className="num">{formatCents(line.amountCents)}</td>
+                  <NumTd cents={line.amountCents} />
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       ) : null}
     </>

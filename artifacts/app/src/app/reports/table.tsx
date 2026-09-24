@@ -1,85 +1,129 @@
-import { dimensionLabels } from '@/reports/params';
 import Link from 'next/link';
-import { formatCents } from '@/domain/money';
-import { cellId, pivot } from '@/reports/pivot';
-import type { ReportParams } from '@/reports/params';
-import type { Fact } from '@/reports/query';
+import { Card, DataTable, Money, NumTd, Th, TotalRow } from '@/components/ui';
+import { formatPct1 } from '@/domain/money';
+import { dimensionLabels } from '@/reports/params';
+import { cellId } from '@/reports/pivot';
+import { reportView } from '@/reports/view';
+import type { ReportParams, Dimension } from '@/reports/params';
+import type { Fact, ReportBudgetLine } from '@/reports/query';
 
 export function ReportTable({
   facts,
   params,
+  budgets = [],
   query,
   pageKey,
   links = true,
+  columns,
+  mapped = false,
 }: {
   facts: Fact[];
   params: ReportParams;
+  budgets?: ReportBudgetLine[];
   query: string;
   pageKey?: string;
   links?: boolean;
+  columns?: string[];
+  mapped?: boolean;
 }) {
-  const data = pivot(facts, {
-    rows: params.rows,
-    cols: params.cols,
-    page: params.page,
-    pageKey,
-    zeros: params.zeros,
-  });
+  const view = reportView(facts, params, budgets, pageKey, mapped, columns);
+  const label = (dim: Dimension, key: string) => {
+    const item = view.label(dim, key);
+    return (
+      <>
+        {item.name}
+        {item.code && item.code !== item.name ? (
+          <small className="muted"> · {item.code}</small>
+        ) : null}
+      </>
+    );
+  };
   const href = (r: string, c: string) =>
     `/reports/lines?${query}&rowKey=${encodeURIComponent(r)}&colKey=${encodeURIComponent(c)}${pageKey === undefined ? '' : `&pageKey=${encodeURIComponent(pageKey)}`}`;
   return (
-    <div className="card">
-      {pageKey !== undefined ? (
-        <h2>
-          {dimensionLabels[params.page!]}: {pageKey}
-        </h2>
-      ) : null}
-      <table>
+    <Card
+      title={
+        pageKey !== undefined ? (
+          <>
+            {dimensionLabels[params.page!]}: {label(params.page!, pageKey)}
+          </>
+        ) : undefined
+      }
+    >
+      <DataTable
+        caption={`${dimensionLabels[params.rows]} by ${dimensionLabels[params.cols]}`}
+        stickyFirstColumn
+      >
         <thead>
           <tr>
-            <th>
+            <Th>
               {dimensionLabels[params.rows]} / {dimensionLabels[params.cols]}
-            </th>
-            {data.colKeys.map((c) => (
-              <th className="num" key={c}>
-                {c}
-              </th>
+            </Th>
+            {view.cols.map((c) => (
+              <Th num key={c}>
+                {label(params.cols, c)} ($)
+              </Th>
             ))}
-            <th className="num">Total</th>
+            <Th num>Total ($)</Th>
+            {view.showBudget && (
+              <>
+                <Th num>Budget ($)</Th>
+                <Th num>Remaining ($)</Th>
+                <Th num>Used (%)</Th>
+              </>
+            )}
           </tr>
         </thead>
         <tbody>
-          {data.rowKeys.map((r) => (
-            <tr key={r}>
-              <th>{r}</th>
-              {data.colKeys.map((c) => {
-                const n = data.cells.get(cellId(r, c)) ?? 0;
-                return (
-                  <td className="num" key={c}>
-                    {links && n !== 0 ? (
-                      <Link href={href(r, c)}>{formatCents(n)}</Link>
-                    ) : (
-                      formatCents(n)
-                    )}
-                  </td>
-                );
-              })}
-              <td className="num">{formatCents(data.rowTotals.get(r) ?? 0)}</td>
-            </tr>
-          ))}
+          {view.rows.map((r) => {
+            const actual = view.actualFor(r);
+            const budget = view.budgetFor(r);
+            return (
+              <tr key={r}>
+                <Th scope="row">{label(params.rows, r)}</Th>
+                {view.cols.map((c) => {
+                  const n = view.data.cells.get(cellId(r, c)) ?? 0;
+                  return (
+                    <td className="num" data-cents={n} key={c}>
+                      {links && n !== 0 ? (
+                        <Link href={href(r, c)}>
+                          <Money cents={n} />
+                        </Link>
+                      ) : (
+                        <Money cents={n} />
+                      )}
+                    </td>
+                  );
+                })}
+                <NumTd cents={actual} />
+                {view.showBudget && (
+                  <>
+                    <NumTd cents={budget} />
+                    <NumTd cents={budget - actual} />
+                    <NumTd>{formatPct1(actual, budget)}</NumTd>
+                  </>
+                )}
+              </tr>
+            );
+          })}
         </tbody>
         <tfoot>
-          <tr>
-            <th>Total</th>
-            {data.colKeys.map((c) => (
-              <td className="num" key={c}>
-                {formatCents(data.colTotals.get(c) ?? 0)}
-              </td>
+          <TotalRow>
+            <Th scope="row">Total</Th>
+            {view.cols.map((c) => (
+              <NumTd key={c} cents={view.columnTotal(c)} dollar />
             ))}
-            <td className="num">{formatCents(data.grandTotal)}</td>
-          </tr>
+            <NumTd cents={view.actualTotal} dollar />
+            {view.showBudget && (
+              <>
+                <NumTd cents={view.budgetTotal} dollar />
+                <NumTd cents={view.budgetTotal - view.actualTotal} dollar />
+                <NumTd>{formatPct1(view.actualTotal, view.budgetTotal)}</NumTd>
+              </>
+            )}
+          </TotalRow>
         </tfoot>
-      </table>
-    </div>
+      </DataTable>
+    </Card>
   );
 }

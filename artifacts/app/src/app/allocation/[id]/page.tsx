@@ -1,11 +1,9 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { PageHeader } from '@/components/page-header';
+import { Banner, ButtonLink, DangerZone, PageHeader } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
-import { decodeFormState } from '@/lib/forms';
-import { deleteAllocationAction, updateAllocationAction } from '../actions';
-import { RuleForm, ruleOptions } from '../rule-form';
+import { updateAllocationAction } from '../actions';
+import { allocationEditorState, RuleForm, ruleOptions } from '../rule-form';
 
 export const dynamic = 'force-dynamic';
 export default async function EditAllocationPage({
@@ -13,10 +11,11 @@ export default async function EditAllocationPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ f?: string; saved?: string; deactivated?: string; preview?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await params;
-  const { f, saved, deactivated } = await searchParams;
+  const query = await searchParams;
+  const { saved, deactivated } = query;
   const orgId = await getOrgId();
   const rule = await prisma.allocationRule.findFirst({
     where: { id, orgId },
@@ -27,30 +26,32 @@ export default async function EditAllocationPage({
     <>
       <PageHeader
         title={rule.name}
-        actions={
-          <>
-            <Link href="/allocation" className="btn btn-secondary btn-sm">
-              All rules
-            </Link>
-            <form action={deleteAllocationAction.bind(null, id)}>
-              <button className="btn btn-danger btn-sm">Delete / deactivate</button>
-            </form>
-          </>
+        secondaryActions={
+          <ButtonLink href="/allocation" variant="secondary">
+            All rules
+          </ButtonLink>
         }
       />
       {deactivated ? (
-        <div className="banner banner-warn">
+        <Banner tone="warn">
           This rule appears in a compute run, so it was deactivated rather than deleted.
-        </div>
+        </Banner>
       ) : null}
       <RuleForm
         action={updateAllocationAction.bind(null, id)}
         rule={rule}
-        state={decodeFormState(f)}
+        state={allocationEditorState(query)}
         saved={!!saved}
         options={await ruleOptions(orgId)}
         orgId={orgId}
+        editorPath={`/allocation/${id}`}
+        ui={query.ui}
       />
+      <DangerZone>
+        <ButtonLink href={`/allocation/${id}/delete`} variant="danger">
+          Delete / deactivate…
+        </ButtonLink>
+      </DangerZone>
     </>
   );
 }

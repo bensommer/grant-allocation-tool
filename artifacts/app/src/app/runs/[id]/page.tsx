@@ -1,9 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { PageHeader } from '@/components/page-header';
+import { DataTable, DateText, PageHeader, StatusPill } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
-import { RunStatusPill } from '../status-pill';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,8 +34,12 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
     <>
       <PageHeader
         title={`Run ${id.slice(-8)}`}
-        subtitle={`Started ${run.startedAt.toISOString().replace('T', ' ').slice(0, 19)} UTC · config ${run.configHash}`}
-        actions={
+        subtitle={
+          <>
+            Started <DateText date={run.startedAt} time /> · config {run.configHash}
+          </>
+        }
+        secondaryActions={
           <Link href="/runs" className="btn btn-secondary btn-sm">
             All runs
           </Link>
@@ -44,11 +47,15 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
       />
       <div className="card mb-4">
         <p>
-          <RunStatusPill status={run.status} />{' '}
-          {run.isCurrent ? <span className="pill pill-ok">current</span> : null}{' '}
-          {run.stale ? <span className="pill pill-warn">stale</span> : null}
+          <StatusPill
+            tone={run.status === 'succeeded' ? 'ok' : run.status === 'failed' ? 'bad' : 'muted'}
+          >
+            {run.status.charAt(0).toUpperCase() + run.status.slice(1)}
+          </StatusPill>{' '}
+          {run.isCurrent ? <StatusPill tone="ok">current</StatusPill> : null}{' '}
+          {run.stale ? <StatusPill tone="warn">stale</StatusPill> : null}
         </p>
-        <table className="mt-3">
+        <DataTable caption="Run checks">
           <tbody>
             {checks.map((c) => (
               <tr key={c.name}>
@@ -56,16 +63,14 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
                   {c.href ? <Link href={c.href}>{c.name.replaceAll('_', ' ')}</Link> : c.name}
                 </th>
                 <td>
-                  <span
-                    className={`pill ${c.status === 'warn' ? 'pill-warn' : c.ok ? 'pill-ok' : 'pill-bad'}`}
-                  >
+                  <StatusPill tone={c.status === 'warn' ? 'warn' : c.ok ? 'ok' : 'bad'}>
                     {c.status ?? (c.ok ? 'pass' : 'fail')}
-                  </span>
+                  </StatusPill>
                 </td>
                 <td>
-                  <code className="text-xs">
+                  <span className="text-xs break-words">
                     {typeof c.detail === 'string' ? c.detail : JSON.stringify(c.detail)}
-                  </code>
+                  </span>
                 </td>
               </tr>
             ))}
@@ -80,7 +85,7 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
               </td>
             </tr>
           </tbody>
-        </table>
+        </DataTable>
       </div>
 
       {others.length > 0 && run.status !== 'failed' ? (
@@ -92,8 +97,12 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
               <select id="against" name="against">
                 {others.map((o) => (
                   <option key={o.id} value={o.id}>
-                    {o.startedAt.toISOString().replace('T', ' ').slice(0, 19)} · {o.status} ·{' '}
-                    {o.configHash}
+                    {o.startedAt.toLocaleString('en-US', {
+                      timeZone: 'UTC',
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })}{' '}
+                    · {o.status} · {o.configHash}
                   </option>
                 ))}
               </select>
@@ -114,7 +123,7 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
             <p className="muted mb-2 text-xs">
               {[...byCode.entries()].map(([code, n]) => `${code}: ${n}`).join(' · ')}
             </p>
-            <table>
+            <DataTable caption="Run warnings">
               <thead>
                 <tr>
                   <th>Code</th>
@@ -126,11 +135,9 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
                 {warnings.slice(0, 500).map((w, i) => (
                   <tr key={i}>
                     <td>
-                      <span
-                        className={`pill ${w.code.includes('conflict') ? 'pill-bad' : 'pill-warn'}`}
-                      >
+                      <StatusPill tone={w.code.includes('conflict') ? 'bad' : 'warn'}>
                         {w.code}
-                      </span>
+                      </StatusPill>
                     </td>
                     <td>{w.message}</td>
                     <td>
@@ -139,7 +146,7 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </>
         )}
       </div>

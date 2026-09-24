@@ -131,8 +131,8 @@ into contributing pieces and source lines. Download CSV, formula-backed XLSX
 (with Detail and Parameters sheets), or landscape Letter PDF from the report.
 Totals use integer cents until export. Reports use the current ComputeRun unless
 `run` pins an org-owned run; stale configuration is flagged in the header.
-PDF export requires Chromium; on Replit set
-`PLAYWRIGHT_CHROMIUM_PATH=/repl/tools/bin/chromium`.
+PDF exports use pdfkit and built-in Helvetica fonts. They render directly from report
+data without Chromium, a loopback request, or an external rendering service.
 
 ## Budget vs actual (JPH-12)
 

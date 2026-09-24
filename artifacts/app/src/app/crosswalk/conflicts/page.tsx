@@ -1,7 +1,14 @@
 import Link from 'next/link';
-import { PageHeader } from '@/components/page-header';
-import { formatDate } from '@/domain/dates';
-import { formatCents } from '@/domain/money';
+import {
+  Banner,
+  ButtonLink,
+  DataTable,
+  DateText,
+  EmptyState,
+  NumTd,
+  PageHeader,
+  Th,
+} from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { currentPieces } from '../pieces';
@@ -22,26 +29,28 @@ export default async function ConflictsPage() {
     <>
       <PageHeader
         title="Crosswalk conflicts"
-        actions={
-          <Link href="/crosswalk" className="btn btn-secondary btn-sm">
+        secondaryActions={
+          <ButtonLink href="/crosswalk" variant="secondary">
             All rules
-          </Link>
+          </ButtonLink>
         }
       />
       {!run ? (
-        <div className="banner banner-warn">
+        <Banner tone="warn">
           No current run — recompute on <Link href="/runs">/runs</Link>.
-        </div>
+        </Banner>
       ) : !conflicts.length ? (
-        <div className="card muted">No conflicts.</div>
+        <EmptyState title="No conflicts" />
       ) : (
         <div className="card">
-          <table>
+          <DataTable caption="Conflicting lines">
             <thead>
               <tr>
                 {['Date', 'Doc', 'Account', 'Program', 'Amount', 'Competing rules', 'Source'].map(
                   (h) => (
-                    <th key={h}>{h}</th>
+                    <Th key={h} num={h === 'Amount'}>
+                      {h === 'Amount' ? 'Amount ($)' : h}
+                    </Th>
                   ),
                 )}
               </tr>
@@ -49,13 +58,16 @@ export default async function ConflictsPage() {
             <tbody>
               {conflicts.map((p) => (
                 <tr key={p.id}>
-                  <td>{formatDate(p.sourceLine.transaction.txnDate)}</td>
+                  <td>
+                    <DateText date={p.sourceLine.transaction.txnDate} />
+                  </td>
                   <td>{p.sourceLine.transaction.docNumber}</td>
                   <td>
-                    {p.sourceLine.account.number} {p.sourceLine.account.name}
+                    {p.sourceLine.account.name}
+                    <span className="muted block text-xs">{p.sourceLine.account.number}</span>
                   </td>
-                  <td>{p.program?.code ?? '—'}</td>
-                  <td className="num">{formatCents(p.amountCents)}</td>
+                  <td>{p.program?.name ?? '—'}</td>
+                  <NumTd cents={p.amountCents} />
                   <td>
                     {p.conflictRuleIds.map((id, i) => (
                       <span key={id}>
@@ -70,7 +82,7 @@ export default async function ConflictsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
     </>

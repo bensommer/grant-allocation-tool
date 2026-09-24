@@ -2,6 +2,10 @@ import { prisma } from '@/lib/db';
 import type { Dimension, ReportParams } from './params';
 
 export type Fact = Record<Dimension, string> & {
+  labels?: Partial<Record<Dimension, string>>;
+  secondary?: Partial<Record<Dimension, string>>;
+  budgetSortOrder?: number;
+  budgetCents?: number;
   sourceLineId: string;
   pieceId: string;
   amountCents: number;
@@ -10,6 +14,15 @@ export type Fact = Record<Dimension, string> & {
   description: string;
   vendor: string;
   status: string;
+};
+export type ReportBudgetLine = {
+  grantKey: string;
+  grantName: string;
+  grantAward: string | null;
+  code: string;
+  name: string;
+  sortOrder: number;
+  budgetCents: number;
 };
 export async function loadReport(orgId: string, p: ReportParams) {
   const startedAt = performance.now();
@@ -23,7 +36,28 @@ export async function loadReport(orgId: string, p: ReportParams) {
       },
     }),
   ]);
-  if (!run) return { org, run: null, facts: [] as Fact[] };
+  const budgetRows = await prisma.grantBudgetLine.findMany({
+    where: {
+      orgId,
+      grant: {
+        orgId,
+        ...(p.grant.length ? { id: { in: p.grant } } : {}),
+        ...(p.restricted ? { restrictionType: { not: 'unrestricted' } } : {}),
+      },
+    },
+    include: { grant: { select: { name: true, awardNumber: true } } },
+    orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }],
+  });
+  const budgets: ReportBudgetLine[] = budgetRows.map((line) => ({
+    grantKey: line.grant.awardNumber ?? line.grant.name,
+    grantName: line.grant.name,
+    grantAward: line.grant.awardNumber,
+    code: line.code,
+    name: line.name,
+    sortOrder: line.sortOrder,
+    budgetCents: line.budgetCents,
+  }));
+  if (!run) return { org, run: null, facts: [] as Fact[], budgets };
   const lines = await prisma.allocatedLine.findMany({
     where: {
       orgId,
@@ -83,7 +117,22 @@ export async function loadReport(orgId: string, p: ReportParams) {
       grant: l.grant?.awardNumber ?? l.grant?.name ?? 'Unmapped',
       grantBudgetLine: l.grantBudgetLine?.code ?? 'Unmapped',
       program: l.program?.code ?? 'Unassigned',
+      labels: {
+        grant: l.grant?.name ?? 'Unmapped',
+        grantBudgetLine: l.grantBudgetLine?.name ?? 'Unmapped',
+        program: l.program?.name ?? 'Unassigned',
+        glAccount: l.sourceLine.account.name,
+      },
+      secondary: {
+        grant: l.grant?.awardNumber ?? '',
+        grantBudgetLine: l.grantBudgetLine?.code ?? '',
+        program: l.program?.code ?? '',
+        glAccount: l.sourceLine.account.number ?? '',
+      },
+      budgetSortOrder: l.grantBudgetLine?.sortOrder,
+      budgetCents: l.grantBudgetLine?.budgetCents,
       functionalCategory: l.program?.functionalCategory ?? 'Unassigned',
+      // Stable key (number + name); the display name/number live in labels/secondary.
       glAccount: `${l.sourceLine.account.number ?? ''} ${l.sourceLine.account.name}`.trim(),
       glAccountType: l.sourceLine.account.type,
       class: l.sourceLine.class?.name ?? 'Unassigned',
@@ -94,5 +143,5 @@ export async function loadReport(orgId: string, p: ReportParams) {
   console.info(
     `Report query ${org.name}: ${facts.length} pieces in ${Math.round(performance.now() - startedAt)}ms`,
   );
-  return { org, run, facts };
+  return { org, run, facts, budgets };
 }

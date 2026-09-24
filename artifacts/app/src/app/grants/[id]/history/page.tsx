@@ -38,32 +38,34 @@ export default async function GrantHistoryPage({ params }: { params: Promise<{ i
         {events.length === 0 ? (
           <p className="muted">No changes recorded.</p>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Actor</th>
-                <th>Entity</th>
-                <th>Action</th>
-                <th>Changes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {events.map((e) => (
-                <tr key={e.id}>
-                  <td className="whitespace-nowrap">
-                    {e.at.toISOString().replace('T', ' ').slice(0, 19)}
-                  </td>
-                  <td>{e.actor}</td>
-                  <td>{e.entity}</td>
-                  <td>{e.action}</td>
-                  <td>
-                    <AuditDiff before={e.before} after={e.after} />
-                  </td>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Actor</th>
+                  <th>Entity</th>
+                  <th>Action</th>
+                  <th>Changes</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {events.map((e) => (
+                  <tr key={e.id}>
+                    <td className="whitespace-nowrap">
+                      {e.at.toISOString().replace('T', ' ').slice(0, 19)}
+                    </td>
+                    <td>{e.actor}</td>
+                    <td>{e.entity}</td>
+                    <td>{e.action}</td>
+                    <td>
+                      <AuditDiff before={e.before} after={e.after} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </>

@@ -1,5 +1,6 @@
 import type { Matchers } from '@/domain/matchers';
 import { prisma } from '@/lib/db';
+import { formatDate } from '@/domain/format';
 
 export interface LabelMaps {
   programs: Map<string, string>;
@@ -19,8 +20,8 @@ export async function loadLabelMaps(orgId: string): Promise<LabelMaps> {
     prisma.party.findMany({ where: { orgId }, select: { id: true, displayName: true } }),
   ]);
   return {
-    programs: new Map(programs.map((p) => [p.id, `${p.code} ${p.name}`])),
-    accounts: new Map(accounts.map((a) => [a.id, a.number ? `${a.number} ${a.name}` : a.name])),
+    programs: new Map(programs.map((p) => [p.id, p.name])),
+    accounts: new Map(accounts.map((a) => [a.id, a.name])),
     classes: new Map(classes.map((c) => [c.id, c.name])),
     locations: new Map(locations.map((l) => [l.id, l.name])),
     parties: new Map(parties.map((p) => [p.id, p.displayName])),
@@ -41,9 +42,14 @@ export function describeMatchers(m: Matchers, labels: LabelMaps): string {
   if (m.locationIds?.length) parts.push(`location is ${orList(m.locationIds, labels.locations)}`);
   if (m.partyIds?.length) parts.push(`party is ${orList(m.partyIds, labels.parties)}`);
   if (m.descriptionContains) parts.push(`description contains "${m.descriptionContains}"`);
-  if (m.dateFrom && m.dateTo) parts.push(`date is ${m.dateFrom} to ${m.dateTo}`);
-  else if (m.dateFrom) parts.push(`date is on or after ${m.dateFrom}`);
-  else if (m.dateTo) parts.push(`date is on or before ${m.dateTo}`);
+  if (m.dateFrom && m.dateTo)
+    parts.push(
+      `date is ${formatDate(new Date(`${m.dateFrom}T00:00:00Z`))} to ${formatDate(new Date(`${m.dateTo}T00:00:00Z`))}`,
+    );
+  else if (m.dateFrom)
+    parts.push(`date is on or after ${formatDate(new Date(`${m.dateFrom}T00:00:00Z`))}`);
+  else if (m.dateTo)
+    parts.push(`date is on or before ${formatDate(new Date(`${m.dateTo}T00:00:00Z`))}`);
   if (parts.length === 0) return 'every line (no conditions)';
   const s = parts.join(' AND ');
   return s.charAt(0).toUpperCase() + s.slice(1);

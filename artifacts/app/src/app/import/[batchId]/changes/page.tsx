@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { PageHeader } from '@/components/page-header';
+import { PageHeader, StatusPill } from '@/components/ui';
 import { AuditDiff } from '@/components/audit-diff';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
@@ -39,7 +39,7 @@ export default async function ChangesPage({ params }: { params: Promise<{ batchI
       <PageHeader
         title="Changed and deleted transactions"
         subtitle={`Import ${batch.id}`}
-        actions={
+        secondaryActions={
           <Link href={`/import/${batch.id}`} className="btn btn-secondary">
             Import details
           </Link>
@@ -83,9 +83,9 @@ export default async function ChangesPage({ params }: { params: Promise<{ batchI
             <div className="mb-4" key={version.id}>
               <h2>
                 {version.externalId}{' '}
-                <span className={`pill ${deleted ? 'pill-warn' : 'pill-ok'}`}>
+                <StatusPill tone={deleted ? 'warn' : 'ok'}>
                   {deleted ? 'deleted' : 'changed'}
-                </span>
+                </StatusPill>
               </h2>
               <AuditDiff before={beforeHeader} after={deleted ? null : afterHeader} />
               {lineNumbers.map((lineNumber) => (

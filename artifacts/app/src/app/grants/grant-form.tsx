@@ -64,25 +64,27 @@ export function GrantForm({
           <input id="name" name="name" required defaultValue={pick(state, 'name', grant?.name)} />
         </Field>
         <Field
-          label="Funder (imported customer)"
+          label="Funder"
           name="funderPartyId"
-          error={state?.errors['funderPartyId']}
-          hint="Or type a funder name below."
+          error={state?.errors['funderPartyId'] ?? state?.errors['funder']}
+          hint="Choose an imported funder or enter a new funder name. The selected imported funder wins if both are filled."
+          className="md:col-span-2"
         >
           <select
             id="funderPartyId"
             name="funderPartyId"
             defaultValue={pick(state, 'funderPartyId', grant?.funderPartyId)}
           >
-            <option value="">— free text —</option>
+            <option value="">Choose a funder or enter a name below</option>
             {customers.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.displayName}
               </option>
             ))}
           </select>
-        </Field>
-        <Field label="Funder name (free text)" name="funderText" error={state?.errors['funder']}>
+          <label htmlFor="funderText" className="mt-3 block">
+            or enter a new funder name
+          </label>
           <input
             id="funderText"
             name="funderText"
@@ -169,36 +171,50 @@ export function GrantForm({
           hint="Optional planned share (%) per program."
           className="md:col-span-2"
         >
-          <div className="flex flex-col gap-1 rounded border border-line bg-white p-2">
+          <div className="overflow-x-auto rounded border border-line bg-white p-2">
             {programs.length === 0 ? (
               <p className="muted text-xs">No programs defined yet.</p>
             ) : null}
-            {programs.map((p) => (
-              <div key={p.id} className="flex items-center gap-2">
-                <label className="flex items-center gap-2 text-sm font-normal normal-case text-ink">
-                  <input
-                    type="checkbox"
-                    name="programIds"
-                    value={p.id}
-                    defaultChecked={selectedPrograms.includes(p.id)}
-                  />
-                  <span>
-                    {p.code} · {p.name}
-                  </span>
-                </label>
-                <input
-                  name={`plannedShare_${p.id}`}
-                  aria-label={`Planned share for ${p.code}`}
-                  className="!w-20"
-                  placeholder="%"
-                  inputMode="decimal"
-                  defaultValue={shareFor(p.id)}
-                />
-                {state?.errors[`plannedShare_${p.id}`] ? (
-                  <span className="field-error">{state.errors[`plannedShare_${p.id}`]}</span>
-                ) : null}
-              </div>
-            ))}
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Program</th>
+                  <th scope="col">Planned share (%)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {programs.map((p) => (
+                  <tr key={p.id}>
+                    <td>
+                      <label className="flex items-center gap-2 text-sm font-normal normal-case text-ink">
+                        <input
+                          type="checkbox"
+                          name="programIds"
+                          value={p.id}
+                          defaultChecked={selectedPrograms.includes(p.id)}
+                        />
+                        <span>
+                          {p.name} <span className="muted text-xs">{p.code}</span>
+                        </span>
+                      </label>
+                    </td>
+                    <td>
+                      <input
+                        name={`plannedShare_${p.id}`}
+                        aria-label={`Planned share for ${p.name}`}
+                        className="!w-20"
+                        placeholder="%"
+                        inputMode="decimal"
+                        defaultValue={shareFor(p.id)}
+                      />
+                      {state?.errors[`plannedShare_${p.id}`] ? (
+                        <span className="field-error">{state.errors[`plannedShare_${p.id}`]}</span>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </Field>
         <Field

@@ -1,4 +1,16 @@
 import { expect, test } from '@playwright/test';
+import { prisma } from '../src/lib/db';
+
+test.afterEach(async () => {
+  await prisma.crosswalkRule.deleteMany({
+    where: {
+      OR: [
+        { name: { startsWith: 'Test crosswalk ' } },
+        { name: { startsWith: 'No JS crosswalk ' } },
+      ],
+    },
+  });
+});
 
 test('create a rule and inspect the matrix', async ({ page }) => {
   await page.goto('/crosswalk/new');
@@ -10,8 +22,8 @@ test('create a rule and inspect the matrix', async ({ page }) => {
   await page.goto('/crosswalk');
   await expect(page.getByText(/Test crosswalk/).first()).toBeVisible();
   await page.goto('/crosswalk/matrix');
-  await expect(page.locator('tr').filter({ hasText: '6010' }).first()).toContainText('PERS');
-  await expect(page.locator('tr').filter({ hasText: '6210' }).first()).toContainText('unmapped');
+  await expect(page.locator('tr').filter({ hasText: '6010' }).first()).toContainText('Mapped');
+  await expect(page.locator('tr').filter({ hasText: '6210' }).first()).toContainText('Unmapped');
 });
 
 test.describe('JavaScript disabled', () => {

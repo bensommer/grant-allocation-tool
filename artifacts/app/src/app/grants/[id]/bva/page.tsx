@@ -1,9 +1,30 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { PageHeader } from '@/components/page-header';
-import { formatCents, formatPct1 } from '@/domain/money';
+import {
+  Banner,
+  ButtonLink,
+  Card,
+  DataTable,
+  DateText,
+  FilterBar,
+  KeyFigure,
+  LinkCell,
+  Money,
+  Month,
+  NumTd,
+  PageHeader,
+  ProgressBar,
+  Th,
+  Td,
+  Toolbar,
+  TotalRow,
+} from '@/components/ui';
+import { GrantPaceStatus } from '@/components/grant-pace-status';
+import { type YearMonth } from '@/domain/format';
 import { getOrgId } from '@/lib/org';
-import { bvaData, reportDate } from '@/services/bva';
+import { bvaData, defaultReportDate } from '@/services/bva';
+import { GrantTabs } from '../tabs';
+import { grantMonths } from './months';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,26 +33,17 @@ export default async function BvaPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ asOf?: string }>;
+  searchParams: Promise<{ asOf?: string; months?: string }>;
 }) {
   const { id } = await params;
-  const { date, label } = reportDate((await searchParams).asOf);
+  const query = await searchParams;
+  const { date, label } = await defaultReportDate(await getOrgId(), query.asOf);
   const { run, grants } = await bvaData(await getOrgId(), date, id);
   const grant = grants[0];
   if (!grant) notFound();
-  const months: string[] = [];
-  const end = date < grant.endDate ? date : grant.endDate;
-  for (
-    let year = grant.startDate.getUTCFullYear(), month = grant.startDate.getUTCMonth();
-    year * 12 + month <= end.getUTCFullYear() * 12 + end.getUTCMonth();
-    month++
-  ) {
-    if (month === 12) {
-      year++;
-      month = 0;
-    }
-    months.push(`${year}-${String(month + 1).padStart(2, '0')}`);
-  }
+  const all = query.months === 'all';
+  const months = grantMonths(grant.startDate, grant.endDate, date, all) as YearMonth[];
+  const future = (month: string) => month > label.slice(0, 7);
   const drill = (lineCode: string, month?: string) => {
     const q = new URLSearchParams({
       run: run?.id ?? '',
@@ -51,113 +63,145 @@ export default async function BvaPage({
     <>
       <PageHeader
         title={`${grant.name} · Budget vs actual`}
-        subtitle={`As of ${label} · Current run: ${run ? (run.finishedAt ?? run.startedAt).toISOString().replace('T', ' ').slice(0, 19) + ' UTC' : 'none'}`}
-        actions={
+        subtitle={
           <>
-            <Link href={`/grants/${id}`} className="btn btn-secondary btn-sm">
-              ← Grant details
-            </Link>
-            <Link href={`/grants/${id}/bva/csv?asOf=${label}`} className="btn btn-secondary btn-sm">
-              CSV
-            </Link>
-            <Link
-              href={`/grants/${id}/bva/xlsx?asOf=${label}`}
-              className="btn btn-secondary btn-sm"
-            >
-              XLSX
-            </Link>
-            <Link href={`/grants/${id}/bva/pdf?asOf=${label}`} className="btn btn-secondary btn-sm">
-              PDF
-            </Link>
+            As of <DateText date={date} /> · Current run:{' '}
+            {run ? <DateText date={run.finishedAt ?? run.startedAt} time /> : 'none'}
           </>
         }
       />
+      <GrantTabs id={id} active="bva" />
       {run?.stale && (
-        <div className="banner banner-warn">
+        <Banner tone="warn">
           Configuration changed since the current run. Reports show numbers from{' '}
-          {(run.finishedAt ?? run.startedAt).toISOString().replace('T', ' ').slice(0, 19)} UTC until
-          you recompute.
-        </div>
+          <DateText date={run.finishedAt ?? run.startedAt} time /> until you recompute.
+        </Banner>
       )}
       {!run && (
-        <div className="banner banner-warn">
-          No current run — recompute on <Link href="/runs">/runs</Link>.
-        </div>
+        <Banner tone="warn">
+          No current run — recompute on <Link href="/runs">Compute runs</Link>.
+        </Banner>
       )}
-      <form method="get" className="mb-4">
-        <label>
-          As of <input name="asOf" type="date" defaultValue={label} />
-        </label>{' '}
-        <button className="btn btn-secondary">Apply</button>
-      </form>
-      <div className="card overflow-x-auto">
-        <table>
-          <thead>
-            <tr>
-              <th>Budget line</th>
-              <th className="num">Budget</th>
-              <th className="num">Actual</th>
-              <th className="num">Remaining</th>
-              <th className="num">% used</th>
-              {months.map((m) => (
-                <th className="num" key={m}>
-                  {m}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {grant.rows.map((r) => (
-              <tr key={r.id}>
-                <td>
-                  {r.code} · {r.name}{' '}
-                  {r.overBudget && <span className="pill pill-bad">Over budget</span>}
-                </td>
-                <td className="num">{formatCents(r.budgetCents)}</td>
-                <td className="num">
-                  <Link href={drill(r.code)}>{formatCents(r.actual)}</Link>
-                </td>
-                <td className="num">{formatCents(r.remaining)}</td>
-                <td className="num">{formatPct1(r.actual, r.budgetCents)}</td>
-                {months.map((m) => (
-                  <td className="num" key={m}>
-                    <Link href={drill(r.code, m)}>{formatCents(r.monthly[m] ?? 0)}</Link>
-                  </td>
-                ))}
-              </tr>
+      <FilterBar>
+        <label htmlFor="bva-as-of">As of</label>
+        <input id="bva-as-of" name="asOf" type="date" defaultValue={label} />
+        {all && <input type="hidden" name="months" value="all" />}
+      </FilterBar>
+      <Toolbar>
+        <ButtonLink variant="secondary" size="sm" href={`/grants/${id}/bva/csv?asOf=${label}`}>
+          CSV
+        </ButtonLink>
+        <ButtonLink variant="secondary" size="sm" href={`/grants/${id}/bva/xlsx?asOf=${label}`}>
+          XLSX
+        </ButtonLink>
+        <ButtonLink variant="secondary" size="sm" href={`/grants/${id}/bva/pdf?asOf=${label}`}>
+          PDF
+        </ButtonLink>
+        <ButtonLink
+          variant="secondary"
+          size="sm"
+          href={`/grants/${id}/bva?asOf=${label}${all ? '' : '&months=all'}`}
+        >
+          {all ? 'Hide future months' : 'Show all months'}
+        </ButtonLink>
+      </Toolbar>
+      <DataTable caption="Budget vs actual by budget line and month" stickyFirstColumn>
+        <thead>
+          <tr>
+            <Th>Budget line</Th>
+            <Th num>Budget ($)</Th>
+            <Th num>Actual ($)</Th>
+            <Th num>Remaining ($)</Th>
+            <Th num>Used</Th>
+            {months.map((m) => (
+              <Th num className="whitespace-nowrap" key={m}>
+                <Month ym={m} context={months} />
+              </Th>
             ))}
-            <tr>
-              <th>Total</th>
-              <th className="num">{formatCents(grant.budget)}</th>
-              <th className="num">{formatCents(grant.actual)}</th>
-              <th className="num">{formatCents(grant.remaining)}</th>
-              <th className="num">{formatPct1(grant.actual, grant.budget)}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {grant.rows.map((r) => (
+            <tr key={r.id}>
+              <Td>
+                {r.name}
+                <span className="muted block text-sm">{r.code}</span>
+              </Td>
+              <NumTd cents={r.budgetCents} />
+              <NumTd>
+                <LinkCell href={drill(r.code)}>
+                  <Money cents={r.actual} />
+                </LinkCell>
+              </NumTd>
+              <NumTd cents={r.remaining} />
+              <NumTd>
+                <ProgressBar
+                  used={r.actual}
+                  budget={r.budgetCents}
+                  label={`${r.name} budget used`}
+                />
+              </NumTd>
               {months.map((m) => (
-                <th className="num" key={m}>
-                  {formatCents(grant.rows.reduce((n, r) => n + (r.monthly[m] ?? 0), 0))}
-                </th>
+                <NumTd key={m}>
+                  {future(m) ? (
+                    <span>—</span>
+                  ) : (
+                    <LinkCell href={drill(r.code, m)}>
+                      <Money cents={r.monthly[m] ?? 0} />
+                    </LinkCell>
+                  )}
+                </NumTd>
               ))}
             </tr>
-          </tbody>
-        </table>
-      </div>
-      <div className="card mt-4">
-        <h2>Pacing</h2>
+          ))}
+          <TotalRow>
+            <Th scope="row">Total</Th>
+            <NumTd cents={grant.budget} dollar />
+            <NumTd cents={grant.actual} dollar />
+            <NumTd cents={grant.remaining} dollar />
+            <NumTd>
+              <ProgressBar used={grant.actual} budget={grant.budget} label="Total budget used" />
+            </NumTd>
+            {months.map((m) => (
+              <NumTd key={m}>
+                {future(m) ? (
+                  '—'
+                ) : (
+                  <Money cents={grant.rows.reduce((n, r) => n + (r.monthly[m] ?? 0), 0)} dollar />
+                )}
+              </NumTd>
+            ))}
+          </TotalRow>
+        </tbody>
+      </DataTable>
+      <Card title="Pacing">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <KeyFigure
+            label="Expected"
+            value={<Money cents={grant.pace.expectedCents} dollar />}
+            hint={`${grant.pace.elapsedDays} of ${grant.pace.totalDays} days`}
+          />
+          <KeyFigure label="Actual" value={<Money cents={grant.actual} dollar />} />
+          <KeyFigure
+            label="Variance"
+            value={<Money cents={grant.pace.varianceCents} dollar />}
+            hint={grant.pace.variancePct}
+          />
+          <KeyFigure
+            label="Status"
+            value={
+              <GrantPaceStatus
+                pace={grant.pace}
+                overBudgetLines={grant.rows.filter((r) => r.overBudget).map((r) => r.name)}
+              />
+            }
+          />
+        </div>
         <p>
-          {grant.pace.elapsedDays} of {grant.pace.totalDays} days · Expected{' '}
-          {formatCents(grant.pace.expectedCents)} · Actual {formatCents(grant.actual)} · Variance{' '}
-          {grant.pace.varianceCents >= 0 ? '+' : ''}
-          {formatCents(grant.pace.varianceCents)} ({grant.pace.varianceCents >= 0 ? '+' : ''}
-          {grant.pace.variancePct}) ·{' '}
-          <span className={`pill ${grant.flagged ? 'pill-warn' : 'pill-ok'}`}>
-            {grant.pace.flag}
-          </span>
+          Received <Money cents={grant.received} dollar /> · Restricted balance{' '}
+          <Money cents={grant.balance} dollar />
         </p>
-        <p>
-          Received {formatCents(grant.received)} · Restricted balance {formatCents(grant.balance)}{' '}
-          {grant.balance < 0 && <span className="pill pill-warn">spent ahead of receipts</span>}
-        </p>
-      </div>
+      </Card>
       <p className="muted mt-4 text-sm">
         Actual: current-run expense allocations to budget lines within the grant period through
         as-of. Remaining = budget − actual. Received: matching income source lines in the grant

@@ -1,7 +1,15 @@
 import Link from 'next/link';
-import { PageHeader } from '@/components/page-header';
-import { formatDate } from '@/domain/dates';
-import { formatCents } from '@/domain/money';
+import {
+  Banner,
+  ButtonLink,
+  DataTable,
+  DateText,
+  EmptyState,
+  NumTd,
+  PageHeader,
+  StatusPill,
+  Th,
+} from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { currentPieces } from '../pieces';
@@ -29,32 +37,34 @@ export default async function CellLinesPage({
   return (
     <>
       <PageHeader
-        title={`${program?.code ?? 'Program'} × ${account?.number ?? 'Account'}`}
-        actions={
-          <Link
+        title={`${program?.name ?? 'Program'} × ${account?.name ?? 'Account'}`}
+        secondaryActions={
+          <ButtonLink
             href={`/crosswalk/matrix${from || to ? `?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}` : ''}`}
-            className="btn btn-secondary btn-sm"
+            variant="secondary"
           >
             Matrix
-          </Link>
+          </ButtonLink>
         }
       />
-      {range?.error ? <div className="banner banner-bad">{range.error}</div> : null}
+      {range?.error ? <Banner tone="bad">{range.error}</Banner> : null}
       {!data.run ? (
-        <div className="banner banner-warn">
+        <Banner tone="warn">
           No current run — recompute on <Link href="/runs">/runs</Link>.
-        </div>
+        </Banner>
       ) : (
         <div className="card">
           {!lines.length ? (
-            <p className="muted">No pieces in this cell.</p>
+            <EmptyState title="No expense in this cell" />
           ) : (
-            <table>
+            <DataTable caption="Allocated lines">
               <thead>
                 <tr>
                   {['Date', 'Doc', 'Description', 'Amount', 'Budget line', 'Status', 'Source'].map(
                     (h) => (
-                      <th key={h}>{h}</th>
+                      <Th key={h} num={h === 'Amount'}>
+                        {h === 'Amount' ? 'Amount ($)' : h}
+                      </Th>
                     ),
                   )}
                 </tr>
@@ -62,23 +72,44 @@ export default async function CellLinesPage({
               <tbody>
                 {lines.map((l) => (
                   <tr key={l.id}>
-                    <td>{formatDate(l.sourceLine.transaction.txnDate)}</td>
+                    <td>
+                      <DateText date={l.sourceLine.transaction.txnDate} />
+                    </td>
                     <td>{l.sourceLine.transaction.docNumber}</td>
                     <td>{l.sourceLine.description ?? l.sourceLine.transaction.memo}</td>
-                    <td className="num">{formatCents(l.amountCents)}</td>
+                    <NumTd cents={l.amountCents} />
                     <td>
-                      {l.grantBudgetLine
-                        ? `${l.grantBudgetLine.grant.awardNumber ?? l.grantBudgetLine.grant.name}/${l.grantBudgetLine.code}`
-                        : 'Unmapped'}
+                      {l.grantBudgetLine ? (
+                        <>
+                          {l.grantBudgetLine.name}
+                          <span className="muted block text-xs">
+                            {l.grantBudgetLine.grant.name}
+                          </span>
+                        </>
+                      ) : (
+                        'Unmapped'
+                      )}
                     </td>
-                    <td>{l.status}</td>
+                    <td>
+                      <StatusPill
+                        tone={
+                          l.status === 'crosswalk_conflict'
+                            ? 'bad'
+                            : !l.grantBudgetLineId && program?.functionalCategory === 'program'
+                              ? 'warn'
+                              : 'ok'
+                        }
+                      >
+                        {l.status.replaceAll('_', ' ')}
+                      </StatusPill>
+                    </td>
                     <td>
                       <Link href={`/lines/${l.sourceLineId}`}>View line</Link>
                     </td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           )}
         </div>
       )}

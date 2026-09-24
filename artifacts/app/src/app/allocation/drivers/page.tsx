@@ -1,5 +1,5 @@
-import Link from 'next/link';
-import { PageHeader } from '@/components/page-header';
+import { ButtonLink, DataTable, Month, PageHeader, Th } from '@/components/ui';
+import type { YearMonth } from '@/domain/format';
 import { Field, FormBanner } from '@/components/form';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
@@ -37,16 +37,16 @@ export default async function DriversPage({
       .filter((v) => v.driverKey === key && v.period === period)
       .map((v) => [v.programId, v.value]),
   );
-  const names = new Map(programs.map((p) => [p.id, `${p.code} ${p.name}`]));
+  const names = new Map(programs.map((p) => [p.id, p.name]));
   return (
     <>
       <PageHeader
         title="Allocation drivers"
         subtitle="Enter monthly integer driver values (e.g. FTE hours) by program."
-        actions={
-          <Link href="/allocation" className="btn btn-secondary">
+        secondaryActions={
+          <ButtonLink href="/allocation" variant="secondary">
             All rules
-          </Link>
+          </ButtonLink>
         }
       />
       <form method="get" className="card mb-4">
@@ -82,18 +82,19 @@ export default async function DriversPage({
         <p className="muted">
           Whole, non-negative integers only. Saving replaces the selected period’s rows.
         </p>
-        <table>
+        <DataTable caption="Driver values by program">
           <thead>
             <tr>
-              <th>Program</th>
-              <th>Value</th>
+              <Th>Program</Th>
+              <Th>Value</Th>
             </tr>
           </thead>
           <tbody>
             {programs.map((p) => (
               <tr key={p.id}>
                 <td>
-                  {p.code} {p.name}
+                  {p.name}
+                  <span className="muted block text-xs">{p.code}</span>
                   <input type="hidden" name="programIds" value={p.id} />
                 </td>
                 <td>
@@ -114,7 +115,7 @@ export default async function DriversPage({
               </tr>
             ))}
           </tbody>
-        </table>
+        </DataTable>
         <button className="btn mt-3" type="submit">
           Save driver values
         </button>
@@ -122,26 +123,32 @@ export default async function DriversPage({
       <div className="card">
         <h2 className="font-semibold">All driver values</h2>
         {values.length ? (
-          <table>
+          <DataTable caption="All driver values">
             <thead>
               <tr>
-                <th>Key</th>
-                <th>Period</th>
-                <th>Program</th>
-                <th className="num">Value</th>
+                <Th>Key</Th>
+                <Th>Period</Th>
+                <Th>Program</Th>
+                <Th num>Value</Th>
               </tr>
             </thead>
             <tbody>
               {values.map((v) => (
                 <tr key={v.id}>
                   <td>{v.driverKey}</td>
-                  <td>{v.period}</td>
+                  <td>
+                    {/^\d{4}-(0[1-9]|1[0-2])$/.test(v.period) ? (
+                      <Month ym={v.period as YearMonth} year="always" />
+                    ) : (
+                      'Invalid period'
+                    )}
+                  </td>
                   <td>{names.get(v.programId) ?? '(inactive program)'}</td>
                   <td className="num">{v.value}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         ) : (
           <p className="muted">No driver values yet.</p>
         )}

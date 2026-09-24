@@ -1,6 +1,15 @@
 import Link from 'next/link';
-import { PageHeader } from '@/components/page-header';
-import { formatCents } from '@/domain/money';
+import {
+  Banner,
+  ButtonLink,
+  Card,
+  DataTable,
+  DateText,
+  NumTd,
+  PageHeader,
+  Th,
+  TotalRow,
+} from '@/components/ui';
 import { getOrgId } from '@/lib/org';
 import { loadReport } from '@/reports/query';
 import { parseParams } from '@/reports/params';
@@ -26,29 +35,34 @@ export default async function Lines({
   return (
     <>
       <PageHeader
-        title={`${p.rowKey ?? ''} × ${p.colKey ?? ''}`}
+        title={`${facts.find((f) => f[p.rows] === p.rowKey)?.labels?.[p.rows] ?? p.rowKey ?? ''} × ${facts.find((f) => f[p.cols] === p.colKey)?.labels?.[p.cols] ?? p.colKey ?? ''}`}
         subtitle={
-          run
-            ? `Run ${(run.finishedAt ?? run.startedAt).toISOString()} — ${filtered.length} pieces`
-            : 'No current run'
+          run ? (
+            <>
+              Run <DateText date={run.finishedAt ?? run.startedAt} time /> — {filtered.length}{' '}
+              pieces
+            </>
+          ) : (
+            'No current run'
+          )
         }
-        actions={
-          <Link className="btn btn-secondary" href={`/reports/custom?${q}`}>
+        secondaryActions={
+          <ButtonLink variant="secondary" href={`/reports/custom?${q}`}>
             Back to report
-          </Link>
+          </ButtonLink>
         }
       />
       {run?.stale ? (
         <div className="banner banner-warn">
           Configuration changed since the current run. Reports show numbers from{' '}
-          {(run.finishedAt ?? run.startedAt).toISOString()} until you recompute.
+          <DateText date={run.finishedAt ?? run.startedAt} time /> until you recompute.
         </div>
       ) : null}
-      <div className="card">
-        <table>
+      <Card>
+        <DataTable caption="Report source lines">
           <thead>
             <tr>
-              <th>Date</th>
+              <Th>Date</Th>
               <th>Doc</th>
               <th>Description</th>
               <th>Program</th>
@@ -61,13 +75,21 @@ export default async function Lines({
           <tbody>
             {filtered.map((f) => (
               <tr key={f.pieceId}>
-                <td>{f.date}</td>
+                <td>
+                  <DateText date={new Date(`${f.date}T00:00:00Z`)} />
+                </td>
                 <td>{f.doc}</td>
                 <td>{f.description}</td>
-                <td>{f.program}</td>
-                <td>{f.grant}</td>
+                <td>
+                  {f.labels?.program ?? f.program}
+                  <small className="muted"> · {f.program}</small>
+                </td>
+                <td>
+                  {f.labels?.grant ?? f.grant}
+                  <small className="muted"> · {f.grant}</small>
+                </td>
                 <td>{f.status}</td>
-                <td className="num">{formatCents(f.amountCents)}</td>
+                <NumTd cents={f.amountCents} />
                 <td>
                   <Link href={`/lines/${f.sourceLineId}`}>View line</Link>
                 </td>
@@ -75,16 +97,14 @@ export default async function Lines({
             ))}
           </tbody>
           <tfoot>
-            <tr>
+            <TotalRow>
               <th colSpan={6}>Total</th>
-              <td className="num">
-                {formatCents(filtered.reduce((n, f) => n + f.amountCents, 0))}
-              </td>
+              <NumTd cents={filtered.reduce((n, f) => n + f.amountCents, 0)} dollar />
               <td />
-            </tr>
+            </TotalRow>
           </tfoot>
-        </table>
-      </div>
+        </DataTable>
+      </Card>
     </>
   );
 }

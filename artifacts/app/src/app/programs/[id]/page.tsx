@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/page-header';
+import { ButtonLink, DangerZone } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { decodeFormState } from '@/lib/forms';
-import { deleteProgramAction, updateProgramAction } from '../actions';
+import { updateProgramAction } from '../actions';
 import { ProgramForm } from '../program-form';
 import { classOptions } from '../class-options';
 
@@ -24,7 +25,6 @@ export default async function ProgramPage({
   if (!program) notFound();
   const classes = await classOptions(prisma, orgId, id);
   const update = updateProgramAction.bind(null, id);
-  const remove = deleteProgramAction.bind(null, id);
   return (
     <>
       <PageHeader
@@ -34,11 +34,6 @@ export default async function ProgramPage({
             <Link href="/programs" className="btn btn-secondary btn-sm">
               All programs
             </Link>
-            <form action={remove}>
-              <button type="submit" className="btn btn-danger btn-sm">
-                Delete
-              </button>
-            </form>
           </>
         }
       />
@@ -56,6 +51,12 @@ export default async function ProgramPage({
         classes={classes}
         submitLabel="Save changes"
       />
+      <DangerZone>
+        <p className="mb-3">Remove this program or deactivate it if other records reference it.</p>
+        <ButtonLink variant="danger" size="sm" href={`/programs/${id}/delete`}>
+          Delete / deactivate program…
+        </ButtonLink>
+      </DangerZone>
     </>
   );
 }

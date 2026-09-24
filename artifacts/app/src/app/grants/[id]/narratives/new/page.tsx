@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { PageHeader } from '@/components/page-header';
+import { Card, PageHeader } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { decodeFormState, pick } from '@/lib/forms';
@@ -25,7 +25,7 @@ export default async function NewNarrative({
     <>
       <PageHeader
         title="Draft a funder narrative"
-        actions={
+        secondaryActions={
           <Link className="btn btn-secondary btn-sm" href={`/grants/${id}/narratives`}>
             ← Narratives
           </Link>
@@ -36,49 +36,55 @@ export default async function NewNarrative({
           Generation is disabled. Set ANTHROPIC_API_KEY and NARRATIVE_MODEL to enable it.
         </div>
       ) : (
-        <form className="card grid-form" action={generateAction.bind(null, id)}>
-          {state?.errors._ && (
-            <div className="banner banner-warn" role="alert">
-              {state.errors._} Retry generation below.
-            </div>
-          )}
-          <label>
-            Template
-            <select
-              name="template"
-              defaultValue={pick(state, 'template', 'Quarterly financial narrative')}
-            >
-              {Object.keys(templates).map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Period from
-            <input
-              type="date"
-              name="from"
-              required
-              defaultValue={pick(state, 'from', grant.startDate.toISOString().slice(0, 10))}
-            />
-          </label>
-          <label>
-            Period to
-            <input
-              type="date"
-              name="to"
-              required
-              defaultValue={pick(state, 'to', grant.endDate.toISOString().slice(0, 10))}
-            />
-          </label>
-          <label>
-            Context notes
-            <textarea name="contextNotes" rows={5} defaultValue={pick(state, 'contextNotes', '')} />
-          </label>
-          <button className="btn" type="submit">
-            Generate draft
-          </button>
-        </form>
+        <Card title="Draft details">
+          <form className="grid-form" action={generateAction.bind(null, id)}>
+            {state?.errors._ && (
+              <div className="banner banner-warn" role="alert">
+                {state.errors._} Retry generation below.
+              </div>
+            )}
+            <label>
+              Template
+              <select
+                name="template"
+                defaultValue={pick(state, 'template', 'Quarterly financial narrative')}
+              >
+                {Object.keys(templates).map((t) => (
+                  <option key={t}>{t}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Period from
+              <input
+                type="date"
+                name="from"
+                required
+                defaultValue={pick(state, 'from', grant.startDate.toISOString().slice(0, 10))}
+              />
+            </label>
+            <label>
+              Period to
+              <input
+                type="date"
+                name="to"
+                required
+                defaultValue={pick(state, 'to', grant.endDate.toISOString().slice(0, 10))}
+              />
+            </label>
+            <label>
+              Context notes
+              <textarea
+                name="contextNotes"
+                rows={5}
+                defaultValue={pick(state, 'contextNotes', '')}
+              />
+            </label>
+            <button className="btn" type="submit">
+              Generate draft
+            </button>
+          </form>
+        </Card>
       )}
     </>
   );

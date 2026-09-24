@@ -1,7 +1,37 @@
 [
-  { "file": "accounts.csv", "row": 13, "column": "external_id", "code": "duplicate_external_id", "match": "A6410" },
-  { "file": "transactions.csv", "row": 9, "column": "amount", "code": "unbalanced_journal_entry", "match": "JE-PR-2026-02" },
-  { "file": "transactions.csv", "row": 35, "column": "amount", "code": "invalid_amount", "match": "12,3.45" },
-  { "file": "transactions.csv", "row": 36, "column": "account_external_id", "code": "unknown_reference", "match": "A9999" },
-  { "file": "transactions.csv", "row": 38, "column": "txn_date", "code": "invalid_date", "match": "2026-02-30" }
+  {
+    "file": "accounts.csv",
+    "row": 13,
+    "column": "external_id",
+    "code": "duplicate_external_id",
+    "match": "A6410"
+  },
+  {
+    "file": "transactions.csv",
+    "row": 9,
+    "column": "amount",
+    "code": "unbalanced_journal_entry",
+    "match": "JE-PR-2026-02"
+  },
+  {
+    "file": "transactions.csv",
+    "row": 35,
+    "column": "amount",
+    "code": "invalid_amount",
+    "match": "12,3.45"
+  },
+  {
+    "file": "transactions.csv",
+    "row": 36,
+    "column": "account_external_id",
+    "code": "unknown_reference",
+    "match": "A9999"
+  },
+  {
+    "file": "transactions.csv",
+    "row": 38,
+    "column": "txn_date",
+    "code": "invalid_date",
+    "match": "2026-02-30"
+  }
 ]

@@ -1,9 +1,17 @@
 import Link from 'next/link';
-import { PageHeader } from '@/components/page-header';
+import {
+  Banner,
+  ButtonLink,
+  DataTable,
+  EmptyState,
+  NumTd,
+  PageHeader,
+  StatusPill,
+  Th,
+} from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { parseMatchers } from '@/domain/matchers';
-import { formatCents } from '@/domain/money';
 import { describeMatchers, loadLabelMaps } from '@/lib/matcher-labels';
 
 export const dynamic = 'force-dynamic';
@@ -43,7 +51,7 @@ export default async function CrosswalkPage({
       <PageHeader
         title="Crosswalk"
         subtitle="Map expense pieces to grant budget lines. Changes mark the current run stale."
-        actions={
+        secondaryActions={
           <div className="flex flex-wrap gap-2">
             {[
               ['/crosswalk/new', 'New rule'],
@@ -51,43 +59,45 @@ export default async function CrosswalkPage({
               ['/crosswalk/coverage', 'Coverage'],
               ['/crosswalk/conflicts', 'Conflicts'],
             ].map(([href, label]) => (
-              <Link className="btn btn-secondary btn-sm" key={href} href={href!}>
+              <ButtonLink variant="secondary" key={href} href={href!}>
                 {label}
-              </Link>
+              </ButtonLink>
             ))}
           </div>
         }
       />
       {run?.stale ? (
-        <div className="banner banner-warn">
+        <Banner tone="warn">
           Current run is stale — recompute on <Link href="/runs">/runs</Link>.
-        </div>
+        </Banner>
       ) : null}
-      {deleted ? <div className="banner banner-ok">Rule deleted.</div> : null}
+      {deleted ? <Banner tone="ok">Rule deleted.</Banner> : null}
       {grants.map((grant) =>
         grant.budgetLines.filter((b) => b.crosswalkRules.length).length ? (
           <div className="card mb-4" key={grant.id}>
             <h2>
-              {grant.awardNumber ?? grant.name} — {grant.name}
+              {grant.name}
+              <span className="muted ml-2 text-sm">{grant.awardNumber}</span>
             </h2>
             {grant.budgetLines
               .filter((b) => b.crosswalkRules.length)
               .map((b) => (
                 <div key={b.id}>
                   <h3>
-                    {b.code} — {b.name}
+                    {b.name}
+                    <span className="muted ml-2 text-sm">{b.code}</span>
                   </h3>
-                  <table>
+                  <DataTable caption={`Rules for ${b.name}`}>
                     <thead>
                       <tr>
-                        <th>Rule</th>
-                        <th>Priority</th>
-                        <th>Active</th>
-                        <th>Matchers</th>
+                        <Th>Rule</Th>
+                        <Th>Priority</Th>
+                        <Th>Status</Th>
+                        <Th>Matchers</Th>
                         {run ? (
                           <>
-                            <th className="num">Mapped</th>
-                            <th className="num">Pieces</th>
+                            <Th num>Mapped ($)</Th>
+                            <Th num>Pieces</Th>
                           </>
                         ) : null}
                       </tr>
@@ -100,30 +110,31 @@ export default async function CrosswalkPage({
                           </td>
                           <td>{r.priority}</td>
                           <td>
-                            <span className={`pill ${r.active ? 'pill-ok' : 'pill-muted'}`}>
+                            <StatusPill tone={r.active ? 'ok' : 'muted'}>
                               {r.active ? 'Active' : 'Inactive'}
-                            </span>
+                            </StatusPill>
                           </td>
                           <td>{describeMatchers(parseMatchers(r.matchers), labels)}</td>
                           {run ? (
                             <>
-                              <td className="num">
-                                {formatCents(byRule.get(r.id)?._sum.amountCents ?? 0)}
-                              </td>
+                              <NumTd cents={byRule.get(r.id)?._sum.amountCents ?? 0} />
                               <td className="num">{byRule.get(r.id)?._count._all ?? 0}</td>
                             </>
                           ) : null}
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </DataTable>
                 </div>
               ))}
           </div>
         ) : null,
       )}
       {grants.every((g) => g.budgetLines.every((b) => !b.crosswalkRules.length)) ? (
-        <div className="card muted">No crosswalk rules yet.</div>
+        <EmptyState
+          title="No crosswalk rules yet"
+          action={<ButtonLink href="/crosswalk/new">New rule</ButtonLink>}
+        />
       ) : null}
     </>
   );

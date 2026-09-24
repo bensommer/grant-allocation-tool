@@ -1,4 +1,4 @@
-import { PageHeader } from '@/components/page-header';
+import { PageHeader } from '@/components/ui';
 import { decodeFormState, pick } from '@/lib/forms';
 import { getOrgId } from '@/lib/org';
 import { dateRange } from '../range';

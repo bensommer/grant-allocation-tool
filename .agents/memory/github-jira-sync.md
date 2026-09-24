@@ -8,7 +8,7 @@ description: How code reaches bensommer/grant-allocation-tool and how Jira stori
 - **Why:** repeating discovery costs several failed API rounds each session.
 - Notebook-persisted helper functions that wrap "use impure" bodies can fail later with `executeJs is not defined`; redefine the helper in the same CodeExecution call instead of relying on earlier definitions.
 
-## Parallel subagent split for stories
-Splitting two Jira stories across two general subagents with explicit file ownership (and "do not
-run the full test suite / restart the workflow") worked cleanly for JPH-11/12; shared pieces
-(exports for BvA) were wired by the main agent afterwards via a small generic helper.
+## Parallel subagents share one dev DB
+Two subagents running DB tests / demo restores concurrently created duplicate Org rows and flaky
+e2e runs. Either serialize DB-touching verification or have the main agent do the final restore
+and full test pass itself.

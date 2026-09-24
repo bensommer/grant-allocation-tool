@@ -1,10 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { PageHeader } from '@/components/page-header';
+import { DataTable, DateText, Money, NumTd, PageHeader, StatusPill } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
-import { formatCents } from '@/domain/money';
-import { formatDate } from '@/domain/dates';
 import { parseMatchers } from '@/domain/matchers';
 import { describeMatchers, loadLabelMaps } from '@/lib/matcher-labels';
 
@@ -87,11 +85,13 @@ export default async function LineAuditPage({
 
       <div className="card mb-4">
         <h2 className="mb-2">1 · Source line (as imported, never modified)</h2>
-        <table>
+        <DataTable caption="Imported source line">
           <tbody>
             <tr>
               <th>Date</th>
-              <td>{formatDate(t.txnDate)}</td>
+              <td>
+                <DateText date={t.txnDate} />
+              </td>
               <th>Type / doc</th>
               <td>
                 {t.txnType} {t.docNumber ?? ''}
@@ -100,11 +100,13 @@ export default async function LineAuditPage({
             <tr>
               <th>Account</th>
               <td>
-                {line.account.number} {line.account.name}{' '}
+                {line.account.name} <span className="muted">{line.account.number}</span>{' '}
                 <span className="muted">({line.account.type})</span>
               </td>
               <th>Amount</th>
-              <td className="font-mono">{formatCents(line.amountCents)}</td>
+              <td data-cents={line.amountCents}>
+                <Money cents={line.amountCents} />
+              </td>
             </tr>
             <tr>
               <th>Class</th>
@@ -124,19 +126,17 @@ export default async function LineAuditPage({
             </tr>
             <tr>
               <th>Source id</th>
-              <td>
-                <code>{t.externalId}</code>
-              </td>
+              <td>{t.externalId}</td>
               <th>Import batch</th>
               <td>
                 <Link href={`/import/${t.importBatch.id}`}>
-                  {t.importBatch.startedAt.toISOString().slice(0, 19).replace('T', ' ')}
+                  <DateText date={t.importBatch.startedAt} time />
                 </Link>
                 {t.deletedAt ? <span className="pill pill-bad ml-2">deleted in source</span> : null}
               </td>
             </tr>
           </tbody>
-        </table>
+        </DataTable>
       </div>
 
       {!run ? (
@@ -149,8 +149,7 @@ export default async function LineAuditPage({
           <div className="card mb-4">
             <h2 className="mb-2">2 · Allocation</h2>
             <p className="muted mb-2 text-xs">
-              Run {run.startedAt.toISOString().replace('T', ' ').slice(0, 19)} UTC ·{' '}
-              {run.isCurrent ? 'current' : run.status}
+              Run <DateText date={run.startedAt} time /> · {run.isCurrent ? 'current' : run.status}
               {run.stale ? ' · stale (config changed since)' : ''}
             </p>
             {allocRule ? (
@@ -182,8 +181,10 @@ export default async function LineAuditPage({
                   <>
                     {' '}
                     →{' '}
-                    <Link href={`/programs/${pieces[0].program.id}`}>{pieces[0].program.code}</Link>
-                    .
+                    <Link href={`/programs/${pieces[0].program.id}`}>
+                      {pieces[0].program.name}
+                    </Link>{' '}
+                    <span className="muted">{pieces[0].program.code}</span>.
                   </>
                 ) : (
                   <>
@@ -197,7 +198,7 @@ export default async function LineAuditPage({
 
           <div className="card">
             <h2 className="mb-2">3 · Resulting pieces and crosswalk</h2>
-            <table>
+            <DataTable caption="Allocated pieces and crosswalk">
               <thead>
                 <tr>
                   <th>#</th>
@@ -217,16 +218,20 @@ export default async function LineAuditPage({
                       <td>{p.pieceIndex + 1}</td>
                       <td>
                         {p.program ? (
-                          <Link href={`/programs/${p.program.id}`}>{p.program.code}</Link>
+                          <>
+                            <Link href={`/programs/${p.program.id}`}>{p.program.name}</Link>{' '}
+                            <span className="muted">{p.program.code}</span>
+                          </>
                         ) : (
                           <span className="muted">unassigned</span>
                         )}
                       </td>
-                      <td className="num font-mono">{formatCents(p.amountCents)}</td>
+                      <NumTd cents={p.amountCents} />
                       <td>
                         {p.grant && p.grantBudgetLine ? (
                           <Link href={`/grants/${p.grant.id}/budget`}>
-                            {p.grant.name} · {p.grantBudgetLine.code}
+                            {p.grant.name} · {p.grantBudgetLine.name}{' '}
+                            <span className="muted">{p.grantBudgetLine.code}</span>
                           </Link>
                         ) : line.account.type === 'Expense' ||
                           line.account.type === 'COGS' ||
@@ -258,7 +263,13 @@ export default async function LineAuditPage({
                         )}
                       </td>
                       <td>
-                        <span className={`pill ${st.cls}`}>{st.label}</span>
+                        <StatusPill
+                          tone={
+                            st.cls === 'pill-ok' ? 'ok' : st.cls === 'pill-bad' ? 'bad' : 'warn'
+                          }
+                        >
+                          {st.label}
+                        </StatusPill>
                       </td>
                     </tr>
                   );
@@ -267,7 +278,9 @@ export default async function LineAuditPage({
               <tfoot>
                 <tr>
                   <th colSpan={2}>Σ pieces</th>
-                  <th className="num font-mono">{formatCents(total)}</th>
+                  <th className="num" data-cents={total}>
+                    <Money cents={total} dollar />
+                  </th>
                   <th colSpan={3} className="font-normal">
                     {total === line.amountCents ? (
                       <span className="pill pill-ok">equals source amount</span>
@@ -279,7 +292,7 @@ export default async function LineAuditPage({
                   </th>
                 </tr>
               </tfoot>
-            </table>
+            </DataTable>
           </div>
         </>
       )}

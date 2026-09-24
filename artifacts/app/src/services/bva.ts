@@ -3,8 +3,21 @@ import { pacing, isOverBudget } from '@/domain/pacing';
 import { matchesReceived } from '@/domain/received';
 import { getPacingSettings } from './settings';
 
-export function reportDate(raw?: string) {
-  const date = raw ?? new Date().toISOString().slice(0, 10);
+export async function lastImportedTransactionDate(orgId: string): Promise<Date | null> {
+  const result = await prisma.transaction.aggregate({
+    where: { orgId, deletedAt: null },
+    _max: { txnDate: true },
+  });
+  return result._max.txnDate;
+}
+
+export async function defaultReportDate(orgId: string, raw?: string) {
+  const coverage = await lastImportedTransactionDate(orgId);
+  return { ...reportDate(raw, coverage ?? undefined), coverage };
+}
+
+export function reportDate(raw?: string, fallback?: Date) {
+  const date = raw ?? (fallback ?? new Date()).toISOString().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || new Date(date).toISOString().slice(0, 10) !== date)
     throw new Error('Invalid as-of date; expected YYYY-MM-DD');
   return { label: date, date: new Date(`${date}T00:00:00.000Z`) };

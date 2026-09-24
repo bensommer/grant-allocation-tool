@@ -1,12 +1,24 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { PageHeader } from '@/components/page-header';
+import {
+  Banner,
+  Card,
+  DataTable,
+  DateText,
+  KeyFigure,
+  LinkCell,
+  Money,
+  NumTd,
+  PageHeader,
+  Period,
+  ProgressBar,
+  Td,
+  Th,
+  TotalRow,
+} from '@/components/ui';
+import { GrantPaceStatus } from '@/components/grant-pace-status';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
-import { decodeFormState } from '@/lib/forms';
-import { deleteGrantAction, updateGrantAction } from '../actions';
-import { GrantForm } from '../grant-form';
-import { grantFormOptions } from '../options';
+import { bvaData, defaultReportDate } from '@/services/bva';
 import { GrantTabs } from './tabs';
 
 export const dynamic = 'force-dynamic';
@@ -16,52 +28,186 @@ export default async function GrantPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ f?: string; saved?: string; archived?: string }>;
+  searchParams: Promise<{ saved?: string; archived?: string; asOf?: string }>;
 }) {
   const { id } = await params;
-  const { f, saved, archived } = await searchParams;
+  const { saved, archived, asOf } = await searchParams;
   const orgId = await getOrgId();
-  const grant = await prisma.grant.findFirst({ where: { id, orgId }, include: { programs: true } });
+  const { date, label } = await defaultReportDate(orgId, asOf);
+  const [{ grants }, programs] = await Promise.all([
+    bvaData(orgId, date, id),
+    prisma.program.findMany({ where: { orgId }, select: { id: true, name: true } }),
+  ]);
+  const grant = grants[0];
   if (!grant) notFound();
-  const opts = await grantFormOptions(orgId);
+  const programNames = new Map(programs.map((p) => [p.id, p.name]));
+  const receipts = await prisma.transactionLine.findMany({
+    where: {
+      orgId,
+      deletedAt: null,
+      account: { type: { in: ['Income', 'OtherIncome'] } },
+      transaction: {
+        orgId,
+        deletedAt: null,
+        txnDate: { gte: grant.startDate, lte: date < grant.endDate ? date : grant.endDate },
+      },
+    },
+    select: {
+      id: true,
+      amountCents: true,
+      accountId: true,
+      classId: true,
+      partyId: true,
+      account: { select: { type: true } },
+      transaction: { select: { txnDate: true, partyId: true } },
+    },
+  });
+  const { matchesReceived } = await import('@/domain/received');
+  const matched = receipts.filter((r) =>
+    matchesReceived(grant, {
+      accountId: r.accountId,
+      accountType: r.account.type,
+      classId: r.classId,
+      transactionPartyId: r.transaction.partyId,
+      linePartyId: r.partyId,
+    }),
+  );
   return (
     <>
       <PageHeader
         title={grant.name}
-        subtitle={grant.funder}
-        actions={
+        subtitle={
           <>
-            <Link href="/grants" className="btn btn-secondary btn-sm">
-              All grants
-            </Link>
-            <Link href={`/grants/${id}/bva`} className="btn btn-secondary btn-sm">
-              Budget vs actual
-            </Link>
-            <Link href={`/grants/${id}/narratives`} className="btn btn-secondary btn-sm">
-              Narratives
-            </Link>
-            <form action={deleteGrantAction.bind(null, id)}>
-              <button type="submit" className="btn btn-danger btn-sm">
-                Delete / archive
-              </button>
-            </form>
+            {grant.funder} · <Period from={grant.startDate} to={grant.endDate} />
           </>
         }
       />
       <GrantTabs id={id} active="detail" />
-      {archived ? (
-        <div className="banner banner-warn">
+      {saved && <Banner tone="ok">Saved.</Banner>}
+      {archived && (
+        <Banner tone="warn">
           This grant appears in a compute run, so it was archived rather than deleted.
-        </div>
-      ) : null}
-      <GrantForm
-        action={updateGrantAction.bind(null, id)}
-        state={decodeFormState(f)}
-        saved={!!saved}
-        grant={grant}
-        {...opts}
-        submitLabel="Save changes"
-      />
+        </Banner>
+      )}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Card>
+          <KeyFigure label="Award" value={<Money cents={grant.awardAmountCents} dollar />} />
+        </Card>
+        <Card>
+          <KeyFigure label="Spent" value={<Money cents={grant.actual} dollar />} />
+        </Card>
+        <Card>
+          <KeyFigure
+            label="Remaining award"
+            value={<Money cents={grant.awardAmountCents - grant.actual} dollar />}
+          />
+        </Card>
+        <Card>
+          <KeyFigure label="Received" value={<Money cents={grant.received} dollar />} />
+        </Card>
+        <Card>
+          <KeyFigure label="Restricted balance" value={<Money cents={grant.balance} dollar />} />
+        </Card>
+        <Card>
+          <KeyFigure
+            label="Pacing"
+            value={
+              <GrantPaceStatus
+                pace={grant.pace}
+                overBudgetLines={grant.rows.filter((r) => r.overBudget).map((r) => r.name)}
+              />
+            }
+            hint={
+              <>
+                As of <DateText date={date} />
+              </>
+            }
+          />
+        </Card>
+      </div>
+      <Card
+        title="Budget lines"
+        action={
+          <LinkCell href={`/grants/${id}/bva?asOf=${label}`}>View budget vs actual →</LinkCell>
+        }
+      >
+        <DataTable stickyFirstColumn>
+          <thead>
+            <tr>
+              <Th>Budget line</Th>
+              <Th>Program</Th>
+              <Th num>Budget ($)</Th>
+              <Th num>Actual ($)</Th>
+              <Th num>Remaining ($)</Th>
+              <Th num>Used</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {grant.rows.map((r) => (
+              <tr key={r.id}>
+                <Td>
+                  {r.name}
+                  <span className="muted block text-sm">{r.code}</span>
+                </Td>
+                <Td>{r.programId ? (programNames.get(r.programId) ?? 'Unknown program') : '—'}</Td>
+                <NumTd cents={r.budgetCents} />
+                <NumTd>
+                  <LinkCell href={`/grants/${id}/bva?asOf=${label}`}>
+                    <Money cents={r.actual} />
+                  </LinkCell>
+                </NumTd>
+                <NumTd cents={r.remaining} />
+                <NumTd>
+                  <ProgressBar
+                    used={r.actual}
+                    budget={r.budgetCents}
+                    label={`${r.name} budget used`}
+                  />
+                </NumTd>
+              </tr>
+            ))}
+            <TotalRow>
+              <Th scope="row" colSpan={2}>
+                Total
+              </Th>
+              <NumTd cents={grant.budget} dollar />
+              <NumTd cents={grant.actual} dollar />
+              <NumTd cents={grant.remaining} dollar />
+              <NumTd>
+                <ProgressBar used={grant.actual} budget={grant.budget} label="Total budget used" />
+              </NumTd>
+            </TotalRow>
+          </tbody>
+        </DataTable>
+      </Card>
+      <Card title="Receipts">
+        {matched.length ? (
+          <DataTable>
+            <thead>
+              <tr>
+                <Th>Date</Th>
+                <Th num>Received ($)</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {matched.map((r) => (
+                <tr key={r.id}>
+                  <Td>
+                    <DateText date={r.transaction.txnDate} />
+                  </Td>
+                  <NumTd cents={r.amountCents} />
+                </tr>
+              ))}
+              <TotalRow>
+                <Th scope="row">Total received</Th>
+                <NumTd cents={grant.received} dollar />
+              </TotalRow>
+            </tbody>
+          </DataTable>
+        ) : (
+          <p className="muted">No matching receipts through this date.</p>
+        )}
+      </Card>
     </>
   );
 }

@@ -1,8 +1,22 @@
 import Link from 'next/link';
-import { PageHeader } from '@/components/page-header';
-import { formatCents } from '@/domain/money';
+import {
+  Banner,
+  ButtonLink,
+  DataTable,
+  DateText,
+  FilterBar,
+  LinkCell,
+  Money,
+  NumTd,
+  PageHeader,
+  Period,
+  Td,
+  Th,
+  Toolbar,
+} from '@/components/ui';
+import { GrantPaceStatus } from '@/components/grant-pace-status';
 import { getOrgId } from '@/lib/org';
-import { bvaData, reportDate } from '@/services/bva';
+import { bvaData, defaultReportDate } from '@/services/bva';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,8 +26,9 @@ export default async function RestrictedPage({
   searchParams: Promise<{ asOf?: string; sort?: string; dir?: string }>;
 }) {
   const query = await searchParams;
-  const { date, label } = reportDate(query.asOf);
-  const { run, grants } = await bvaData(await getOrgId(), date);
+  const orgId = await getOrgId();
+  const { date, label } = await defaultReportDate(orgId, query.asOf);
+  const { run, grants } = await bvaData(orgId, date);
   const rows = grants.filter((g) => g.restrictionType !== 'unrestricted');
   const sort = [
     'name',
@@ -57,95 +72,105 @@ export default async function RestrictedPage({
         : String(x).localeCompare(String(y))) * (dir === 'asc' ? 1 : -1)
     );
   });
+  const columns: [string, string][] = [
+    ['name', 'Grant'],
+    ['award', 'Award ($)'],
+    ['received', 'Received ($)'],
+    ['spent', 'Spent ($)'],
+    ['balance', 'Restricted balance ($)'],
+    ['remaining', 'Remaining award ($)'],
+    ['pacing', 'Pacing'],
+    ['end', 'Period'],
+    ['days', 'Days remaining'],
+  ];
   return (
     <>
       <PageHeader
         title="Restricted funds"
-        subtitle={`As of ${label} · Current run: ${run ? (run.finishedAt ?? run.startedAt).toISOString().replace('T', ' ').slice(0, 19) + ' UTC' : 'none'}`}
-        actions={
+        subtitle={
           <>
-            <Link className="btn btn-secondary btn-sm" href={`/restricted/csv?asOf=${label}`}>
-              CSV
-            </Link>
-            <Link className="btn btn-secondary btn-sm" href={`/restricted/xlsx?asOf=${label}`}>
-              XLSX
-            </Link>
-            <Link className="btn btn-secondary btn-sm" href={`/restricted/pdf?asOf=${label}`}>
-              PDF
-            </Link>
+            As of <DateText date={date} /> · Current run:{' '}
+            {run ? <DateText date={run.finishedAt ?? run.startedAt} time /> : 'none'}
           </>
         }
       />
       {run?.stale && (
-        <div className="banner banner-warn">
+        <Banner tone="warn">
           Configuration changed since the current run. Reports show numbers from{' '}
-          {(run.finishedAt ?? run.startedAt).toISOString().replace('T', ' ').slice(0, 19)} UTC until
-          you recompute.
-        </div>
+          <DateText date={run.finishedAt ?? run.startedAt} time /> until you recompute.
+        </Banner>
       )}
       {!run && (
-        <div className="banner banner-warn">
-          No current run — recompute on <Link href="/runs">/runs</Link>.
-        </div>
+        <Banner tone="warn">
+          No current run — recompute on <Link href="/runs">Compute runs</Link>.
+        </Banner>
       )}
-      <form method="get" className="mb-4">
-        <label>
-          As of <input name="asOf" type="date" defaultValue={label} />
-        </label>{' '}
-        <button className="btn btn-secondary">Apply</button>
-      </form>
-      <div className="card overflow-x-auto">
-        <table>
-          <thead>
-            <tr>
-              {[
-                ['name', 'Grant'],
-                ['award', 'Award'],
-                ['received', 'Received'],
-                ['spent', 'Spent'],
-                ['balance', 'Restricted balance'],
-                ['remaining', 'Remaining award'],
-                ['pacing', 'Pacing'],
-                ['end', 'End date'],
-                ['days', 'Days remaining'],
-              ].map(([key, title]) => (
-                <th key={key}>
-                  <Link
-                    href={`/restricted?asOf=${label}&sort=${key}&dir=${sort === key && dir === 'asc' ? 'desc' : 'asc'}`}
-                  >
-                    {title}
-                  </Link>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((g) => (
-              <tr key={g.id}>
-                <td>
-                  <Link href={`/grants/${g.id}/bva?asOf=${label}`}>{g.name}</Link>
-                </td>
-                <td className="num">{formatCents(g.awardAmountCents)}</td>
-                <td className="num">{formatCents(g.received)}</td>
-                <td className="num">{formatCents(g.actual)}</td>
-                <td className="num">
-                  {formatCents(g.balance)}{' '}
-                  {g.balance < 0 && <span className="pill pill-warn">spent ahead of receipts</span>}
-                </td>
-                <td className="num">{formatCents(g.awardAmountCents - g.actual)}</td>
-                <td>
-                  <span className={`pill ${g.flagged ? 'pill-warn' : 'pill-ok'}`}>
-                    {g.pace.flag}
-                    {g.rows.some((r) => r.overBudget) ? ' · over-budget line' : ''}
-                  </span>
-                </td>
-                <td>{g.endDate.toISOString().slice(0, 10)}</td>
-                <td className="num">{days(g.endDate)}</td>
-              </tr>
+      <FilterBar>
+        <label htmlFor="restricted-as-of">As of</label>
+        <input id="restricted-as-of" name="asOf" type="date" defaultValue={label} />
+        <input type="hidden" name="sort" value={sort} />
+        <input type="hidden" name="dir" value={dir} />
+      </FilterBar>
+      <Toolbar>
+        <ButtonLink variant="secondary" size="sm" href={`/restricted/csv?asOf=${label}`}>
+          CSV
+        </ButtonLink>
+        <ButtonLink variant="secondary" size="sm" href={`/restricted/xlsx?asOf=${label}`}>
+          XLSX
+        </ButtonLink>
+        <ButtonLink variant="secondary" size="sm" href={`/restricted/pdf?asOf=${label}`}>
+          PDF
+        </ButtonLink>
+      </Toolbar>
+      <DataTable caption="Restricted grant balances" stickyFirstColumn>
+        <thead>
+          <tr>
+            {columns.map(([key, title]) => (
+              <Th
+                key={key}
+                num={['award', 'received', 'spent', 'balance', 'remaining', 'days'].includes(key)}
+              >
+                <Link
+                  href={`/restricted?asOf=${label}&sort=${key}&dir=${sort === key && dir === 'asc' ? 'desc' : 'asc'}`}
+                  prefetch={false}
+                >
+                  {title}
+                </Link>
+              </Th>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((g) => (
+            <tr key={g.id}>
+              <Td>
+                <LinkCell href={`/grants/${g.id}/bva?asOf=${label}`}>{g.name}</LinkCell>
+                <span className="muted block text-sm">{g.funder}</span>
+              </Td>
+              <NumTd cents={g.awardAmountCents} />
+              <NumTd cents={g.received} />
+              <NumTd cents={g.actual} />
+              <NumTd>
+                <Money cents={g.balance} />
+                {g.balance < 0 && (
+                  <span className="muted block text-sm">Spent ahead of receipts</span>
+                )}
+              </NumTd>
+              <NumTd cents={g.awardAmountCents - g.actual} />
+              <Td>
+                <GrantPaceStatus
+                  pace={g.pace}
+                  overBudgetLines={g.rows.filter((r) => r.overBudget).map((r) => r.name)}
+                />
+              </Td>
+              <Td>
+                <Period from={g.startDate} to={g.endDate} />
+              </Td>
+              <Td className="num">{days(g.endDate)}</Td>
+            </tr>
+          ))}
+        </tbody>
+      </DataTable>
       <p className="muted mt-4 text-sm">
         Received: matched income source lines in the grant period through as-of. Spent: current-run
         expense allocations to budget lines. Restricted balance = received − spent; remaining award

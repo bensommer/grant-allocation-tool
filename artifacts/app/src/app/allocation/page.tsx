@@ -1,7 +1,15 @@
 import Link from 'next/link';
-import { PageHeader } from '@/components/page-header';
-import { toISODate } from '@/domain/dates';
-import { formatBps, formatCents } from '@/domain/money';
+import {
+  Banner,
+  ButtonLink,
+  DataTable,
+  DateText,
+  Money,
+  PageHeader,
+  StatusPill,
+  Th,
+} from '@/components/ui';
+import { formatPct } from '@/domain/format';
 import { parseMatchers } from '@/domain/matchers';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
@@ -23,10 +31,10 @@ export default async function AllocationPage({
     }),
     loadLabelMaps(orgId),
     prisma.computeRun.findFirst({ where: { orgId, isCurrent: true } }),
-    prisma.program.findMany({ where: { orgId }, select: { id: true, code: true } }),
+    prisma.program.findMany({ where: { orgId }, select: { id: true, name: true } }),
     prisma.grantBudgetLine.findMany({
       where: { orgId },
-      select: { id: true, programId: true, code: true },
+      select: { id: true, programId: true, name: true },
     }),
   ]);
   const amounts = run
@@ -43,45 +51,42 @@ export default async function AllocationPage({
       })
     : [];
   const amountMap = new Map(amounts.map((a) => [a.allocationRuleId, a._sum.amountCents ?? 0]));
-  const codeMap = new Map(programs.map((p) => [p.id, p.code]));
+  const nameMap = new Map(programs.map((p) => [p.id, p.name]));
   const lineMap = new Map(budgetLines.map((b) => [b.id, b]));
   return (
     <>
       <PageHeader
         title="Allocation rules"
         subtitle="Shared cost splits. Changes mark the current run stale until recomputed on Runs."
-        actions={
+        secondaryActions={
           <>
-            <Link className="btn btn-secondary" href="/allocation/drivers">
+            <ButtonLink variant="secondary" href="/allocation/drivers">
               Driver values
-            </Link>
-            <Link className="btn" href="/allocation/new">
-              New rule
-            </Link>
+            </ButtonLink>
+            <ButtonLink href="/allocation/new">New rule</ButtonLink>
           </>
         }
       />
-      {deleted ? <div className="banner banner-ok">Rule deleted.</div> : null}
+      {deleted ? <Banner tone="ok">Rule deleted.</Banner> : null}
       {run?.stale ? (
-        <div className="banner banner-warn">
+        <Banner tone="warn">
           Current run is stale. Recompute on <Link href="/runs">Runs</Link> to update allocation
           totals.
-        </div>
+        </Banner>
       ) : null}
       <div className="card">
         {rules.length ? (
-          <table>
+          <DataTable caption="Allocation rules">
             <thead>
               <tr>
-                <th>Rule</th>
-                <th>Priority</th>
-                <th>Method</th>
-                <th>Effective</th>
-                <th>Status</th>
-                <th>Conditions</th>
-                <th>Targets</th>
-                <th className="num">Current run</th>
-                <th className="num">Conflicts</th>
+                <Th>Rule</Th>
+                <Th>Priority</Th>
+                <Th>Method</Th>
+                <Th>Effective</Th>
+                <Th>Status</Th>
+                <Th>Summary</Th>
+                <Th num>Current run ($)</Th>
+                <Th num>Conflicts</Th>
               </tr>
             </thead>
             <tbody>
@@ -95,24 +100,26 @@ export default async function AllocationPage({
                     {rule.method === 'fixed_pct' ? 'Fixed %' : `Driver ratio: ${rule.driverKey}`}
                   </td>
                   <td>
-                    {rule.effectiveFrom ? toISODate(rule.effectiveFrom) : 'Any'} →{' '}
-                    {rule.effectiveTo ? toISODate(rule.effectiveTo) : 'Any'}
+                    {rule.effectiveFrom ? <DateText date={rule.effectiveFrom} /> : 'Any'} →{' '}
+                    {rule.effectiveTo ? <DateText date={rule.effectiveTo} /> : 'Any'}
                   </td>
                   <td>
-                    <span className={`pill ${rule.active ? 'pill-ok' : 'pill-muted'}`}>
+                    <StatusPill tone={rule.active ? 'ok' : 'muted'}>
                       {rule.active ? 'Active' : 'Inactive'}
-                    </span>
+                    </StatusPill>
                   </td>
-                  <td>{describeMatchers(parseMatchers(rule.matchers), labels)}</td>
                   <td>
+                    Splits {describeMatchers(parseMatchers(rule.matchers), labels)}:{' '}
                     {rule.targets
                       .map(
                         (t) =>
-                          `${codeMap.get(t.programId ?? lineMap.get(t.grantBudgetLineId ?? '')?.programId ?? '') ?? lineMap.get(t.grantBudgetLineId ?? '')?.code ?? 'Unknown'} ${rule.method === 'fixed_pct' ? formatBps(t.shareBps) : 'driver'}`,
+                          `${rule.method === 'fixed_pct' ? `${formatPct(t.shareBps)} ` : ''}${nameMap.get(t.programId ?? '') ?? lineMap.get(t.grantBudgetLineId ?? '')?.name ?? 'Unknown'}`,
                       )
-                      .join(' · ')}
+                      .join(', ')}
                   </td>
-                  <td className="num">{run ? formatCents(amountMap.get(rule.id) ?? 0) : '—'}</td>
+                  <td className="num">
+                    {run ? <Money cents={amountMap.get(rule.id) ?? 0} /> : '—'}
+                  </td>
                   <td className="num">
                     {run
                       ? conflicts.filter((c) => c.conflictRuleIds.includes(rule.id)).length
@@ -121,7 +128,7 @@ export default async function AllocationPage({
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         ) : (
           <p className="muted">No allocation rules yet.</p>
         )}

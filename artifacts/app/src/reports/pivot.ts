@@ -14,11 +14,23 @@ export function pivot(
   const cells = new Map<string, number>(),
     rowTotals = new Map<string, number>(),
     colTotals = new Map<string, number>();
+  const rowLabels = new Map<string, { name: string; code?: string; functionalCategory?: string }>();
+  const colLabels = new Map<string, { name: string; code?: string; functionalCategory?: string }>();
   let grandTotal = 0;
   for (const f of filtered) {
     const r = f[opts.rows],
       c = f[opts.cols],
       key = cellId(r, c);
+    rowLabels.set(r, {
+      name: f.labels?.[opts.rows] ?? r,
+      code: f.secondary?.[opts.rows],
+      functionalCategory: f.functionalCategory,
+    });
+    colLabels.set(c, {
+      name: f.labels?.[opts.cols] ?? c,
+      code: f.secondary?.[opts.cols],
+      functionalCategory: f.functionalCategory,
+    });
     cells.set(key, (cells.get(key) ?? 0) + f.amountCents);
     rowTotals.set(r, (rowTotals.get(r) ?? 0) + f.amountCents);
     colTotals.set(c, (colTotals.get(c) ?? 0) + f.amountCents);
@@ -35,7 +47,14 @@ export function pivot(
     nonZeroRows.add(r);
     nonZeroCols.add(c);
   }
-  const rowKeys = [...rowTotals.keys()].filter((k) => opts.zeros || nonZeroRows.has(k)).sort(sort);
+  const order = new Map(filtered.map((f) => [f[opts.rows], f.budgetSortOrder]));
+  const rowKeys = [...rowTotals.keys()]
+    .filter((k) => opts.zeros || nonZeroRows.has(k))
+    .sort(
+      opts.rows === 'grantBudgetLine'
+        ? (a, b) => (order.get(a) ?? 999999) - (order.get(b) ?? 999999) || sort(a, b)
+        : sort,
+    );
   const colKeys = [...colTotals.keys()].filter((k) => opts.zeros || nonZeroCols.has(k)).sort(sort);
-  return { rowKeys, colKeys, cells, rowTotals, colTotals, grandTotal };
+  return { rowKeys, colKeys, cells, rowTotals, colTotals, grandTotal, rowLabels, colLabels };
 }

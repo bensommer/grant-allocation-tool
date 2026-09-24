@@ -1,4 +1,4 @@
-import { PageHeader } from '@/components/page-header';
+import { Button, ButtonLink, Card, PageHeader } from '@/components/ui';
 import { decodeFormState, pick } from '@/lib/forms';
 import { getOrgId } from '@/lib/org';
 import { getPacingSettings } from '@/services/settings';
@@ -18,7 +18,7 @@ export default async function SettingsPage({
     <>
       <PageHeader title="Settings" subtitle="Configure grant pacing thresholds." />
       {saved && <div className="banner banner-ok">Settings saved.</div>}
-      <div className="card">
+      <Card title="Pacing thresholds">
         <form action={saveSettingsAction} className="flex flex-wrap items-end gap-4">
           <label>
             Under pace threshold (%)
@@ -50,11 +50,14 @@ export default async function SettingsPage({
               <span className="text-red-700">{state.errors.overPercent}</span>
             )}
           </label>
-          <button className="btn" type="submit">
-            Save thresholds
-          </button>
+          <Button>Save thresholds</Button>
         </form>
-      </div>
+      </Card>
+      <p className="mt-4">
+        <ButtonLink href="/settings/periods" variant="secondary">
+          Reporting period locks
+        </ButtonLink>
+      </p>
       <p className="muted mt-4 text-sm">
         A grant is flagged when actual spending is more than the configured percentage below or
         above expected straight-line spending. Defaults: 15% under, 10% over.

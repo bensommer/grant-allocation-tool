@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { PageHeader } from '@/components/page-header';
+import { Card, DataTable, DateText, PageHeader, Period, StatusPill } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 
@@ -13,14 +13,15 @@ export default async function Page() {
   return (
     <>
       <PageHeader title="Narratives" subtitle="Funder financial drafts across all grants" />
-      <div className="card overflow-x-auto">
-        <table>
+      <Card>
+        <DataTable caption="Narratives across all grants">
           <thead>
             <tr>
               <th>Grant</th>
               <th>Template</th>
               <th>Period</th>
               <th>Status</th>
+              <th>Version</th>
               <th>Created</th>
             </tr>
           </thead>
@@ -32,19 +33,21 @@ export default async function Page() {
                 </td>
                 <td>{r.template}</td>
                 <td>
-                  {r.periodFrom.toISOString().slice(0, 10)} –{' '}
-                  {r.periodTo.toISOString().slice(0, 10)}
+                  <Period from={r.periodFrom} to={r.periodTo} />
                 </td>
                 <td>
-                  <span className="pill">{r.status}</span>
+                  <StatusPill tone={r.status === 'approved' ? 'ok' : 'info'}>{r.status}</StatusPill>
                 </td>
-                <td>{r.createdAt.toISOString().slice(0, 10)}</td>
+                <td>{r.version}</td>
+                <td>
+                  <DateText date={r.createdAt} />
+                </td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </DataTable>
         {!rows.length && <p className="muted">No narratives yet. Open a grant to draft one.</p>}
-      </div>
+      </Card>
     </>
   );
 }

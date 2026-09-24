@@ -1,7 +1,17 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { PageHeader } from '@/components/page-header';
-import { formatCents } from '@/domain/money';
+import {
+  Button,
+  ButtonLink,
+  Card,
+  DataTable,
+  DateText,
+  NumTd,
+  PageHeader,
+  Period,
+  StatusPill,
+  Toolbar,
+} from '@/components/ui';
 import { decodeFormState, pick } from '@/lib/forms';
 import { getOrgId } from '@/lib/org';
 import { extractNumbers } from '@/narratives/numbers';
@@ -37,24 +47,42 @@ export default async function Editor({
     <>
       <PageHeader
         title={`${packet.grant.name} · ${narrative.template}`}
-        subtitle={`${packet.period.from} – ${packet.period.to} · Version ${narrative.version} · ${narrative.status}`}
-        actions={
-          <span className={print ? 'hidden no-print' : 'no-print'}>
-            <Link className="btn btn-secondary btn-sm" href={`/grants/${id}/narratives`}>
-              ← Narratives
-            </Link>
-            <Link
-              className="btn btn-secondary btn-sm"
-              href={`/grants/${id}/narratives/${nid}/docx`}
-            >
-              DOCX
-            </Link>
-            <Link className="btn btn-secondary btn-sm" href={`/grants/${id}/narratives/${nid}/pdf`}>
-              PDF
-            </Link>
-          </span>
+        subtitle={
+          <>
+            <Period
+              from={new Date(`${packet.period.from}T00:00:00Z`)}
+              to={new Date(`${packet.period.to}T00:00:00Z`)}
+            />{' '}
+            · Version {narrative.version} ·{' '}
+            <StatusPill tone={narrative.status === 'approved' ? 'ok' : 'info'}>
+              {narrative.status}
+            </StatusPill>
+          </>
+        }
+        primaryAction={
+          <Button
+            type="submit"
+            form="narrative-editor"
+            name="intent"
+            value={narrative.status === 'approved' ? 'save' : 'approve'}
+          >
+            {narrative.status === 'approved' ? 'New version' : 'Approve'}
+          </Button>
+        }
+        secondaryActions={
+          <ButtonLink variant="secondary" href={`/grants/${id}/narratives`}>
+            ← Narratives
+          </ButtonLink>
         }
       />
+      <Toolbar>
+        <ButtonLink variant="secondary" size="sm" href={`/grants/${id}/narratives/${nid}/docx`}>
+          Export DOCX
+        </ButtonLink>
+        <ButtonLink variant="secondary" size="sm" href={`/grants/${id}/narratives/${nid}/pdf`}>
+          Export PDF
+        </ButtonLink>
+      </Toolbar>
       {saved && <div className="banner banner-ok no-print">Narrative saved.</div>}
       {state?.errors._ && (
         <div className="banner banner-warn no-print" role="alert">
@@ -63,18 +91,18 @@ export default async function Editor({
       )}
       {narrative.status === 'approved' && (
         <div className="banner no-print">
-          Approved by {narrative.approvedBy} on {narrative.approvedAt?.toISOString().slice(0, 10)}.
-          Saving an edit creates a new draft version.
+          Approved by {narrative.approvedBy} on{' '}
+          {narrative.approvedAt && <DateText date={narrative.approvedAt} />}. Saving an edit creates
+          a new draft version.
         </div>
       )}
-      <form action={editAction.bind(null, id, nid)} className="card">
+      <form id="narrative-editor" action={editAction.bind(null, id, nid)}>
         {sections.map((s, i) => {
           const issues = verification.filter((v) => v.sectionIndex === i);
           const tokens = extractNumbers(s.body);
           let offset = 0;
           return (
-            <section key={i} className="mb-6">
-              <h2>{s.heading}</h2>
+            <Card key={i} title={s.heading}>
               <label className="no-print">
                 Edit section
                 <textarea name={`body-${i}`} rows={7} defaultValue={s.body} className="w-full" />
@@ -94,34 +122,52 @@ export default async function Editor({
               <div className="no-print mt-2">
                 <strong>Number verification</strong>
                 {issues.length === 0 && <p className="muted">No amounts or percentages cited.</p>}
-                {issues.map((v, j) => {
-                  const key = `${i}:${v.start}:${v.text}`;
-                  const checked = acknowledged.some(
-                    (a) =>
-                      a.sectionIndex === i &&
-                      a.start === v.start &&
-                      a.text === v.text &&
-                      a.acknowledged,
-                  );
-                  return (
-                    <p key={j}>
-                      <span className={`pill ${v.matched ? 'pill-ok' : 'pill-warn'}`}>
-                        {v.text}: {v.matched ? `Verified (${v.matchedKey})` : 'Unverified'}
-                      </span>
-                      {!v.matched && (
-                        <label className="ml-2">
-                          <input
-                            type="checkbox"
-                            name="acknowledge"
-                            value={key}
-                            defaultChecked={checked}
-                          />{' '}
-                          Acknowledge
-                        </label>
-                      )}
-                    </p>
-                  );
-                })}
+                {issues.length > 0 && (
+                  <DataTable caption={`${s.heading} number verification`}>
+                    <thead>
+                      <tr>
+                        <th>Value</th>
+                        <th>Verification</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {issues.map((v, j) => {
+                        const key = `${i}:${v.start}:${v.text}`;
+                        const checked = acknowledged.some(
+                          (a) =>
+                            a.sectionIndex === i &&
+                            a.start === v.start &&
+                            a.text === v.text &&
+                            a.acknowledged,
+                        );
+                        return (
+                          <tr key={j}>
+                            <td>{v.text}</td>
+                            <td>
+                              <StatusPill tone={v.matched ? 'ok' : 'warn'}>
+                                {v.matched ? `Verified (${v.matchedKey})` : 'Unverified'}
+                              </StatusPill>
+                            </td>
+                            <td>
+                              {!v.matched && (
+                                <label className="ml-2">
+                                  <input
+                                    type="checkbox"
+                                    name="acknowledge"
+                                    value={key}
+                                    defaultChecked={checked}
+                                  />{' '}
+                                  Acknowledge
+                                </label>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </DataTable>
+                )}
                 {narrative.status !== 'approved' && (
                   <button
                     className="btn btn-secondary btn-sm"
@@ -132,7 +178,7 @@ export default async function Editor({
                   </button>
                 )}
               </div>
-            </section>
+            </Card>
           );
         })}
         <div className="no-print">
@@ -146,11 +192,8 @@ export default async function Editor({
           )}
         </div>
       </form>
-      <div className="card mt-4">
-        <h2>
-          Budget vs actual · {packet.period.from} – {packet.period.to}
-        </h2>
-        <table>
+      <Card title="Budget vs actual">
+        <DataTable caption="Narrative budget vs actual">
           <thead>
             <tr>
               <th>Budget line</th>
@@ -163,16 +206,16 @@ export default async function Editor({
             {packet.rows.map((r) => (
               <tr key={r.code}>
                 <td>
-                  {r.code} · {r.name}
+                  {r.name} <small className="muted">· {r.code}</small>
                 </td>
-                <td className="num">{formatCents(r.budgetCents)}</td>
-                <td className="num">{formatCents(r.actualCents)}</td>
-                <td className="num">{formatCents(r.remainingCents)}</td>
+                <NumTd cents={r.budgetCents} />
+                <NumTd cents={r.actualCents} />
+                <NumTd cents={r.remainingCents} />
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+        </DataTable>
+      </Card>
     </>
   );
 }

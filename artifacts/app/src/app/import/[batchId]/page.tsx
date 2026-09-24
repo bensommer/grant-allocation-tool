@@ -1,11 +1,18 @@
 import { getOrgId } from '@/lib/org';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { PageHeader } from '@/components/page-header';
+import {
+  Banner,
+  ButtonLink,
+  Card,
+  DataTable,
+  DateText,
+  PageHeader,
+  StatusPill,
+} from '@/components/ui';
 import { prisma } from '@/lib/db';
 import type { ImportCounts } from '@/datasource/import-service';
 import type { ImportError } from '@/datasource/types';
-import { BatchStatusPill } from '../status-pill';
 
 export const dynamic = 'force-dynamic';
 const PAGE_SIZE = 50;
@@ -36,8 +43,12 @@ export default async function BatchPage({
     <>
       <PageHeader
         title={`Import batch`}
-        subtitle={`${batch.sourceSystem} · started ${batch.startedAt.toISOString().replace('T', ' ').slice(0, 19)}`}
-        actions={
+        subtitle={
+          <>
+            {batch.sourceSystem} · started <DateText date={batch.startedAt} time />
+          </>
+        }
+        secondaryActions={
           <>
             <Link href="/import" className="btn btn-secondary btn-sm">
               All imports
@@ -52,8 +63,12 @@ export default async function BatchPage({
       />
 
       <div className="mb-4 flex items-center gap-3">
-        <BatchStatusPill status={batch.status} />
-        <span className="muted text-xs font-mono">{batch.id}</span>
+        <StatusPill
+          tone={batch.status === 'succeeded' ? 'ok' : batch.status === 'failed' ? 'bad' : 'warn'}
+        >
+          {batch.status.charAt(0).toUpperCase() + batch.status.slice(1)}
+        </StatusPill>
+        <span className="muted text-xs break-all">{batch.id}</span>
       </div>
 
       {batch.status === 'failed' ? (
@@ -79,7 +94,7 @@ export default async function BatchPage({
 
       <div className="card mb-6">
         <h2 className="mb-3">Counts per entity</h2>
-        <table>
+        <DataTable caption="Counts per entity">
           <thead>
             <tr>
               <th>Entity</th>
@@ -103,18 +118,18 @@ export default async function BatchPage({
               );
             })}
           </tbody>
-        </table>
+        </DataTable>
         <h2 className="mb-2 mt-5">File hashes</h2>
-        <table>
+        <DataTable caption="File hashes">
           <tbody>
             {Object.entries(batch.fileHashes as Record<string, string>).map(([f, h]) => (
               <tr key={f}>
                 <td>{f}</td>
-                <td className="font-mono text-xs">{h}</td>
+                <td className="text-xs break-all">{h}</td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </DataTable>
       </div>
 
       {errors.length > 0 ? (
@@ -122,7 +137,7 @@ export default async function BatchPage({
           <h2 className="mb-3">
             Errors ({errors.length}) — page {page} of {pages}
           </h2>
-          <table>
+          <DataTable caption="Import errors">
             <thead>
               <tr>
                 <th>File</th>
@@ -138,12 +153,12 @@ export default async function BatchPage({
                   <td>{e.file}</td>
                   <td className="num">{e.row ?? ''}</td>
                   <td>{e.column ?? ''}</td>
-                  <td className="font-mono text-xs">{e.code}</td>
+                  <td className="text-xs">{e.code}</td>
                   <td>{e.message}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
           {pages > 1 ? (
             <div className="mt-3 flex gap-2 text-sm">
               {page > 1 ? (

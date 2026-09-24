@@ -1,6 +1,15 @@
 import Link from 'next/link';
-import { PageHeader } from '@/components/page-header';
-import { formatCents, formatPct1 } from '@/domain/money';
+import {
+  Banner,
+  ButtonLink,
+  DataTable,
+  FilterBar,
+  Money,
+  NumTd,
+  PageHeader,
+  Th,
+} from '@/components/ui';
+import { formatPct1 } from '@/domain/money';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { currentPieces } from '../pieces';
@@ -33,38 +42,37 @@ export default async function CoveragePage({
     <>
       <PageHeader
         title="Crosswalk coverage"
-        actions={
-          <Link href="/crosswalk" className="btn btn-secondary btn-sm">
+        secondaryActions={
+          <ButtonLink href="/crosswalk" variant="secondary">
             All rules
-          </Link>
+          </ButtonLink>
         }
       />
-      <form method="get" className="mb-3 flex items-end gap-2">
+      <FilterBar action="/crosswalk/coverage">
         <label>
           From <input type="date" name="from" defaultValue={range.from} />
         </label>
         <label>
           To <input type="date" name="to" defaultValue={range.to} />
         </label>
-        <button className="btn btn-secondary">Filter</button>
-      </form>
-      {range.error ? <div className="banner banner-bad">{range.error}</div> : null}
+      </FilterBar>
+      {range.error ? <Banner tone="bad">{range.error}</Banner> : null}
       {!data.run ? (
-        <div className="banner banner-warn">
+        <Banner tone="warn">
           No current run — recompute on <Link href="/runs">/runs</Link>.
-        </div>
+        </Banner>
       ) : (
         <>
           <div className="card">
-            <table>
+            <DataTable caption="Crosswalk coverage">
               <thead>
                 <tr>
-                  <th>Program</th>
-                  <th className="num">Total expense</th>
-                  <th className="num">Mapped</th>
-                  <th className="num">Unmapped</th>
-                  <th className="num">Conflict</th>
-                  <th className="num">% mapped</th>
+                  <Th>Program</Th>
+                  <Th num>Total expense ($)</Th>
+                  <Th num>Mapped ($)</Th>
+                  <Th num>Unmapped ($)</Th>
+                  <Th num>Conflict ($)</Th>
+                  <Th num>% mapped</Th>
                 </tr>
               </thead>
               <tbody>
@@ -80,18 +88,19 @@ export default async function CoveragePage({
                   return (
                     <tr key={p.id}>
                       <td>
-                        {p.code} {p.name}
+                        {p.name}
+                        <span className="muted block text-xs">{p.code}</span>
                       </td>
-                      <td className="num">{formatCents(total)}</td>
-                      <td className="num">{formatCents(mapped)}</td>
-                      <td className="num">{formatCents(total - mapped - conflict)}</td>
-                      <td className="num">{formatCents(conflict)}</td>
+                      <NumTd cents={total} />
+                      <NumTd cents={mapped} />
+                      <NumTd cents={total - mapped - conflict} />
+                      <NumTd cents={conflict} />
                       <td className="num">{formatPct1(mapped, total)}</td>
                     </tr>
                   );
                 })}
               </tbody>
-            </table>
+            </DataTable>
           </div>
           <div className="card mt-4">
             <h2>Unmapped detail</h2>
@@ -108,14 +117,15 @@ export default async function CoveragePage({
               return (
                 <section key={p.id}>
                   <h3>
-                    {p.code} — {p.name}
+                    {p.name}
+                    <span className="muted ml-2 text-xs">{p.code}</span>
                   </h3>
-                  <table>
+                  <DataTable caption={`Unmapped expense for ${p.name}`}>
                     <thead>
                       <tr>
-                        <th>Account</th>
-                        <th className="num">Amount</th>
-                        <th className="num">Pieces</th>
+                        <Th>Account</Th>
+                        <Th num>Amount ($)</Th>
+                        <Th num>Pieces</Th>
                       </tr>
                     </thead>
                     <tbody>
@@ -131,18 +141,17 @@ export default async function CoveragePage({
                           <tr key={a.id}>
                             <td>
                               <Link href={`/crosswalk/lines?${query}`}>
-                                {a.number} {a.name}
+                                {a.name}
+                                <span className="muted block text-xs">{a.number}</span>
                               </Link>
                             </td>
-                            <td className="num">
-                              {formatCents(subset.reduce((n, x) => n + x.amountCents, 0))}
-                            </td>
+                            <NumTd cents={subset.reduce((n, x) => n + x.amountCents, 0)} />
                             <td className="num">{subset.length}</td>
                           </tr>
                         );
                       })}
                     </tbody>
-                  </table>
+                  </DataTable>
                 </section>
               );
             })}

@@ -12,6 +12,6 @@ Helpers defined in an earlier CodeExecution call (e.g. a GitHub push helper) som
 "executeJs is not defined" in later calls. Redefine the helper in the same call that uses it.
 **Why:** hit twice in one session; the notebook persisted variables for a while, then lost them.
 
-## Screenshot tool hostname
-The Screenshot tool hits 127.0.0.1:80 through the proxy; HMR websocket 502 errors in its browser log
-are noise, not app errors.
+## Env changes need a dev-server restart
+Next dev server does not pick up newly added secrets/env vars (or a Prisma schema change) until the
+workflow is restarted; a feature reading process.env looked "disabled" until then.

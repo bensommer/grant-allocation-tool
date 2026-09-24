@@ -1,6 +1,5 @@
 import { CheckboxList, Field, FormBanner } from '@/components/form';
-import { formatCents } from '@/domain/money';
-import { formatDate } from '@/domain/dates';
+import { DataTable, DateText, Money, NumTd, Th } from '@/components/ui';
 import { parseMatchers, type Matchers } from '@/domain/matchers';
 import type { PreviewResult } from '@/engine/preview';
 import { pick, pickBool, pickList, type FormState } from '@/lib/forms';
@@ -36,7 +35,7 @@ export function RuleForm({
     {
       name: 'programIds',
       label: 'Programs',
-      values: options.programs.map((p) => ({ value: p.id, label: `${p.code} ${p.name}` })),
+      values: options.programs.map((p) => ({ value: p.id, label: `${p.name} (${p.code})` })),
       selected: m.programIds ?? [],
     },
     {
@@ -44,7 +43,7 @@ export function RuleForm({
       label: 'Expense accounts',
       values: options.accounts.map((a) => ({
         value: a.id,
-        label: `${a.number ?? ''} ${a.name}`.trim(),
+        label: `${a.name} ${a.number ?? ''}`.trim(),
       })),
       selected: m.accountIds ?? [],
     },
@@ -91,10 +90,10 @@ export function RuleForm({
             >
               <option value="">Select a budget line</option>
               {options.grants.map((g) => (
-                <optgroup key={g.id} label={`${g.awardNumber ?? g.name} — ${g.name}`}>
+                <optgroup key={g.id} label={g.name}>
                   {g.budgetLines.map((b) => (
                     <option key={b.id} value={b.id}>
-                      {b.code} — {b.name}
+                      {b.name} ({b.code})
                     </option>
                   ))}
                 </optgroup>
@@ -214,12 +213,12 @@ export function RuleForm({
         <div className="card mt-4">
           <h2>Preview</h2>
           <p>
-            {preview.count} pieces · {formatCents(preview.totalCents)} this rule would map
+            {preview.count} pieces · <Money cents={preview.totalCents} dollar /> this rule would map
             {preview.contested > 0
               ? ` · ${preview.contested} more tie with another rule at this priority`
               : ''}
           </p>
-          <table>
+          <DataTable caption="Preview affected pieces">
             <thead>
               <tr>
                 {[
@@ -232,25 +231,29 @@ export function RuleForm({
                   'Allocated program',
                   'Amount',
                 ].map((h) => (
-                  <th key={h}>{h}</th>
+                  <Th key={h} num={h === 'Amount'}>
+                    {h === 'Amount' ? 'Amount ($)' : h}
+                  </Th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {preview.sample.map((l, i) => (
                 <tr key={`${l.sourceLineId}-${i}`}>
-                  <td>{formatDate(l.txnDate)}</td>
+                  <td>
+                    <DateText date={l.txnDate} />
+                  </td>
                   <td>{l.docNumber}</td>
                   <td>{l.account}</td>
                   <td>{l.className}</td>
                   <td>{l.party}</td>
                   <td>{l.description}</td>
                   <td>{l.programCode}</td>
-                  <td className="num">{formatCents(l.amountCents)}</td>
+                  <NumTd cents={l.amountCents} />
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       ) : null}
     </>

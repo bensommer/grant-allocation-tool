@@ -1,9 +1,8 @@
 import Link from 'next/link';
-import { PageHeader } from '@/components/page-header';
+import { Button, DataTable, DateText, PageHeader, StatusPill, Th } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { recomputeAction } from './actions';
-import { RunStatusPill } from './status-pill';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,11 +37,9 @@ export default async function RunsPage({
       <PageHeader
         title="Compute runs"
         subtitle="Every recompute is a new run; reports always read from the current successful run."
-        actions={
+        primaryAction={
           <form action={recomputeAction}>
-            <button type="submit" className="btn">
-              Recompute now
-            </button>
+            <Button>Recompute now</Button>
           </form>
         }
       />
@@ -60,7 +57,7 @@ export default async function RunsPage({
       {current?.stale ? (
         <div className="banner banner-warn">
           Configuration changed since the current run. Reports show numbers from{' '}
-          {stamp(current.finishedAt ?? current.startedAt)} until you recompute.
+          <DateText date={current.finishedAt ?? current.startedAt} time /> until you recompute.
         </div>
       ) : null}
       {!current ? (
@@ -73,7 +70,7 @@ export default async function RunsPage({
         {runs.length === 0 ? (
           <p className="muted">No runs yet.</p>
         ) : (
-          <table>
+          <DataTable caption="Compute runs">
             <thead>
               <tr>
                 <th>Started</th>
@@ -98,25 +95,39 @@ export default async function RunsPage({
                 return (
                   <tr key={r.id}>
                     <td className="whitespace-nowrap">
-                      {stamp(r.startedAt)}
-                      {r.isCurrent ? <span className="pill pill-ok ml-2">current</span> : null}
-                      {r.stale && r.isCurrent ? (
-                        <span className="pill pill-warn ml-1">stale</span>
-                      ) : null}
+                      <DateText date={r.startedAt} time />
+                      {r.isCurrent ? <StatusPill tone="ok">current</StatusPill> : null}
+                      {r.stale && r.isCurrent ? <StatusPill tone="warn">stale</StatusPill> : null}
                     </td>
                     <td>
-                      <RunStatusPill status={r.status} />
+                      <StatusPill
+                        tone={
+                          r.status === 'succeeded'
+                            ? 'ok'
+                            : r.status === 'failed'
+                              ? 'bad'
+                              : r.status === 'superseded'
+                                ? 'muted'
+                                : 'warn'
+                        }
+                      >
+                        {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                      </StatusPill>
                     </td>
                     <td className="num">
                       {r.finishedAt ? `${r.finishedAt.getTime() - r.startedAt.getTime()} ms` : '–'}
                     </td>
                     <td>
-                      <code>{r.configHash}</code>
+                      <span className="break-all">{r.configHash}</span>
                     </td>
                     <td className="num">{stats ? `${stats.lines} → ${stats.pieces}` : '–'}</td>
                     <td className="num">{warnings}</td>
                     <td className="num">
-                      {conflicts > 0 ? <span className="pill pill-bad">{conflicts}</span> : '0'}
+                      {conflicts > 0 ? (
+                        <StatusPill tone="bad">{conflicts} conflicts</StatusPill>
+                      ) : (
+                        '0'
+                      )}
                     </td>
                     <td className="whitespace-nowrap">
                       <Link href={`/runs/${r.id}`}>Detail</Link>
@@ -133,13 +144,9 @@ export default async function RunsPage({
                 );
               })}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
     </>
   );
-}
-
-function stamp(d: Date): string {
-  return d.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
 }

@@ -1,10 +1,18 @@
 import Link from 'next/link';
-import { PageHeader } from '@/components/page-header';
+import {
+  Button,
+  Card,
+  DataTable,
+  DateText,
+  PageHeader,
+  Period,
+  StatusPill,
+  Th,
+} from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import type { ImportCounts } from '@/datasource/import-service';
 import { uploadCsvBundle } from './actions';
-import { BatchStatusPill } from './status-pill';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,47 +37,40 @@ export default async function ImportPage({
       />
       {error ? <div className="banner banner-bad">{error}</div> : null}
 
-      <form
-        action={uploadCsvBundle}
+      <Card title="Upload CSV bundle">
+        <form action={uploadCsvBundle} className="mb-6">
+          <div className="grid-form">
+            <div className="md:col-span-2">
+              <label htmlFor="files">
+                Files (company, accounts, classes, locations, parties, transactions; optional
+                trial_balance)
+              </label>
+              <input id="files" name="files" type="file" accept=".csv,text/csv" multiple required />
+            </div>
+            <div>
+              <label htmlFor="from">From (optional)</label>
+              <input id="from" name="from" type="text" placeholder="YYYY-MM-DD" />
+            </div>
+            <div>
+              <label htmlFor="to">To (optional)</label>
+              <input id="to" name="to" type="text" placeholder="YYYY-MM-DD" />
+            </div>
+          </div>
+          <p className="muted mt-2 text-xs">
+            Leave dates blank for a full import: transactions missing from the files are marked
+            deleted. With a date range, only transactions inside the range are reconciled.
+          </p>
+          <Button>Import</Button>
+        </form>
+      </Card>
 
-        className="card mb-6"
-      >
-        <h2 className="mb-3">Upload CSV bundle</h2>
-        <div className="grid-form">
-          <div className="md:col-span-2">
-            <label htmlFor="files">
-              Files (company, accounts, classes, locations, parties, transactions; optional
-              trial_balance)
-            </label>
-            <input id="files" name="files" type="file" accept=".csv,text/csv" multiple required />
-          </div>
-          <div>
-            <label htmlFor="from">From (optional)</label>
-            <input id="from" name="from" type="text" placeholder="YYYY-MM-DD" />
-          </div>
-          <div>
-            <label htmlFor="to">To (optional)</label>
-            <input id="to" name="to" type="text" placeholder="YYYY-MM-DD" />
-          </div>
-        </div>
-        <p className="muted mt-2 text-xs">
-          Leave dates blank for a full import: transactions missing from the files are marked
-          deleted. With a date range, only transactions inside the range are reconciled.
-        </p>
-        <button type="submit" className="btn mt-3">
-          Import
-        </button>
-      </form>
-
-      <div className="card">
-        <h2 className="mb-3">Recent imports</h2>
+      <Card title="Recent imports">
         {batches.length === 0 ? (
           <p className="muted">
-            No imports yet. Try the demo data:{' '}
-            <code>npm run import:csv -- --dir fixtures/demo</code>
+            No imports yet. Try the demo data: npm run import:csv -- --dir fixtures/demo
           </p>
         ) : (
-          <table>
+          <DataTable caption="Recent import batches">
             <thead>
               <tr>
                 <th>Started</th>
@@ -79,7 +80,7 @@ export default async function ImportPage({
                 <th className="num">Txns new / changed / unchanged / deleted</th>
                 <th className="num">Lines</th>
                 <th className="num">Errors</th>
-                <th />
+                <Th>Details</Th>
               </tr>
             </thead>
             <tbody>
@@ -88,12 +89,28 @@ export default async function ImportPage({
                 const t = c.transactions;
                 return (
                   <tr key={b.id}>
-                    <td>{b.startedAt.toISOString().replace('T', ' ').slice(0, 19)}</td>
+                    <td>
+                      <DateText date={b.startedAt} time />
+                    </td>
                     <td>{b.sourceSystem}</td>
                     <td>
-                      <BatchStatusPill status={b.status} />
+                      <StatusPill
+                        tone={
+                          b.status === 'succeeded' ? 'ok' : b.status === 'failed' ? 'bad' : 'warn'
+                        }
+                      >
+                        {b.status.charAt(0).toUpperCase() + b.status.slice(1)}
+                      </StatusPill>
                     </td>
-                    <td>{b.fullRange ? 'full' : `${iso(b.rangeFrom)} → ${iso(b.rangeTo)}`}</td>
+                    <td>
+                      {b.fullRange ? (
+                        'Full range'
+                      ) : b.rangeFrom && b.rangeTo ? (
+                        <Period from={b.rangeFrom} to={b.rangeTo} />
+                      ) : (
+                        '—'
+                      )}
+                    </td>
                     <td className="num">
                       {t ? `${t.new} / ${t.changed} / ${t.unchanged} / ${t.deleted}` : '–'}
                     </td>
@@ -106,13 +123,9 @@ export default async function ImportPage({
                 );
               })}
             </tbody>
-          </table>
+          </DataTable>
         )}
-      </div>
+      </Card>
     </>
   );
-}
-
-function iso(d: Date | null): string {
-  return d ? d.toISOString().slice(0, 10) : '';
 }

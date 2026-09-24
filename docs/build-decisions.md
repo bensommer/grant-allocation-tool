@@ -38,6 +38,12 @@
 - `($5,000.00)` is negative only when the paren closes right after the amount; `($5,000.00 monthly)`
   is prose. Malformed precision (`$1,234.567`) is extracted and stays unverified (fail closed).
 
+## JPH-16 UI overhaul
+
+- PDF rendering uses pure-JS pdfkit with built-in fonts and data-driven tables/documents.
+  The deployment host has no Chromium; this avoids a headless browser and external
+  service dependency while producing deterministic output from the same report data.
+
 ## JPH-15 re-import and reconciliation
 
 - Change detection hashes normalized rows; missing rows are soft-deleted only on full-range imports.
@@ -47,3 +53,19 @@
 - Reconciliation checks count exactly what the engine counts (unassigned = all pieces without a
   program, including income); trial-balance tie-out warns on partial account coverage.
 - QBO CDC/TrialBalance pulls are `NotImplemented` stubs behind `DataSource` (JPH-14 skipped).
+
+## JPH-16 UI overhaul (continued)
+
+- Presentation-only except two dashboard changes: the "unmapped" card counts program-service expense
+  only (M&G/Fundraising is shown as expected non-grant expense), and as-of defaults to the last
+  imported transaction date. Report pivot keys are unchanged (`number name` for accounts, codes for
+  grants/lines/programs); display names travel in `labels`/`secondary` metadata so the golden tests
+  still address cells by key.
+- Inter is self-hosted from a local woff2 (`next/font/local`) so production builds never fetch
+  Google Fonts.
+- Visual baselines are captured against pristine demo data; CI runs `visual.spec.ts` right after
+  seeding and before the specs that create records.
+- Allocation editor "Change method" / "Add target" are GET submits of the whole form, so no-JS users
+  keep their input; the client island only adds instant feedback.
+- Report budget columns come from `GrantBudgetLine` (not allocated facts) and are offered only when
+  rows are budget lines and the page break is by grant or none.

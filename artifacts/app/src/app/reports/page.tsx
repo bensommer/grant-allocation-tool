@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { PageHeader } from '@/components/page-header';
+import { Button, ButtonLink, Card, DataTable, DateText, PageHeader, Th } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { decodeFormState, pick } from '@/lib/forms';
@@ -24,29 +24,27 @@ export default async function Page({
       <PageHeader
         title="Reports"
         subtitle={
-          run
-            ? `Current run: ${(run.finishedAt ?? run.startedAt).toISOString().replace('T', ' ').slice(0, 19)} UTC`
-            : 'No current run'
+          run ? (
+            <>
+              Current run: <DateText date={run.finishedAt ?? run.startedAt} time />
+            </>
+          ) : (
+            'No current run'
+          )
         }
-        actions={
-          <Link className="btn" href="/reports/custom">
-            Build custom report
-          </Link>
-        }
+        primaryAction={<ButtonLink href="/reports/custom">Build custom report</ButtonLink>}
       />
       {run?.stale ? (
         <div className="banner banner-warn">
           Configuration changed since the current run. Reports show numbers from{' '}
-          {(run.finishedAt ?? run.startedAt).toISOString().replace('T', ' ').slice(0, 19)} UTC until
-          you recompute.
+          <DateText date={run.finishedAt ?? run.startedAt} time /> until you recompute.
         </div>
       ) : null}
       {saved ? <div className="banner banner-ok">Saved.</div> : null}
       {state?.errors.name || state?.errors.query ? (
         <div className="banner banner-bad">{state.errors.name ?? state.errors.query}</div>
       ) : null}
-      <div className="card">
-        <h2>Preset reports</h2>
+      <Card title="Preset reports">
         <ul>
           {presets.map((p) => (
             <li key={p.title}>
@@ -54,21 +52,34 @@ export default async function Page({
             </li>
           ))}
         </ul>
-      </div>
-      <div className="card">
-        <h2>Saved views</h2>
+      </Card>
+      <Card title="Saved views">
         {views.length ? (
-          <ul>
-            {views.map((v) => (
-              <li key={v.id}>
-                <Link href={`${v.path}?${v.queryString}`}>{v.name}</Link>{' '}
-                <form action={deleteView} className="inline">
-                  <input type="hidden" name="id" value={v.id} />
-                  <button className="btn btn-secondary btn-sm">Delete</button>
-                </form>
-              </li>
-            ))}
-          </ul>
+          <DataTable caption="Saved report views">
+            <thead>
+              <tr>
+                <Th>View</Th>
+                <Th>Actions</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {views.map((v) => (
+                <tr key={v.id}>
+                  <td>
+                    <Link href={`${v.path}?${v.queryString}`}>{v.name}</Link>
+                  </td>
+                  <td>
+                    <form action={deleteView} className="inline">
+                      <input type="hidden" name="id" value={v.id} />
+                      <Button variant="secondary" size="sm">
+                        Delete
+                      </Button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
         ) : (
           <p className="muted">No saved views yet.</p>
         )}
@@ -82,7 +93,7 @@ export default async function Page({
           </label>{' '}
           <button className="btn">Save current view</button>
         </form>
-      </div>
+      </Card>
     </>
   );
 }

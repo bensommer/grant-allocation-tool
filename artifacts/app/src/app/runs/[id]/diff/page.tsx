@@ -1,9 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { PageHeader } from '@/components/page-header';
+import { DataTable, DateText, NumTd, PageHeader } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
-import { formatCents } from '@/domain/money';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,8 +57,7 @@ export default async function RunDiffPage({
       <>
         <PageHeader title="Run diff" subtitle="Pick a run to compare against." />
         <div className="banner banner-warn">
-          Missing or unknown <code>?against=</code> run.{' '}
-          <Link href={`/runs/${id}`}>Back to run</Link>.
+          Missing or unknown ?against= run. <Link href={`/runs/${id}`}>Back to run</Link>.
         </div>
       </>
     );
@@ -70,18 +68,20 @@ export default async function RunDiffPage({
     programGl(base.id),
     grantLines(run.id),
     grantLines(base.id),
-    prisma.program.findMany({ where: { orgId }, select: { id: true, code: true } }),
+    prisma.program.findMany({ where: { orgId }, select: { id: true, code: true, name: true } }),
     prisma.account.findMany({ where: { orgId }, select: { id: true, number: true, name: true } }),
     prisma.grantBudgetLine.findMany({
       where: { orgId },
       include: { grant: { select: { name: true } } },
     }),
   ]);
-  const progCode = new Map(programs.map((p) => [p.id, p.code]));
+  const progCode = new Map(programs.map((p) => [p.id, `${p.name} · ${p.code}`]));
   const acctLabel = new Map(
-    accounts.map((x) => [x.id, x.number ? `${x.number} ${x.name}` : x.name]),
+    accounts.map((x) => [x.id, x.number ? `${x.name} · ${x.number}` : x.name]),
   );
-  const blLabel = new Map(budgetLines.map((x) => [x.id, `${x.grant.name} · ${x.code}`]));
+  const blLabel = new Map(
+    budgetLines.map((x) => [x.id, `${x.grant.name} · ${x.name} · ${x.code}`]),
+  );
 
   const key = (c: Cell) => `${c.accountId}|${c.programId ?? ''}`;
   const after = new Map(a.map((c) => [key(c), c]));
@@ -122,13 +122,18 @@ export default async function RunDiffPage({
     .filter((d) => d.delta !== 0)
     .sort((p, q) => (blLabel.get(p.id) ?? '').localeCompare(blLabel.get(q.id) ?? ''));
 
-  const stamp = (d: Date) => d.toISOString().replace('T', ' ').slice(0, 19);
   return (
     <>
       <PageHeader
         title="Why did this number change?"
-        subtitle={`Run ${stamp(run.startedAt)} (${run.configHash}) compared with ${stamp(base.startedAt)} (${base.configHash}). Positive delta = more in the newer run.`}
-        actions={
+        subtitle={
+          <>
+            Run <DateText date={run.startedAt} time /> ({run.configHash}) compared with{' '}
+            <DateText date={base.startedAt} time /> ({base.configHash}). Positive delta = more in
+            the newer run.
+          </>
+        }
+        secondaryActions={
           <Link href={`/runs/${id}`} className="btn btn-secondary btn-sm">
             Back to run
           </Link>
@@ -144,7 +149,7 @@ export default async function RunDiffPage({
         {deltas.length === 0 ? (
           <p className="muted">No differences.</p>
         ) : (
-          <table>
+          <DataTable caption="Program and GL account changes">
             <thead>
               <tr>
                 <th>GL account</th>
@@ -165,16 +170,13 @@ export default async function RunDiffPage({
                       <span className="muted">unassigned</span>
                     )}
                   </td>
-                  <td className="num">{formatCents(d.before)}</td>
-                  <td className="num">{formatCents(d.after)}</td>
-                  <td className={`num font-semibold ${d.delta > 0 ? 'text-ok' : 'text-bad'}`}>
-                    {d.delta > 0 ? '+' : ''}
-                    {formatCents(d.delta)}
-                  </td>
+                  <NumTd cents={d.before} />
+                  <NumTd cents={d.after} />
+                  <NumTd cents={d.delta} />
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
       <div className="card">
@@ -182,7 +184,7 @@ export default async function RunDiffPage({
         {gDeltas.length === 0 ? (
           <p className="muted">No differences.</p>
         ) : (
-          <table>
+          <DataTable caption="Grant budget line changes">
             <thead>
               <tr>
                 <th>Budget line</th>
@@ -195,16 +197,13 @@ export default async function RunDiffPage({
               {gDeltas.map((d) => (
                 <tr key={d.id}>
                   <td>{blLabel.get(d.id) ?? d.id}</td>
-                  <td className="num">{formatCents(d.before)}</td>
-                  <td className="num">{formatCents(d.after)}</td>
-                  <td className={`num font-semibold ${d.delta > 0 ? 'text-ok' : 'text-bad'}`}>
-                    {d.delta > 0 ? '+' : ''}
-                    {formatCents(d.delta)}
-                  </td>
+                  <NumTd cents={d.before} />
+                  <NumTd cents={d.after} />
+                  <NumTd cents={d.delta} />
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         )}
       </div>
     </>

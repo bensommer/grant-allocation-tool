@@ -1,9 +1,9 @@
 import Link from 'next/link';
-import { PageHeader } from '@/components/page-header';
+import { ButtonLink, Card, DataTable, DateText, PageHeader, Period } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { decodeFormState, pick } from '@/lib/forms';
-import { createPeriodAction, deletePeriodAction } from './actions';
+import { createPeriodAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 export default async function PeriodSettings({
@@ -25,7 +25,7 @@ export default async function PeriodSettings({
       />
       {saved && <div className="banner banner-ok">Period locks saved.</div>}
       {state?.errors.name && <div className="banner banner-bad">{state.errors.name}</div>}
-      <div className="card mb-4">
+      <Card title="Lock a reporting period">
         <form action={createPeriodAction} className="grid-form">
           <label>
             Name
@@ -45,10 +45,9 @@ export default async function PeriodSettings({
           </label>
           <button className="btn">Lock current run</button>
         </form>
-      </div>
-      <div className="card">
-        <h2>Locked periods</h2>
-        <table>
+      </Card>
+      <Card title="Locked periods">
+        <DataTable caption="Locked reporting periods">
           <thead>
             <tr>
               <th>Name</th>
@@ -64,23 +63,25 @@ export default async function PeriodSettings({
                   <Link href={`/periods/${lock.id}/drift`}>{lock.name}</Link>
                 </td>
                 <td>
-                  {lock.periodFrom.toISOString().slice(0, 10)} –{' '}
-                  {lock.periodTo.toISOString().slice(0, 10)}
+                  <Period from={lock.periodFrom} to={lock.periodTo} />
                 </td>
                 <td>
                   <Link href={`/runs/${lock.computeRunId}`}>{lock.computeRunId.slice(-8)}</Link>
                 </td>
                 <td>
-                  <form action={deletePeriodAction}>
-                    <input type="hidden" name="id" value={lock.id} />
-                    <button className="btn btn-secondary btn-sm">Delete</button>
-                  </form>
+                  <ButtonLink
+                    variant="secondary"
+                    size="sm"
+                    href={`/settings/periods/${lock.id}/delete`}
+                  >
+                    Manage lock
+                  </ButtonLink>
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+        </DataTable>
+      </Card>
     </>
   );
 }

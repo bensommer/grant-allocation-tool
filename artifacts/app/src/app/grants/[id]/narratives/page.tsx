@@ -1,6 +1,14 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { PageHeader } from '@/components/page-header';
+import {
+  ButtonLink,
+  Card,
+  DataTable,
+  DateText,
+  PageHeader,
+  Period,
+  StatusPill,
+} from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { narrativeModel } from '@/narratives/client';
@@ -19,7 +27,7 @@ export default async function NarrativesPage({ params }: { params: Promise<{ id:
     <>
       <PageHeader
         title={`${grant.name} · Narratives`}
-        actions={
+        secondaryActions={
           <Link className="btn btn-secondary btn-sm" href={`/grants/${id}`}>
             ← Grant
           </Link>
@@ -33,13 +41,11 @@ export default async function NarrativesPage({ params }: { params: Promise<{ id:
       )}
       {narrativeModel() && (
         <p className="mb-4">
-          <Link className="btn" href={`/grants/${id}/narratives/new`}>
-            New narrative
-          </Link>
+          <ButtonLink href={`/grants/${id}/narratives/new`}>New narrative</ButtonLink>
         </p>
       )}
-      <div className="card overflow-x-auto">
-        <table>
+      <Card>
+        <DataTable caption={`${grant.name} narratives`}>
           <thead>
             <tr>
               <th>Template</th>
@@ -57,21 +63,24 @@ export default async function NarrativesPage({ params }: { params: Promise<{ id:
                   <Link href={`/grants/${id}/narratives/${row.id}`}>{row.template}</Link>
                 </td>
                 <td>
-                  {row.periodFrom.toISOString().slice(0, 10)} –{' '}
-                  {row.periodTo.toISOString().slice(0, 10)}
+                  <Period from={row.periodFrom} to={row.periodTo} />
                 </td>
                 <td>
-                  <span className="pill">{row.status}</span>
+                  <StatusPill tone={row.status === 'approved' ? 'ok' : 'info'}>
+                    {row.status}
+                  </StatusPill>
                 </td>
                 <td>{row.version}</td>
-                <td>{row.createdAt.toISOString().slice(0, 10)}</td>
+                <td>
+                  <DateText date={row.createdAt} />
+                </td>
                 <td>{row.approvedBy ?? '—'}</td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </DataTable>
         {!rows.length && <p className="muted">No narratives yet.</p>}
-      </div>
+      </Card>
     </>
   );
 }

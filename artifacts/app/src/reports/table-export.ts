@@ -1,11 +1,8 @@
 /**
  * Generic export helpers for plain tables (BvA, restricted balances). The
- * crosstab report has its own richer exporter in ./export.ts; PDF rendering is
- * shared: any app page prints cleanly (nav hidden by @media print).
+ * crosstab report has its own richer exporter in ./export.ts.
  */
 import ExcelJS from 'exceljs';
-import { chromium } from '@playwright/test';
-import { existsSync } from 'node:fs';
 
 export type TableCell = string | number | null;
 
@@ -58,50 +55,4 @@ export function xlsxResponse(buf: Buffer, filename: string): Response {
       'Content-Disposition': `attachment; filename="${filename}"`,
     },
   });
-}
-
-/**
- * Render an app page to a landscape Letter PDF. The page is fetched from the
- * server's own loopback address (never the request Host header) so the export
- * cannot be pointed at another host; a non-2xx navigation aborts the export.
- */
-export async function pdfOfPage(
-  pathname: string,
-  query: URLSearchParams,
-  filename: string,
-): Promise<Response> {
-  const port = process.env.PORT ?? '3000';
-  const target = `http://127.0.0.1:${port}${pathname}?${query}`;
-  const browser = await chromium.launch({
-    headless: true,
-    executablePath:
-      process.env.PLAYWRIGHT_CHROMIUM_PATH ??
-      (existsSync('/repl/tools/bin/chromium') ? '/repl/tools/bin/chromium' : undefined),
-  });
-  try {
-    const page = await browser.newPage();
-    const res = await page.goto(target, { waitUntil: 'networkidle' });
-    if (!res || !res.ok()) {
-      return new Response(`Could not render ${pathname} (${res?.status() ?? 'no response'})`, {
-        status: 502,
-      });
-    }
-    const pdf = await page.pdf({
-      format: 'Letter',
-      landscape: true,
-      printBackground: true,
-      displayHeaderFooter: true,
-      headerTemplate: '<span></span>',
-      footerTemplate:
-        '<div style="font-size:9px;width:100%;text-align:right;margin-right:35px">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
-    });
-    return new Response(new Uint8Array(pdf), {
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${filename}"`,
-      },
-    });
-  } finally {
-    await browser.close();
-  }
 }

@@ -22,7 +22,7 @@ test('upload demo CSV bundle → batch page shows Succeeded', async ({ page }) =
   );
   await page.getByRole('button', { name: 'Import' }).click();
   await page.waitForURL(/\/import\/[a-z0-9]+$/);
-  await expect(page.locator('.pill')).toHaveText('Succeeded');
+  await expect(page.locator('main .pill').first()).toContainText('Succeeded');
   await expect(page.getByText('38 transaction lines')).toBeVisible();
 });
 
@@ -35,7 +35,7 @@ test('upload broken bundle → Failed with 5 errors and CSV download', async ({ 
   );
   await page.getByRole('button', { name: 'Import' }).click();
   await page.waitForURL(/\/import\/[a-z0-9]+$/);
-  await expect(page.locator('.pill')).toHaveText('Failed');
+  await expect(page.locator('main .pill').first()).toContainText('Failed');
   await expect(page.getByText('failed with 5 error(s)')).toBeVisible();
   const href = await page.getByRole('link', { name: /Download errors/ }).getAttribute('href');
   const res = await page.request.get(href!);

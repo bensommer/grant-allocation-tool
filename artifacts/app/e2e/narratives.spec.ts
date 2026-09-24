@@ -43,7 +43,7 @@ test('edit, approve and download narrative DOCX', async ({ page }) => {
       .fill(`Spent $${spent}; restricted balance $${balance}. Spending is over pace.`);
     await page.getByRole('button', { name: 'Save edits' }).click();
     await expect(page.getByText('Narrative saved.')).toBeVisible();
-    await page.getByRole('button', { name: 'Approve' }).click();
+    await page.locator('#narrative-editor').getByRole('button', { name: 'Approve' }).click();
     await expect(page.getByText(/Approved by local-user/)).toBeVisible();
     const downloadPromise = page.waitForEvent('download');
     await page.getByRole('link', { name: 'DOCX' }).click();
