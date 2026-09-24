@@ -9,3 +9,18 @@
 - Styling: Tailwind (document in README). Rounding: integer cents, largest remainder, ties to lowest target sort order.
 - Developer uses tcsh: README snippets must be tcsh-compatible or npm scripts.
 - Golden suite (fixtures/demo/expected.json) is the gate for stories 07/08/09.
+
+## Post-review hardening (JPH-8..10)
+
+- Recompute is serialized per org with `pg_advisory_xact_lock` for the whole pipeline; if the config
+  hash differs at promotion time the new run is promoted but flagged stale immediately. A partial
+  unique index (one current run per org) was considered and dropped because Prisma cannot express it
+  and `migrate dev` would generate a migration removing it.
+- Rule previews run the real engine over the date range with the candidate rule inserted (or
+  replacing the rule being edited) and count the pieces it actually wins, so the preview total equals
+  the rule's contribution after recompute. `contested` counts pieces lost to a priority tie.
+- Every id submitted from a form (programs, accounts, classes, locations, parties, grants, budget
+  lines) is checked against the org in the service layer (`src/services/refs.ts`).
+- Known limitation: a changed re-import updates source lines in place and marks the current run
+  stale; historical runs are not snapshotted, so `/runs/[id]/diff` against a pre-import run reflects
+  the new source amounts.

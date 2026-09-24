@@ -1,15 +1,22 @@
 import { prisma } from '@/lib/db';
 
-export async function currentPieces(orgId: string, from?: Date, to?: Date) {
+export async function currentPieces(
+  orgId: string,
+  from?: Date,
+  to?: Date,
+  cell?: { accountId: string | null; programId: string | null },
+) {
   const run = await prisma.computeRun.findFirst({ where: { orgId, isCurrent: true } });
   const pieces = run
     ? await prisma.allocatedLine.findMany({
         where: {
           orgId,
           computeRunId: run.id,
-          ...(from && to
-            ? { sourceLine: { transaction: { txnDate: { gte: from, lte: to } } } }
-            : {}),
+          ...(cell ? { programId: cell.programId } : {}),
+          sourceLine: {
+            ...(cell ? { accountId: cell.accountId ?? undefined } : {}),
+            ...(from && to ? { transaction: { txnDate: { gte: from, lte: to } } } : {}),
+          },
         },
         include: {
           sourceLine: { include: { account: true, transaction: true } },

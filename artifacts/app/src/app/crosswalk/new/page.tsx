@@ -2,7 +2,7 @@ import { PageHeader } from '@/components/page-header';
 import { decodeFormState, pick } from '@/lib/forms';
 import { getOrgId } from '@/lib/org';
 import { dateRange } from '../range';
-import { previewMatchers } from '@/engine/preview';
+import { previewRule } from '@/engine/preview';
 import { parseMatchers } from '@/domain/matchers';
 import { createCrosswalkAction } from '../actions';
 import { crosswalkOptions } from '../options';
@@ -26,11 +26,15 @@ export default async function NewCrosswalkPage({
   );
   const preview =
     showPreview && state && range.first && range.last
-      ? await previewMatchers(
+      ? await previewRule(
           orgId,
-          parseMatchers(previewInputMatchers(state)),
+          {
+            kind: 'crosswalk',
+            matchers: parseMatchers(previewInputMatchers(state)),
+            grantBudgetLineId: pick(state, 'grantBudgetLineId', '') || null,
+            priority: Number(pick(state, 'priority', '100')) || 0,
+          },
           { from: range.first, to: range.last },
-          { kind: 'crosswalk' },
         )
       : undefined;
   return (

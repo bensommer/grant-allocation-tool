@@ -3,7 +3,7 @@ import { toISODate } from '@/domain/dates';
 import { formatCents } from '@/domain/money';
 import { parseMatchers } from '@/domain/matchers';
 import { pick, pickBool, pickList, type FormState } from '@/lib/forms';
-import { previewMatchers, type PreviewResult } from '@/engine/preview';
+import { previewRule, type PreviewResult } from '@/engine/preview';
 import { prisma } from '@/lib/db';
 import { SplitTotal } from './split-total';
 
@@ -95,21 +95,26 @@ export async function RuleForm({
         dateFrom: pick(state, 'dateFrom', '') || undefined,
         dateTo: pick(state, 'dateTo', '') || undefined,
       };
-      preview = await previewMatchers(
+      const eff = (name: string) =>
+        pick(state, name, '') ? parseDateInput(pick(state, name, '')) : null;
+      preview = await previewRule(
         orgId,
-        matchers,
+        {
+          kind: 'allocation',
+          matchers,
+          priority: Number(pick(state, 'priority', '100')) || 0,
+          effectiveFrom: eff('effectiveFrom'),
+          effectiveTo: eff('effectiveTo'),
+          ruleId: rule?.id,
+          method:
+            pick(state, 'method', 'fixed_pct') === 'ratio_of_driver'
+              ? 'ratio_of_driver'
+              : 'fixed_pct',
+          driverKey: pick(state, 'driverKey', '') || null,
+        },
         {
           from: parseDateInput(pick(state, 'previewFrom', '')),
           to: parseDateInput(pick(state, 'previewTo', '')),
-        },
-        {
-          kind: 'allocation',
-          effectiveFrom: pick(state, 'effectiveFrom', '')
-            ? parseDateInput(pick(state, 'effectiveFrom', ''))
-            : null,
-          effectiveTo: pick(state, 'effectiveTo', '')
-            ? parseDateInput(pick(state, 'effectiveTo', ''))
-            : null,
         },
       );
     } catch {
@@ -300,7 +305,10 @@ export async function RuleForm({
       {preview ? (
         <div className="card mt-4">
           <h2 className="font-semibold">
-            Preview: {preview.count} lines · {formatCents(preview.totalCents)}
+            Preview: {preview.count} lines · {formatCents(preview.totalCents)} this rule would split
+            {preview.contested > 0
+              ? ` · ${preview.contested} tie with another rule at this priority`
+              : ''}
           </h2>
           <p className="muted">
             First {preview.sample.length} lines; this preview does not save or recompute.

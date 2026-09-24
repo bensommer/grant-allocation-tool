@@ -5,6 +5,7 @@ import { recordAudit } from '@/lib/audit';
 import { markCurrentRunStale } from '@/lib/stale';
 import { isEmptyMatchers, matchersSchema } from '@/domain/matchers';
 import { formatCents } from '@/domain/money';
+import { assertMatcherRefs } from './refs';
 import { ValidationError } from '@/services/programs';
 import { zodErrors } from '@/lib/forms';
 
@@ -53,6 +54,7 @@ async function validate(orgId: string, input: AllocationInput) {
     errors.effectiveTo = 'End date must be on or after start date';
   if (data.method === 'ratio_of_driver' && !data.driverKey)
     errors.driverKey = 'Driver key is required';
+  await assertMatcherRefs(prisma, orgId, data.matchers);
   const ids = data.targets.flatMap((t) =>
     [t.programId, t.grantBudgetLineId].filter((id): id is string => !!id),
   );

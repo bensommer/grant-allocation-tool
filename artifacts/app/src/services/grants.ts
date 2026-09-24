@@ -4,6 +4,7 @@ import { recordAudit } from '@/lib/audit';
 import { markCurrentRunStale } from '@/lib/stale';
 import { MAX_CENTS } from '@/domain/money';
 import { ValidationError } from '@/services/programs';
+import { assertOrgRefs } from '@/services/refs';
 
 export const grantInputSchema = z
   .object({
@@ -32,8 +33,23 @@ export const grantInputSchema = z
   });
 export type GrantInput = z.infer<typeof grantInputSchema>;
 
+async function assertGrantRefs(orgId: string, input: GrantInput) {
+  await assertOrgRefs(prisma, orgId, 'programs', {
+    programIds: input.programs.map((p) => p.programId),
+  });
+  await assertOrgRefs(prisma, orgId, 'funderPartyId', {
+    partyIds: input.funderPartyId ? [input.funderPartyId] : [],
+  });
+  await assertOrgRefs(prisma, orgId, 'matchPartyIds', { partyIds: input.matchPartyIds });
+  await assertOrgRefs(prisma, orgId, 'matchClassIds', { classIds: input.matchClassIds });
+  await assertOrgRefs(prisma, orgId, 'revenueAccountId', {
+    accountIds: input.revenueAccountId ? [input.revenueAccountId] : [],
+  });
+}
+
 export async function createGrant(orgId: string, input: GrantInput) {
   const { programs, ...data } = input;
+  await assertGrantRefs(orgId, input);
   return prisma.$transaction(async (tx) => {
     const g = await tx.grant.create({
       data: { orgId, ...data, programs: { create: programs } },
@@ -52,6 +68,7 @@ export async function updateGrant(orgId: string, id: string, input: GrantInput) 
   });
   if (!before) throw new ValidationError({ _: 'Grant not found' });
   const { programs, ...data } = input;
+  await assertGrantRefs(orgId, input);
   return prisma.$transaction(async (tx) => {
     await tx.grantProgram.deleteMany({ where: { grantId: id } });
     const after = await tx.grant.update({
@@ -132,6 +149,9 @@ export async function upsertBudgetLine(
 ) {
   const grant = await prisma.grant.findFirst({ where: { id: grantId, orgId } });
   if (!grant) throw new ValidationError({ _: 'Grant not found' });
+  await assertOrgRefs(prisma, orgId, 'programId', {
+    programIds: input.programId ? [input.programId] : [],
+  });
   const dup = await prisma.grantBudgetLine.findFirst({
     where: { grantId, code: input.code, ...(id ? { id: { not: id } } : {}) },
   });
@@ -188,12 +208,16 @@ export async function deleteBudgetLine(orgId: string, grantId: string, id: strin
 
 /** Bulk import: rows already parsed + validated by the caller. Upserts by code. */
 export async function importBudgetLines(orgId: string, grantId: string, rows: BudgetLineInput[]) {
+  await assertOrgRefs(prisma, orgId, '_', { grantIds: [grantId] });
+  await assertOrgRefs(prisma, orgId, 'programId', {
+    programIds: rows.flatMap((r) => (r.programId ? [r.programId] : [])),
+  });
   return prisma.$transaction(async (tx) => {
     let created = 0;
     let updated = 0;
     for (const r of rows) {
-      const existing = await tx.grantBudgetLine.findUnique({
-        where: { grantId_code: { grantId, code: r.code } },
+      const existing = await tx.grantBudgetLine.findFirst({
+        where: { orgId, grantId, code: r.code },
       });
       if (existing) {
         const after = await tx.grantBudgetLine.update({ where: { id: existing.id }, data: r });

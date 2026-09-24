@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { recordAudit } from '@/lib/audit';
 import { markCurrentRunStale } from '@/lib/stale';
 import { isEmptyMatchers, matchersSchema } from '@/domain/matchers';
+import { assertMatcherRefs } from './refs';
 import { ValidationError } from '@/services/programs';
 import { zodErrors } from '@/lib/forms';
 
@@ -28,6 +29,7 @@ async function validate(orgId: string, input: CrosswalkInput) {
     where: { id: result.data.grantBudgetLineId, orgId },
   });
   if (!line) throw new ValidationError({ grantBudgetLineId: 'Budget line not found' });
+  await assertMatcherRefs(prisma, orgId, result.data.matchers);
   return { ...result.data, matchers: result.data.matchers as Prisma.InputJsonValue };
 }
 

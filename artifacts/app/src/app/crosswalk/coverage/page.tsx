@@ -23,6 +23,12 @@ export default async function CoveragePage({
   const expenses = data.pieces.filter((p) =>
     ['Expense', 'COGS', 'OtherExpense'].includes(p.sourceLine.account.type),
   );
+  const byProgram = new Map<string, typeof expenses>();
+  for (const x of expenses) {
+    const arr = byProgram.get(x.programId ?? '');
+    if (arr) arr.push(x);
+    else byProgram.set(x.programId ?? '', [x]);
+  }
   return (
     <>
       <PageHeader
@@ -63,7 +69,7 @@ export default async function CoveragePage({
               </thead>
               <tbody>
                 {programs.map((p) => {
-                  const pieces = expenses.filter((x) => x.programId === p.id);
+                  const pieces = byProgram.get(p.id) ?? [];
                   const sum = (items: typeof pieces) =>
                     items.reduce((n, x) => n + x.amountCents, 0);
                   const total = sum(pieces);
@@ -90,9 +96,8 @@ export default async function CoveragePage({
           <div className="card mt-4">
             <h2>Unmapped detail</h2>
             {programs.map((p) => {
-              const rows = expenses.filter(
-                (x) =>
-                  x.programId === p.id && !x.grantBudgetLineId && x.status !== 'crosswalk_conflict',
+              const rows = (byProgram.get(p.id) ?? []).filter(
+                (x) => !x.grantBudgetLineId && x.status !== 'crosswalk_conflict',
               );
               if (!rows.length) return null;
               const accounts = [

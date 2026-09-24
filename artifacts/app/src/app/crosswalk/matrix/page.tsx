@@ -23,6 +23,13 @@ export default async function MatrixPage({
     prisma.program.findMany({ where: { orgId, active: true }, orderBy: { code: 'asc' } }),
     currentPieces(orgId, range?.first ?? undefined, range?.last ?? undefined),
   ]);
+  const byCell = new Map<string, typeof data.pieces>();
+  for (const x of data.pieces) {
+    const key = `${x.sourceLine.accountId}|${x.programId}`;
+    const arr = byCell.get(key);
+    if (arr) arr.push(x);
+    else byCell.set(key, [x]);
+  }
   return (
     <>
       <PageHeader
@@ -65,9 +72,7 @@ export default async function MatrixPage({
                     {a.number} {a.name}
                   </th>
                   {programs.map((p) => {
-                    const cell = data.pieces.filter(
-                      (x) => x.sourceLine.accountId === a.id && x.programId === p.id,
-                    );
+                    const cell = byCell.get(`${a.id}|${p.id}`) ?? [];
                     const conflict = cell.some((x) => x.status === 'crosswalk_conflict');
                     const lines = [
                       ...new Set(

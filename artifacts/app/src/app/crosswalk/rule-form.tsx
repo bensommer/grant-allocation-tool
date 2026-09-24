@@ -214,8 +214,10 @@ export function RuleForm({
         <div className="card mt-4">
           <h2>Preview</h2>
           <p>
-            {preview.count} pieces · {formatCents(preview.totalCents)} (
-            {preview.basis === 'current_run' ? 'current run' : 'class defaults'})
+            {preview.count} pieces · {formatCents(preview.totalCents)} this rule would map
+            {preview.contested > 0
+              ? ` · ${preview.contested} more tie with another rule at this priority`
+              : ''}
           </p>
           <table>
             <thead>

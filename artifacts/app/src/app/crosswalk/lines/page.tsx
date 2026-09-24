@@ -20,11 +20,12 @@ export default async function CellLinesPage({
   const [account, program, data] = await Promise.all([
     prisma.account.findFirst({ where: { orgId, id: accountId ?? '' } }),
     prisma.program.findFirst({ where: { orgId, id: programId ?? '' } }),
-    currentPieces(orgId, range?.first ?? undefined, range?.last ?? undefined),
+    currentPieces(orgId, range?.first ?? undefined, range?.last ?? undefined, {
+      accountId: accountId ?? null,
+      programId: programId ?? null,
+    }),
   ]);
-  const lines = data.pieces.filter(
-    (x) => x.sourceLine.accountId === accountId && x.programId === programId,
-  );
+  const lines = data.pieces;
   return (
     <>
       <PageHeader

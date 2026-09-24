@@ -5,6 +5,7 @@ import { CsvDataSource } from '@/datasource/csv/adapter';
 import { FULL_RANGE, runImport } from '@/datasource/import-service';
 import { seedDemoOverlay } from '@/seed/demo-overlay';
 import { recompute } from '@/engine/recompute';
+import { previewRule } from '@/engine/preview';
 import {
   createCrosswalkRule,
   deleteCrosswalkRule,
@@ -59,6 +60,64 @@ describe('crosswalk service', () => {
     expect((audit.after as { name: string }).name).toBe('Edited');
     expect(await deleteCrosswalkRule(orgId, created.id)).toEqual({ deactivated: false });
     expect(await prisma.crosswalkRule.findUnique({ where: { id: created.id } })).toBeNull();
+  });
+
+  it('preview equals the rule contribution after recompute, and honours priority/period', async () => {
+    const run = await recompute(orgId);
+    expect(run.status).toBe('succeeded');
+    const range = { from: new Date('2026-01-01'), to: new Date('2026-03-31') };
+    const existing = await prisma.crosswalkRule.findFirstOrThrow({
+      where: { orgId, grantBudgetLineId: mealsId, active: true },
+    });
+    const actual = await prisma.allocatedLine.aggregate({
+      where: {
+        orgId,
+        computeRunId: run.runId,
+        crosswalkRuleId: existing.id,
+        sourceLine: { transaction: { txnDate: { gte: range.from, lte: range.to } } },
+      },
+      _sum: { amountCents: true },
+      _count: true,
+    });
+    const same = await previewRule(
+      orgId,
+      {
+        kind: 'crosswalk',
+        matchers: { programIds: [ymId], accountIds: [accountId] },
+        grantBudgetLineId: mealsId,
+        priority: existing.priority,
+        ruleId: existing.id,
+      },
+      range,
+    );
+    expect(same.count).toBe(actual._count);
+    expect(same.totalCents).toBe(actual._sum.amountCents ?? 0);
+    expect(same.contested).toBe(0);
+
+    // A new rule at the same priority ties with the existing one: wins nothing, contests everything.
+    const tie = await previewRule(
+      orgId,
+      {
+        kind: 'crosswalk',
+        matchers: { programIds: [ymId], accountIds: [accountId] },
+        grantBudgetLineId: mealsId,
+        priority: existing.priority,
+      },
+      range,
+    );
+    expect(tie.count).toBe(0);
+    expect(tie.contested).toBe(actual._count);
+
+    // Rejects ids from another org.
+    await expect(
+      createCrosswalkRule(orgId, {
+        name: 'Foreign',
+        grantBudgetLineId: mealsId,
+        priority: 5,
+        active: true,
+        matchers: { accountIds: ['not-an-account'] },
+      }),
+    ).rejects.toMatchObject({ fieldErrors: { matchers: 'Unknown account selected' } });
   });
 
   it('equal priority YM × 6110 causes conflict and MEALS actual drops to zero; referenced rules deactivate', async () => {

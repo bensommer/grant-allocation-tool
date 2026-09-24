@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db';
 import { decodeFormState, pick } from '@/lib/forms';
 import { getOrgId } from '@/lib/org';
 import { parseMatchers } from '@/domain/matchers';
-import { previewMatchers } from '@/engine/preview';
+import { previewRule } from '@/engine/preview';
 import { deleteCrosswalkAction, updateCrosswalkAction } from '../actions';
 import { crosswalkOptions } from '../options';
 import { previewInputMatchers } from '../preview-values';
@@ -34,11 +34,16 @@ export default async function CrosswalkRulePage({
   const [options, preview] = await Promise.all([
     crosswalkOptions(orgId),
     showPreview && state && range.first && range.last
-      ? previewMatchers(
+      ? previewRule(
           orgId,
-          parseMatchers(previewInputMatchers(state)),
+          {
+            kind: 'crosswalk',
+            matchers: parseMatchers(previewInputMatchers(state)),
+            grantBudgetLineId: pick(state, 'grantBudgetLineId', '') || null,
+            priority: Number(pick(state, 'priority', '100')) || 0,
+            ruleId: id,
+          },
           { from: range.first, to: range.last },
-          { kind: 'crosswalk' },
         )
       : Promise.resolve(undefined),
   ]);

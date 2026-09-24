@@ -1,13 +1,18 @@
 /**
- * Server-rendered rule previews (JPH-9 / JPH-10): which source lines a set of
- * matchers would capture in a date range. For crosswalk rules the program is
- * the *allocated* program, so we evaluate against the current run's pieces
- * when one exists; otherwise the class→program default is used.
+ * Server-rendered rule previews (JPH-9 / JPH-10).
+ *
+ * The preview runs the real engine over the date range with the candidate rule
+ * inserted into (or replacing, when editing) the current configuration, then
+ * counts the pieces the candidate actually won. So it honours priority,
+ * ties, effective windows, grant periods and explicit budget-line targets —
+ * the total shown equals what the rule contributes after a recompute.
  */
-import { lineMatches, type Matchers } from '@/domain/matchers';
+import type { Matchers } from '@/domain/matchers';
 import { prisma } from '@/lib/db';
-import { defaultProgramFor } from './core';
+import { allocate, type EngineAllocationRule, type EngineCrosswalkRule } from './core';
 import { loadEngineConfig, loadEngineLines } from './recompute';
+
+export const PREVIEW_RULE_ID = '__preview__';
 
 export interface PreviewLine {
   sourceLineId: string;
@@ -25,87 +30,133 @@ export interface PreviewResult {
   count: number;
   totalCents: number;
   sample: PreviewLine[];
-  basis: 'current_run' | 'class_default';
+  /** Pieces the candidate matched but lost or tied on priority. */
+  contested: number;
 }
 
-export async function previewMatchers(
+export type PreviewCandidate =
+  | {
+      kind: 'crosswalk';
+      matchers: Matchers;
+      grantBudgetLineId: string | null;
+      priority: number;
+      /** existing rule being edited; it is replaced in the simulated config */
+      ruleId?: string;
+    }
+  | {
+      kind: 'allocation';
+      matchers: Matchers;
+      priority: number;
+      effectiveFrom?: Date | null;
+      effectiveTo?: Date | null;
+      ruleId?: string;
+      method?: 'fixed_pct' | 'ratio_of_driver';
+      driverKey?: string | null;
+      targets?: EngineAllocationRule['targets'];
+    };
+
+export async function previewRule(
   orgId: string,
-  matchers: Matchers,
+  candidate: PreviewCandidate,
   range: { from: Date; to: Date },
-  opts: {
-    kind: 'allocation' | 'crosswalk';
-    effectiveFrom?: Date | null;
-    effectiveTo?: Date | null;
-    sampleSize?: number;
-  } = { kind: 'crosswalk' },
+  sampleSize = 25,
 ): Promise<PreviewResult> {
-  const [{ lines }, config, run] = await Promise.all([
+  const [{ lines: all }, config] = await Promise.all([
     loadEngineLines(orgId),
     loadEngineConfig(orgId),
-    prisma.computeRun.findFirst({ where: { orgId, isCurrent: true } }),
   ]);
-  const inRange = lines.filter(
-    (l) =>
-      l.txnDate >= range.from &&
-      l.txnDate <= range.to &&
-      (opts.kind === 'allocation' || l.accountKind === 'expense'),
-  );
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const lines = all.filter((l) => l.txnDate >= range.from && l.txnDate <= range.to);
 
-  // program per (line, piece): from the current run when available
-  let programOf: (lineId: string) => Array<{ programId: string | null; amountCents: number }>;
-  let basis: PreviewResult['basis'] = 'class_default';
-  if (opts.kind === 'crosswalk' && run) {
-    const pieces = await prisma.allocatedLine.findMany({
-      where: { computeRunId: run.id, sourceLineId: { in: inRange.map((l) => l.id) } },
-      select: { sourceLineId: true, programId: true, amountCents: true },
-    });
-    const byLine = new Map<string, Array<{ programId: string | null; amountCents: number }>>();
-    for (const p of pieces)
-      (byLine.get(p.sourceLineId) ?? byLine.set(p.sourceLineId, []).get(p.sourceLineId)!).push(p);
-    programOf = (id) => byLine.get(id) ?? [];
-    basis = 'current_run';
-  } else {
-    const lineById = new Map(inRange.map((l) => [l.id, l]));
-    programOf = (id) => {
-      const l = lineById.get(id)!;
-      return [{ programId: defaultProgramFor(l, config.programs), amountCents: l.amountCents }];
+  if (candidate.kind === 'crosswalk') {
+    const rule: EngineCrosswalkRule = {
+      id: PREVIEW_RULE_ID,
+      matchers: candidate.matchers,
+      grantBudgetLineId: candidate.grantBudgetLineId ?? '',
+      priority: candidate.priority,
+      active: true,
     };
+    config.crosswalkRules = [
+      ...config.crosswalkRules.filter((r) => r.id !== candidate.ruleId),
+      rule,
+    ];
+    if (!candidate.grantBudgetLineId) {
+      // No target yet: pretend an always-open budget line so period filtering does not hide matches.
+      config.budgetLines.push({ id: '', grantId: PREVIEW_RULE_ID, programId: null });
+      config.grants.push({
+        id: PREVIEW_RULE_ID,
+        startDate: new Date(0),
+        endDate: new Date('2999-12-31'),
+        status: 'active',
+      });
+    }
+  } else {
+    const targets =
+      candidate.targets && candidate.targets.length > 0
+        ? candidate.targets
+        : // Any single valid target: we only count which pieces the rule wins, not how they split.
+          [
+            {
+              sortOrder: 0,
+              programId: config.programs[0]?.id ?? null,
+              grantBudgetLineId: null,
+              shareBps: 10000,
+            },
+          ];
+    const rule: EngineAllocationRule = {
+      id: PREVIEW_RULE_ID,
+      matchers: { ...candidate.matchers, programIds: undefined },
+      method: candidate.method ?? 'fixed_pct',
+      driverKey: candidate.driverKey ?? null,
+      priority: candidate.priority,
+      effectiveFrom: candidate.effectiveFrom ?? null,
+      effectiveTo: candidate.effectiveTo ?? null,
+      active: true,
+      targets,
+    };
+    config.allocationRules = [
+      ...config.allocationRules.filter((r) => r.id !== candidate.ruleId),
+      rule,
+    ];
   }
 
-  const hits: Array<{ lineId: string; programId: string | null; amountCents: number }> = [];
-  for (const l of inRange) {
-    if (opts.kind === 'allocation') {
-      if (opts.effectiveFrom && iso(l.txnDate) < iso(opts.effectiveFrom)) continue;
-      if (opts.effectiveTo && iso(l.txnDate) > iso(opts.effectiveTo)) continue;
-      const m = { ...l, programId: null };
-      if (lineMatches(m, { ...matchers, programIds: undefined }))
-        hits.push({
-          lineId: l.id,
-          programId: defaultProgramFor(l, config.programs),
-          amountCents: l.amountCents,
-        });
-      continue;
-    }
-    for (const piece of programOf(l.id)) {
-      if (lineMatches({ ...l, programId: piece.programId }, matchers))
-        hits.push({ lineId: l.id, programId: piece.programId, amountCents: piece.amountCents });
-    }
-  }
+  const result = allocate(lines, config);
+  const won = result.pieces.filter(
+    (p) =>
+      (candidate.kind === 'crosswalk' ? p.crosswalkRuleId : p.allocationRuleId) === PREVIEW_RULE_ID,
+  );
+  const contested = result.pieces.filter((p) => p.conflictRuleIds.includes(PREVIEW_RULE_ID)).length;
 
-  const sampleIds = [...new Set(hits.slice(0, opts.sampleSize ?? 25).map((h) => h.lineId))];
-  const rows = await prisma.transactionLine.findMany({
-    where: { id: { in: sampleIds } },
-    include: { account: true, class: true, party: true, transaction: { include: { party: true } } },
-  });
+  // For allocation rules the interesting unit is the source line, not the split piece.
+  const hits =
+    candidate.kind === 'allocation'
+      ? [...new Set(won.map((p) => p.sourceLineId))].map((id) => ({
+          sourceLineId: id,
+          programId: null as string | null,
+          amountCents: lines.find((l) => l.id === id)!.amountCents,
+        }))
+      : won.map((p) => ({
+          sourceLineId: p.sourceLineId,
+          programId: p.programId,
+          amountCents: p.amountCents,
+        }));
+
+  const sampleHits = hits.slice(0, sampleSize);
+  const [rows, programs] = await Promise.all([
+    prisma.transactionLine.findMany({
+      where: { id: { in: [...new Set(sampleHits.map((h) => h.sourceLineId))] } },
+      include: {
+        account: true,
+        class: true,
+        party: true,
+        transaction: { include: { party: true } },
+      },
+    }),
+    prisma.program.findMany({ where: { orgId }, select: { id: true, code: true } }),
+  ]);
   const rowById = new Map(rows.map((r) => [r.id, r]));
-  const programs = await prisma.program.findMany({
-    where: { orgId },
-    select: { id: true, code: true },
-  });
   const codeOf = new Map(programs.map((p) => [p.id, p.code]));
-  const sample: PreviewLine[] = hits.slice(0, opts.sampleSize ?? 25).map((h) => {
-    const r = rowById.get(h.lineId)!;
+  const sample: PreviewLine[] = sampleHits.map((h) => {
+    const r = rowById.get(h.sourceLineId)!;
     return {
       sourceLineId: r.id,
       txnDate: r.transaction.txnDate,
@@ -122,6 +173,6 @@ export async function previewMatchers(
     count: hits.length,
     totalCents: hits.reduce((a, h) => a + h.amountCents, 0),
     sample,
-    basis,
+    contested,
   };
 }

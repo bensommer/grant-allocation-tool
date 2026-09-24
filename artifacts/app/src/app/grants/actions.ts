@@ -38,12 +38,12 @@ function date(formData: FormData, name: string, errors: Record<string, string>):
   }
 }
 
-async function parseGrant(formData: FormData) {
+async function parseGrant(orgId: string, formData: FormData) {
   const errors: Record<string, string> = {};
   const funderPartyId = strOrNull(formData, 'funderPartyId');
   let funder = str(formData, 'funderText');
   if (funderPartyId) {
-    const party = await prisma.party.findUnique({ where: { id: funderPartyId } });
+    const party = await prisma.party.findFirst({ where: { id: funderPartyId, orgId } });
     if (!party) errors['funderPartyId'] = 'Unknown funder';
     else funder = party.displayName;
   }
@@ -81,17 +81,17 @@ async function parseGrant(formData: FormData) {
 }
 
 export async function createGrantAction(formData: FormData): Promise<void> {
-  const r = await parseGrant(formData);
-  if (!r.ok) redirectWithErrors('/grants/new', r.errors, formData);
   const orgId = await getOrgId();
+  const r = await parseGrant(orgId, formData);
+  if (!r.ok) redirectWithErrors('/grants/new', r.errors, formData);
   const g = await createGrant(orgId, r.data);
   redirect(`/grants/${g.id}?saved=1`);
 }
 
 export async function updateGrantAction(id: string, formData: FormData): Promise<void> {
-  const r = await parseGrant(formData);
-  if (!r.ok) redirectWithErrors(`/grants/${id}`, r.errors, formData);
   const orgId = await getOrgId();
+  const r = await parseGrant(orgId, formData);
+  if (!r.ok) redirectWithErrors(`/grants/${id}`, r.errors, formData);
   try {
     await updateGrant(orgId, id, r.data);
   } catch (e) {
