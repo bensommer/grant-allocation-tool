@@ -9,6 +9,7 @@ description: How code reaches bensommer/grant-allocation-tool and how Jira stori
 - Replit platform refs (refs/heads/replit-agent, refs/replit/agent-ledger, gitsafe-backup) keep every local commit reachable; squashing `main` does not purge a commit from them. Tree-replay pushes never carry history, so that is acceptable — never push all refs/--mirror.
 - **Why:** repeating discovery costs several failed API rounds each session.
 - Task-agent merges land on local `main` only: GitHub is not pushed and the Jira story stays "To Do" with no comment. Closing a ticket means replaying that ticket's merge commit tree (`git show <sha>:<path>`, not the working tree, when later phases are already merged on top), then commenting AC→test + verification and transitioning to Done — the same shape as the JPH-20/21 comments.
+- Same applies to work done directly on `main` when a session ends early: a ticket can be fully committed locally while GitHub and Jira still show the previous phase. Before re-implementing a ticket, diff `git log` against the remote head and the Jira status; closing out (push + comment + transition) may be all that is left.
 - Notebook-persisted helper functions that wrap "use impure" bodies can fail later with `executeJs is not defined`; redefine the helper in the same CodeExecution call instead of relying on earlier definitions.
 
 ## Parallel subagents share one dev DB
