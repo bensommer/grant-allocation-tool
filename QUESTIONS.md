@@ -169,6 +169,10 @@ No golden or ticket figure was changed. All AC1 figures (Salah expense 22,708.81
   confirming changes no Tier 1 figure (all net to zero within one working line).
 - Ask whether Leah's conference payroll belongs in Conference × Program Support or stays with the
   coordinator effort charge.
+- The Grants list's "Spent" column still comes from the program-allocation stage, so the two pilot
+  grants (which have no programs) show "—" there while their budget pages show the Tier 1 spend.
+  Deciding whether the list should read grant-stage spend for restricted grants is a Phase 3 /
+  reporting question.
 
 ### Nothing disputed
 
