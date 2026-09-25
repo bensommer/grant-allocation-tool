@@ -12,6 +12,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { href: '/grants', label: 'Grants' },
       { href: '/restricted', label: 'Restricted Funds' },
+      { href: '/grants/rollforward', label: 'Rollforward' },
       { href: '/narratives', label: 'Narratives' },
     ],
   },

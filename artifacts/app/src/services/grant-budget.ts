@@ -3,6 +3,7 @@
  * revisions with notes, and the spent-to-date figures from the current run.
  */
 import { z } from 'zod';
+import type { ReleaseClass } from '@/generated/prisma/client';
 import { prisma } from '@/lib/db';
 import { recordAudit } from '@/lib/audit';
 import { markCurrentRunStale } from '@/lib/stale';
@@ -19,6 +20,8 @@ export interface BudgetLineView {
   categoryKey: string | null;
   programId: string | null;
   sortOrder: number;
+  /** Rollforward column the line's charges release (JPH-23). */
+  releaseClass: ReleaseClass;
   originalCents: number;
   revisionCents: number;
   currentCents: number;
@@ -135,6 +138,7 @@ export async function budgetTree(orgId: string, grantId: string): Promise<Budget
       categoryKey: l.categoryKey,
       programId: l.programId,
       sortOrder: l.sortOrder,
+      releaseClass: l.releaseClass,
       originalCents: l.budgetCents,
       revisionCents,
       currentCents: l.budgetCents + revisionCents,

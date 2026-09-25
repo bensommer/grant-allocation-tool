@@ -21,4 +21,11 @@ workflow is restarted; a feature reading process.env looked "disabled" until the
   whatever org exists. Truncate before restoring demo data or e2e cleanup hits FK errors.
 - The Next dev server can be OOM-killed when Playwright first compiles a heavy route (PDF); warm new
   routes with curl before a full e2e run.
+- When routes take minutes to compile or the dev server OOMs repeatedly, the Turbopack cache in
+  `artifacts/app/.next` has grown past ~2 GB; delete it and restart the workflow (compiles drop to seconds).
+- A full `playwright test` run exceeds the 5-minute shell limit; run it in the background with output
+  redirected to a file and poll the file (a Monitor on the task only sees stdout, not the redirected file).
+- Visual baselines are captured after the spec's own demo restore; an unexplained figure change in a
+  screenshot is usually the DB state left by `pnpm test` (a different org/data), not an engine regression —
+  truncate, restore demo and re-check before touching a baseline.
 - Playwright specs run in plain Node: nothing they import from `src/` may reach `next/navigation`.

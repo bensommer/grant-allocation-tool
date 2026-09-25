@@ -365,6 +365,8 @@ model Grant {
   effortSchedules   EffortSchedule[]
   correctingEntries CorrectingEntryDraft[]
 
+  periodSnapshots GrantPeriodSnapshot[]
+
   @@index([orgId, status])
 }
 
@@ -437,18 +439,22 @@ enum BudgetLineKind {
 /// `parentId`. A cell is addressed by (activityId, categoryKey). `budgetCents`
 /// is the original budget; BudgetRevision rows adjust it and are never folded in.
 model GrantBudgetLine {
-  id          String         @id @default(cuid())
-  orgId       String
-  grantId     String
-  code        String
-  name        String
-  budgetCents Int
-  programId   String?
-  sortOrder   Int            @default(0)
-  kind        BudgetLineKind @default(working_line)
-  parentId    String?
-  activityId  String?
-  categoryKey String?
+  id           String         @id @default(cuid())
+  orgId        String
+  grantId      String
+  code         String
+  name         String
+  budgetCents  Int
+  programId    String?
+  sortOrder    Int            @default(0)
+  kind         BudgetLineKind @default(working_line)
+  parentId     String?
+  activityId   String?
+  categoryKey  String?
+  /**
+   * Which rollforward column the line's charges release (JPH-23).
+   */
+  releaseClass ReleaseClass   @default(direct)
 
   grant          Grant              @relation(fields: [grantId], references: [id], onDelete: Cascade)
   program        Program?           @relation(fields: [programId], references: [id], onDelete: SetNull)
@@ -896,10 +902,51 @@ model PeriodLock {
   periodFrom   DateTime @db.Date
   periodTo     DateTime @db.Date
   lockedAt     DateTime @default(now())
-  computeRunId String
+  /**
+   * Null for a period reported before the app existed (JPH-23).
+   */
+  computeRunId String?
   note         String?
 
-  run ComputeRun @relation(fields: [computeRunId], references: [id], onDelete: Restrict)
+  run       ComputeRun?           @relation(fields: [computeRunId], references: [id], onDelete: Restrict)
+  snapshots GrantPeriodSnapshot[]
+}
+
+/// Rollforward column of a budget line's charges (JPH-23).
+enum ReleaseClass {
+  direct
+  staff
+  overhead
+}
+
+enum SnapshotSource {
+  computed
+  reported
+}
+
+/// Per-grant figures for a closed period (JPH-23). One row per release class
+/// carries `releasedCents`; the row with a null release class carries the
+/// period's `receivedCents`. Closed periods are never recomputed: later book
+/// changes show up as drift against these rows. Superseded, never deleted.
+model GrantPeriodSnapshot {
+  id            String         @id @default(cuid())
+  orgId         String
+  periodLockId  String
+  grantId       String
+  releaseClass  ReleaseClass?
+  releasedCents Int            @default(0)
+  receivedCents Int            @default(0)
+  source        SnapshotSource
+  note          String?
+  actor         String         @default("local-user")
+  createdAt     DateTime       @default(now())
+  supersededAt  DateTime?
+
+  lock  PeriodLock @relation(fields: [periodLockId], references: [id], onDelete: Restrict)
+  grant Grant      @relation(fields: [grantId], references: [id], onDelete: Cascade)
+
+  @@index([grantId, periodLockId])
+  @@index([orgId, periodLockId])
 }
 
 enum NarrativeStatus {

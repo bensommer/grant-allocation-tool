@@ -5,3 +5,4 @@
 - [Next app-shell gotchas](next-app-shell.md) — proxy.ts supplies pathname to layout; same-URL action redirects need revalidatePath('/', 'layout'); 'use server' exports must be async.
 - [Privacy denylist guard](privacy-denylist.md) — scans tests/comments/docs too; invented names only; skips silently without the private fixtures.
 - [sr-only in scrolling tables](mobile-overflow-sr-only.md) — absolute sr-only spans escape overflow-x-auto cards and widen the page; give the th `relative`.
+- [Pilot e2e state + parity report](pilot-parity.md) — seed:pilot reuses grants by name (leftovers persist); parity map/report private-only; LibreOffice needs OOXMLRecalcMode=0.

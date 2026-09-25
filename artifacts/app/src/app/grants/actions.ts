@@ -148,6 +148,7 @@ function parseBudgetLine(formData: FormData) {
     parentId: strOrNull(formData, 'parentId'),
     activityId: strOrNull(formData, 'activityId'),
     categoryKey: strOrNull(formData, 'categoryKey'),
+    releaseClass: strOrNull(formData, 'releaseClass') ?? 'direct',
   };
   const parsed = budgetLineInputSchema.safeParse(candidate);
   if (!parsed.success) Object.assign(errors, { ...zodErrors(parsed.error), ...errors });

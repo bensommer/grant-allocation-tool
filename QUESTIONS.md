@@ -287,3 +287,101 @@ JPH-19 §6 F–G and JPH-22 agree on every figure. AC1–AC9 are asserted as int
 `artifacts/app/tests/db/jph22-effort.test.ts`; rendered figures on `data-cents` attributes in
 `artifacts/app/e2e/pilot.spec.ts`. Posted fixtures are generated in memory inside the tests from
 the tracked exports, never hand-written.
+
+## JPH-22 → JPH-23 — Periods, tie-out, grant workspace, rollforward, parity
+
+### Assumptions logged as instructed
+
+1. **Salah grant dates 2026-03-13 → 2027-02-28** (seeded as given; the workbook does not state
+   them). Everything date-derived on the Salah workspace — % of time elapsed, projected spend at
+   grant end, months left (5.3 at 9/22/2026), remaining per month — moves if these dates are wrong.
+2. **Salah lines are all `direct`**, matching how she presents the grant. Question for the client:
+   should the Kira and Leah payroll lines on Salah be `staff` instead? If yes, the rollforward
+   moves 2,530.47 (D1-A) or 1,342.06 (D1-B) from "released direct" to "released staff"; the ending
+   balance does not change.
+
+### Decisions taken (revisit if wrong)
+
+1. **Reported periods are entered once and never recomputed.** A reported snapshot is a row with
+   `source = reported`; recompute, locking and re-locking never touch it. Re-reporting the same
+   period supersedes the earlier rows (`supersededAt`) rather than deleting them. The books-computed
+   figure for the same window appears beside it as drift and never replaces it.
+2. **`PeriodLock` is org-wide, not per grant.** Locking a period freezes a computed snapshot for
+   every grant that has a released or received amount in that window. The reported FY2025 snapshot
+   is attached to an org-level FY2025 lock, so a second grant with FY2025 activity would get a
+   computed snapshot on the same lock, not a reported one, unless it is also entered by hand.
+3. **Beginning balance = received − released over all earlier periods**, reported snapshots first,
+   computed ones otherwise, and the books for windows with neither. Current-period release per
+   class = released to date − released in earlier periods. Staff drift is shown as "not computed":
+   effort charges carry no dates, so "current-period staff" is total staff to date − prior reported
+   staff and cannot be checked against the books per period.
+4. **Tie-out is green only when nothing is waiting.** Green = needs-review cents are 0 **and** every
+   line still in the queue is one half of a proposed reversal pair (so the Opioid ±207.02 pair,
+   which nets to 0.00, does not block the check). Salah before D1 shows coded 22,708.81 with
+   1,188.41 waiting and no green; after either D1 branch it is green. Effort charges are their own
+   line in the panel and are added to "charged", never mixed into the coded-to-grant total.
+5. **Release classes** are a column on the budget line (`direct | staff | overhead`), seeded as the
+   ticket lists them; Opioid Coordinator and Program Support are `staff`, Facility/Admin `overhead`.
+6. **Activity grid arithmetic.** Remaining per remaining occurrence = remaining ÷ (planned −
+   completed), rounded half-up, blank when planned − completed ≤ 0. Food and supplies share one
+   column because the funder budget has one line for them. Over-budget cells stay on their own row;
+   category totals are plain sums of the rows, so "Coordinator 876.97 remaining in total" is the
+   net of rows that are individually over and under.
+7. **Working view.** Months left = inclusive days from as-of to the grant end ÷ (365.25 / 12), one
+   decimal, from the grant dates alone; remaining per month = remaining ÷ months left, half-up.
+   The forecast strip reads planned entries from the URL (`count × rate × hours`) so it works
+   without JavaScript; nothing is stored.
+8. **Rollforward.** One column per restricted fund, a totals column and a check row (beginning +
+   received − released − ending, per column and in total). The Salah column carries a visible note
+   whenever pre-September Leah lines are still waiting or were decided under D1-A, linking to the
+   decision. The XLSX writes formulas for the ending and check rows and for the totals column; the
+   AC4 test poisons the cached values and lets LibreOffice recalculate to prove the formulas, not
+   the caches, produce the AC3 endings.
+9. **Parity report.** `pnpm parity:report` reads the private workbook's cached values and
+   `fixtures/private/parity-map.json`, and writes only `fixtures/private/parity.md`; it skips
+   cleanly when either private file is missing and refuses to write to any path git tracks (both
+   are tested). Every row must carry a reason before anything is read. App-side metric keys are a
+   small colon-separated grammar (`<grant>:budget:<CODE>:charged`, `<grant>:rollforward:ending`,
+   `<grant>:tieout:needsReview`, …; documented at the top of `src/services/parity-metrics.ts`), so
+   adding a workbook cell is a map entry, not code. Nothing from the workbook is printed to the
+   terminal.
+10. **Parity reasons in use:** `matches` (including seven cells whose formula result the workbook
+    never cached, read as 0.00), `D1-A` (the app releases the pre-September Leah pay to the Leah
+    line; she left it unreleased), `largest-remainder rounding` (the app scales the funder budget to
+    the 50,000.00 award; her typed total carries the 0.61 overage), `her cross-row formula` (E43
+    nets the Mother's Exhaustion overage into Teen Monthly; the app keeps each activity on its own
+    row), `half-up rounding of her payroll allocation formula`, and `reported vs. books` (the FY2025
+    snapshot of record). The tie count depends on the D1 state of the seeded data: 86 rows,
+    73 tie exactly after D1-A (13 differ with a stated reason), 78 tie before D1 (8 differ),
+    0 unresolved either way.
+11. **AC2 finding recorded in the parity report:** the FY2025 direct gap of −187.66 is one November
+    2025 staff payroll line (187.44) she counted as direct plus 0.22 of whole-dollar rounding.
+
+### Follow-ups (out of phase)
+
+- **Date effort occurrences per period** so staff drift and per-period staff releases can be
+  computed instead of derived by subtraction.
+- Ask the client whether the Salah Kira/Leah lines should be `staff` (assumption 2 above).
+- Confirm the Salah grant dates (assumption 1 above).
+- Tie-out "green" interpretation (decision 4): confirm that an unresolved reversal pair that nets
+  to zero should not block the check.
+- LibreOffice recalculation of exceljs workbooks needs `OOXMLRecalcMode = 0` (always recalculate)
+  in the profile's registrymodifications; the AC4 test sets this in a throwaway profile. Anyone
+  reproducing AC4 by hand must do the same or they will read the cached values.
+- Per-grant period locks, if a grant ever needs to close on a different calendar from the org.
+- A rollforward window that *contains* a closed period (rather than starting after it) uses the
+  ticket's formula — released to date − released before the window — so the closed stretch is
+  read from today's books, not from its snapshot. Confirm whether such windows should instead
+  splice the snapshot in; today the app only guarantees the snapshot when the window starts at or
+  after the period's end. Overlapping locks are refused at creation so no day is counted twice.
+- Reopening a period (deleting its lock on Settings → Periods) drops that period's computed
+  snapshots; a period carrying reported figures refuses to reopen. The database also refuses
+  (`RESTRICT`) to drop a lock that still has snapshots.
+
+### Nothing disputed
+
+JPH-19 §6 H–L, §7 and JPH-23 agree on every figure. AC1–AC8 are asserted as integer cents in
+`artifacts/app/tests/db/jph23-rollforward.test.ts`, `tests/db/jph23-workspace.test.ts`,
+`src/domain/periods.test.ts` and `src/reports/parity.test.ts`; rendered figures on `data-cents`
+attributes in `artifacts/app/e2e/pilot.spec.ts`. AC9: every earlier phase suite and the JPH-7
+golden suite still pass.

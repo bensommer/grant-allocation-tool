@@ -1,5 +1,5 @@
 {
-  "$comment": "JPH-21 pilot seed (anonymized). Loaded by `pnpm seed:pilot`. Budgets from JPH-19 §3 / Appendix 2, rules from Appendix 1 with pseudonyms. Accounts are matched by name (every account with that name), classes by full path, payees by display name. Amounts are integer cents.",
+  "$comment": "JPH-21 pilot seed (anonymized). Loaded by `pnpm seed:pilot`. Budgets from JPH-19 §3 / Appendix 2, rules from Appendix 1 with pseudonyms. Accounts are matched by name (every account with that name), classes by full path, payees by display name. Amounts are integer cents. Release classes (JPH-23): direct unless listed; staff/overhead per cell category or line.",
   "grants": [
     {
       "key": "salah",
@@ -307,19 +307,22 @@
           "code": "FACADMIN",
           "name": "Facility Use & Administrative Cost",
           "budgetCents": 300000,
-          "sortOrder": 20
+          "sortOrder": 20,
+          "releaseClass": "overhead"
         },
         {
           "code": "COORD",
           "name": "Program Coordinator",
           "budgetCents": 625300,
-          "sortOrder": 30
+          "sortOrder": 30,
+          "releaseClass": "staff"
         },
         {
           "code": "SUPPORT",
           "name": "Program Support",
           "budgetCents": 33700,
-          "sortOrder": 40
+          "sortOrder": 40,
+          "releaseClass": "staff"
         },
         {
           "code": "FOODSUPP",
@@ -334,7 +337,8 @@
           "name": "Overhead (de minimis)",
           "parent": "FACADMIN",
           "budgetCents": 0,
-          "sortOrder": 29
+          "sortOrder": 29,
+          "releaseClass": "overhead"
         }
       ],
       "cellCategories": {
@@ -627,6 +631,25 @@
               "hoursPerOccurrence": "5.75"
             }
           ]
+        }
+      ],
+      "cellReleaseClasses": {
+        "coordinator": "staff",
+        "program_support": "staff",
+        "facility_admin": "overhead"
+      },
+      "reportedPeriods": [
+        {
+          "name": "FY2025",
+          "from": "2025-01-01",
+          "to": "2025-12-31",
+          "released": {
+            "direct": 212000,
+            "staff": 83300,
+            "overhead": 300000
+          },
+          "receivedCents": 2000000,
+          "note": "Reported to the funder before the app existed; figures were rounded to whole dollars in that report."
         }
       ]
     }

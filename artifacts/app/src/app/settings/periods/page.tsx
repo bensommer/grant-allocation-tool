@@ -66,7 +66,11 @@ export default async function PeriodSettings({
                   <Period from={lock.periodFrom} to={lock.periodTo} />
                 </td>
                 <td>
-                  <Link href={`/runs/${lock.computeRunId}`}>{lock.computeRunId.slice(-8)}</Link>
+                  {lock.computeRunId ? (
+                    <Link href={`/runs/${lock.computeRunId}`}>{lock.computeRunId.slice(-8)}</Link>
+                  ) : (
+                    <span className="muted">reported before the app</span>
+                  )}
                 </td>
                 <td>
                   <ButtonLink

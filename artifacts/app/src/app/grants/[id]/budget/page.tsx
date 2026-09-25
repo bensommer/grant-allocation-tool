@@ -100,6 +100,18 @@ export default async function BudgetPage({
             defaultValue={pick(s, 'name', bl.name)}
             aria-label="Name"
           />
+          <select
+            form={`edit-${bl.id}`}
+            name="releaseClass"
+            defaultValue={pick(s, 'releaseClass', bl.releaseClass)}
+            aria-label="Release class"
+            className="mt-1 !w-auto text-xs"
+            data-testid="release-class"
+          >
+            <option value="direct">Direct</option>
+            <option value="staff">Staff</option>
+            <option value="overhead">Overhead</option>
+          </select>
           <span className="muted ml-1 text-xs">
             {KIND_LABEL[bl.kind]}
             {bl.kind === 'cell'
@@ -299,6 +311,17 @@ export default async function BudgetPage({
                   <option value="working_line">Working line</option>
                   <option value="funder_category">Funder category</option>
                   <option value="cell">Cell (activity × category)</option>
+                </select>
+                <select
+                  form="new-line"
+                  name="releaseClass"
+                  defaultValue={pick(newState, 'releaseClass', 'direct')}
+                  aria-label="New release class"
+                  className="mt-1"
+                >
+                  <option value="direct">Direct</option>
+                  <option value="staff">Staff</option>
+                  <option value="overhead">Overhead</option>
                 </select>
                 {rowErr(null, 'name') ? (
                   <p className="field-error">{rowErr(null, 'name')}</p>

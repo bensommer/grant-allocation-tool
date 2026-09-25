@@ -24,6 +24,7 @@ import { addRevision, upsertActivity } from '@/services/grant-budget';
 import { createGrantRule, updateGrantRule, type GrantRuleInput } from '@/services/grant-rules';
 import { lineFingerprint, recordDecision } from '@/services/line-decisions';
 import { createSchedule, updateSchedule, upsertEntry } from '@/services/effort';
+import { recordReportedPeriod } from '@/services/grant-periods';
 
 const seedMatchers = z.object({
   accounts: z.array(z.string()).optional(),
@@ -44,6 +45,7 @@ const selector = z.object({
   amountCents: z.number().int().optional(),
 });
 const cellTarget = z.object({ activity: z.string(), category: z.string() });
+const releaseClass = z.enum(['direct', 'staff', 'overhead']);
 const seedGrant = z.object({
   key: z.string(),
   name: z.string(),
@@ -73,6 +75,7 @@ const seedGrant = z.object({
       name: z.string(),
       budgetCents: z.number().int(),
       sortOrder: z.number().int(),
+      releaseClass: releaseClass.default('direct'),
     }),
   ),
   lines: z.array(
@@ -82,9 +85,12 @@ const seedGrant = z.object({
       parent: z.string().nullable(),
       budgetCents: z.number().int(),
       sortOrder: z.number().int(),
+      releaseClass: releaseClass.default('direct'),
     }),
   ),
   cellCategories: z.record(z.string(), z.string()).optional(),
+  /** Release class per cell category key (JPH-23); unlisted keys are direct. */
+  cellReleaseClasses: z.record(z.string(), releaseClass).optional(),
   cells: z.array(
     z.object({ activity: z.string(), budgets: z.record(z.string(), z.number().int()) }),
   ),
@@ -115,6 +121,26 @@ const seedGrant = z.object({
       select: selector,
     }),
   ),
+  /**
+   * Periods reported to the funder before the app existed (JPH-23). Whole dollars in the
+   * source are still stored as cents; the note says so.
+   */
+  reportedPeriods: z
+    .array(
+      z.object({
+        name: z.string(),
+        from: z.string(),
+        to: z.string(),
+        released: z.object({
+          direct: z.number().int(),
+          staff: z.number().int(),
+          overhead: z.number().int(),
+        }),
+        receivedCents: z.number().int(),
+        note: z.string(),
+      }),
+    )
+    .default([]),
   /** Effort schedules (JPH-22). */
   schedules: z
     .array(
@@ -335,6 +361,7 @@ async function seedGrantConfig(
     parentId: string | null;
     activityId: string | null;
     categoryKey: string | null;
+    releaseClass: 'direct' | 'staff' | 'overhead';
   }) => {
     const current = await prisma.grantBudgetLine.findFirst({
       where: { grantId, code: input.code },
@@ -376,6 +403,7 @@ async function seedGrantConfig(
         parentId,
         activityId: aId,
         categoryKey,
+        releaseClass: g.cellReleaseClasses?.[categoryKey] ?? 'direct',
       });
     }
   }
@@ -564,6 +592,35 @@ async function seedGrantConfig(
         );
     }
     schedules++;
+  }
+
+  // --- reported periods (JPH-23) -----------------------------------------------
+  // Recorded once per period name; a period whose snapshot exists is left alone so a
+  // reviewer's later correction (which supersedes the seed rows) survives re-seeding.
+  for (const rp of g.reportedPeriods) {
+    const from = parseDateInput(rp.from);
+    const to = parseDateInput(rp.to);
+    const lock = await prisma.periodLock.findFirst({
+      where: { orgId, name: rp.name, periodFrom: from, periodTo: to },
+    });
+    const already =
+      lock && (await prisma.grantPeriodSnapshot.count({ where: { grantId, periodLockId: lock.id } }));
+    if (already) continue;
+    await recordReportedPeriod(
+      orgId,
+      grantId,
+      {
+        name: rp.name,
+        periodFrom: from,
+        periodTo: to,
+        directCents: rp.released.direct,
+        staffCents: rp.released.staff,
+        overheadCents: rp.released.overhead,
+        receivedCents: rp.receivedCents,
+        note: rp.note,
+      },
+      'seed:pilot',
+    );
   }
 
   return {

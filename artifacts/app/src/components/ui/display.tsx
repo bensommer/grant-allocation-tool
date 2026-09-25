@@ -14,14 +14,20 @@ export function Money({
   dollar,
   zero,
   className = '',
+  'data-testid': testId,
 }: {
   cents: number;
   dollar?: boolean;
   zero?: 'dash' | 'zero';
   className?: string;
+  'data-testid'?: string;
 }) {
   return (
-    <span className={`num${cents < 0 ? ' negative' : ''} ${className}`} data-cents={cents}>
+    <span
+      className={`num${cents < 0 ? ' negative' : ''} ${className}`}
+      data-cents={cents}
+      data-testid={testId}
+    >
       {formatMoney(cents, { dollar, zero })}
     </span>
   );

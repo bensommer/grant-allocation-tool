@@ -9,6 +9,7 @@ import {
   Money,
   NumTd,
   PageHeader,
+  Pct,
   Period,
   ProgressBar,
   Td,
@@ -19,7 +20,10 @@ import { GrantPaceStatus } from '@/components/grant-pace-status';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { bvaData, defaultReportDate } from '@/services/bva';
+import { budgetTree } from '@/services/grant-budget';
+import { headerMetrics, tieOut } from '@/services/grant-workspace';
 import { GrantTabs } from './tabs';
+import { TieOutPanel } from './tie-out-panel';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +44,11 @@ export default async function GrantPage({
   ]);
   const grant = grants[0];
   if (!grant) notFound();
+  const tree = await budgetTree(orgId, id);
+  const [metrics, tie] = await Promise.all([
+    headerMetrics(orgId, grant, date),
+    tieOut(orgId, id, tree),
+  ]);
   const programNames = new Map(programs.map((p) => [p.id, p.name]));
   const receipts = await prisma.transactionLine.findMany({
     where: {
@@ -89,24 +98,60 @@ export default async function GrantPage({
           This grant appears in a compute run, so it was archived rather than deleted.
         </Banner>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-testid="header-metrics">
         <Card>
-          <KeyFigure label="Award" value={<Money cents={grant.awardAmountCents} dollar />} />
+          <KeyFigure label="Award" value={<Money cents={metrics.awardCents} dollar data-testid="metric-award" />} />
         </Card>
         <Card>
-          <KeyFigure label="Spent" value={<Money cents={grant.actual} dollar />} />
+          <KeyFigure
+            label="Received"
+            value={<Money cents={metrics.receivedCents} dollar data-testid="metric-received" />}
+            hint="Grant income lines through the report date"
+          />
+        </Card>
+        <Card>
+          <KeyFigure
+            label="Spent"
+            value={<Money cents={metrics.spentCents} dollar data-testid="metric-spent" />}
+            hint="Assigned lines + effort charges, current run"
+          />
+        </Card>
+        <Card>
+          <KeyFigure
+            label="Restricted balance"
+            value={<Money cents={metrics.restrictedBalanceCents} dollar data-testid="metric-balance" />}
+            hint="Received − spent"
+          />
+        </Card>
+        <Card>
+          <KeyFigure
+            label="Time elapsed vs. spent"
+            value={
+              <span data-testid="elapsed-vs-spent">
+                <Pct basisPoints={metrics.elapsedBps} /> · <Pct basisPoints={metrics.spentBps} />
+              </span>
+            }
+            hint="% of the grant period elapsed · % of the award spent"
+          />
+        </Card>
+        <Card>
+          <KeyFigure
+            label="Projected at grant end"
+            value={
+              metrics.projectedAtEndCents === null ? (
+                <span className="muted">—</span>
+              ) : (
+                <Money cents={metrics.projectedAtEndCents} dollar />
+              )
+            }
+            hint="Straight line from the spend rate to date"
+          />
         </Card>
         <Card>
           <KeyFigure
             label="Remaining award"
-            value={<Money cents={grant.awardAmountCents - grant.actual} dollar />}
+            value={<Money cents={metrics.awardCents - metrics.spentCents} dollar />}
           />
-        </Card>
-        <Card>
-          <KeyFigure label="Received" value={<Money cents={grant.received} dollar />} />
-        </Card>
-        <Card>
-          <KeyFigure label="Restricted balance" value={<Money cents={grant.balance} dollar />} />
         </Card>
         <Card>
           <KeyFigure
@@ -125,6 +170,9 @@ export default async function GrantPage({
           />
         </Card>
       </div>
+      <Card title="Tie-out">
+        <TieOutPanel id={id} tieOut={tie} />
+      </Card>
       <Card
         title="Budget lines"
         action={

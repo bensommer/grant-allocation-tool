@@ -165,6 +165,8 @@ export const budgetLineInputSchema = z.object({
     .regex(categoryKeyPattern, 'Category key: lower-case letters, digits, underscore')
     .nullable()
     .default(null),
+  /** Rollforward column the line's charges release (JPH-23). */
+  releaseClass: z.enum(['direct', 'staff', 'overhead']).default('direct'),
 });
 export type BudgetLineInput = z.input<typeof budgetLineInputSchema>;
 

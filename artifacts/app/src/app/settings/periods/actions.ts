@@ -30,6 +30,11 @@ export async function createPeriodAction(formData: FormData) {
 }
 
 export async function deletePeriodAction(formData: FormData) {
-  await deletePeriodLock(await getOrgId(), str(formData, 'id'));
+  try {
+    await deletePeriodLock(await getOrgId(), str(formData, 'id'));
+  } catch (error) {
+    // A period that carries reported figures refuses to reopen (JPH-23).
+    redirectWithErrors('/settings/periods', { name: (error as Error).message }, new FormData());
+  }
   redirect('/settings/periods?saved=1');
 }

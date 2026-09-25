@@ -23,7 +23,8 @@
     "recompute": "tsx src/cli/recompute.ts",
     "fixtures:generate": "tsx src/cli/generate-fixtures.ts",
     "fixtures:anonymize": "tsx src/cli/anonymize-qbo-report.ts",
-    "import:qbo-report": "tsx src/cli/import-qbo-report.ts"
+    "import:qbo-report": "tsx src/cli/import-qbo-report.ts",
+    "parity:report": "tsx src/cli/parity-report.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

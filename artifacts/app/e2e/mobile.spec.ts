@@ -2,6 +2,9 @@ import { expect, test } from '@playwright/test';
 import { routes } from './routes';
 
 test('every route fits a 390px viewport; navigation stays collapsed', async ({ page }) => {
+  // Walks every server-rendered route (JPH-23 added the grant workspace and period pages), which
+  // takes about a minute on the dev server alone and longer beside the other workers.
+  test.setTimeout(300_000);
   await page.setViewportSize({ width: 390, height: 844 });
   for (const path of await routes()) {
     await page.goto(path);

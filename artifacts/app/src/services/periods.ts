@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { recordAudit } from '@/lib/audit';
+import { findOverlappingLock, snapshotLockedPeriod } from '@/services/grant-periods';
 
 export async function lockPeriod(orgId: string, name: string, from: Date, to: Date, note: string) {
   if (!name.trim() || from > to || Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()))
@@ -9,7 +10,14 @@ export async function lockPeriod(orgId: string, name: string, from: Date, to: Da
   });
   if (!run || run.stale)
     throw new Error('Recompute a current, non-stale run before locking a period.');
-  return prisma.$transaction(async (tx) => {
+  const lock = await prisma.$transaction(async (tx) => {
+    // Locks are org-wide and feed beginning balances; two locks covering the same day would
+    // count that day's releases twice.
+    const overlap = await findOverlappingLock(tx, orgId, from, to);
+    if (overlap)
+      throw new Error(
+        `Period overlaps the existing lock "${overlap.name}" (${overlap.periodFrom.toISOString().slice(0, 10)} → ${overlap.periodTo.toISOString().slice(0, 10)}).`,
+      );
     const lock = await tx.periodLock.create({
       data: {
         orgId,
@@ -29,12 +37,28 @@ export async function lockPeriod(orgId: string, name: string, from: Date, to: Da
     });
     return lock;
   });
+  // Freeze each grant's figures for the period (JPH-23); closed periods are never recomputed.
+  await snapshotLockedPeriod(orgId, lock.id);
+  return lock;
 }
 
+/**
+ * Reopen a period the app locked. Computed snapshots go with the lock (the period is open
+ * again and will be frozen anew when it is re-locked); a period that carries reported figures
+ * (JPH-23) is a period of record and cannot be reopened.
+ */
 export async function deletePeriodLock(orgId: string, id: string) {
   await prisma.$transaction(async (tx) => {
     const lock = await tx.periodLock.findFirst({ where: { orgId, id } });
     if (!lock) throw new Error('Period lock not found.');
+    const reported = await tx.grantPeriodSnapshot.count({
+      where: { periodLockId: id, source: 'reported' },
+    });
+    if (reported > 0)
+      throw new Error(
+        'This period carries reported figures entered before the app existed; it cannot be reopened.',
+      );
+    await tx.grantPeriodSnapshot.deleteMany({ where: { periodLockId: id } });
     await tx.periodLock.delete({ where: { id } });
     await recordAudit(tx, {
       orgId,
@@ -98,7 +122,7 @@ export async function periodDrift(orgId: string, id: string) {
       },
     });
   const [before, after] = await Promise.all([
-    totals(lock.computeRunId),
+    lock.computeRunId ? totals(lock.computeRunId) : Promise.resolve([]),
     current ? totals(current.id) : Promise.resolve([]),
   ]);
   const aggregated = new Map<
