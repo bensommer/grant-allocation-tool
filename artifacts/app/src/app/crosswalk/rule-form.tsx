@@ -8,7 +8,7 @@ import type { crosswalkOptions } from './options';
 type Options = Awaited<ReturnType<typeof crosswalkOptions>>;
 type Rule = {
   name: string | null;
-  grantBudgetLineId: string;
+  grantBudgetLineId: string | null;
   priority: number;
   active: boolean;
   matchers: unknown;

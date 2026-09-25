@@ -42,6 +42,12 @@ export function describeMatchers(m: Matchers, labels: LabelMaps): string {
   if (m.locationIds?.length) parts.push(`location is ${orList(m.locationIds, labels.locations)}`);
   if (m.partyIds?.length) parts.push(`party is ${orList(m.partyIds, labels.parties)}`);
   if (m.descriptionContains) parts.push(`description contains "${m.descriptionContains}"`);
+  if (m.descriptionContainsAny?.length)
+    parts.push(
+      `description contains ${m.descriptionContainsAny.map((n) => `"${n}"`).join(' or ')}`,
+    );
+  if (m.txnTypes?.length) parts.push(`transaction type is ${m.txnTypes.join(' or ')}`);
+  if (m.amountSign) parts.push(`amount is ${m.amountSign}`);
   if (m.dateFrom && m.dateTo)
     parts.push(
       `date is ${formatDate(new Date(`${m.dateFrom}T00:00:00Z`))} to ${formatDate(new Date(`${m.dateTo}T00:00:00Z`))}`,

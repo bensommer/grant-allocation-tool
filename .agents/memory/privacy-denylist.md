@@ -3,7 +3,8 @@ name: Privacy denylist guard
 description: How the no-private-data test behaves and what trips it.
 ---
 - The denylist test scans every git-tracked file, including tests, comments and QUESTIONS.md, whole-word
-  and case-insensitive. Example names in prose ("Mary" → "summary") trip it; use invented names.
+  and case-insensitive. Do not quote real first names as examples in prose or memory notes, even to
+  explain the guard — that is exactly what tripped it. Use clearly invented names.
 - The denylist file itself lives in git-ignored fixtures/private; when absent the test skips, so a clean
   clone cannot prove anything — run it where the private fixtures exist before pushing.
-- **Why:** it failed twice on my own explanatory text before the first push.
+- **Why:** explanatory prose that names a real person trips it just like code does.

@@ -4,7 +4,25 @@ import { redirect } from 'next/navigation';
 import { parse as parseCsv } from 'csv-parse/sync';
 import { getOrgId } from '@/lib/org';
 import { prisma } from '@/lib/db';
-import { list, redirectWithErrors, str, strOrNull, zodErrors } from '@/lib/forms';
+import { bool, list, redirectWithErrors, str, strOrNull, zodErrors } from '@/lib/forms';
+import {
+  activityInputSchema,
+  addRevision,
+  revisionInputSchema,
+  upsertActivity,
+} from '@/services/grant-budget';
+import {
+  createGrantRule,
+  deactivateGrantRule,
+  grantRuleInputSchema,
+  updateGrantRule,
+} from '@/services/grant-rules';
+import {
+  clearAtRisk,
+  recordDecision,
+  REVERSAL_PAIR_REASON,
+  revertDecision,
+} from '@/services/line-decisions';
 import { parseDateInput } from '@/domain/dates';
 import { MoneyParseError, parseMoneyToCents } from '@/domain/money';
 import {
@@ -118,6 +136,11 @@ function parseBudgetLine(formData: FormData) {
     budgetCents: money(formData, 'budget', errors),
     programId: strOrNull(formData, 'programId'),
     sortOrder: Number(str(formData, 'sortOrder') || '0'),
+    // JPH-21 two-level budgets; absent fields keep the flat (phase-1) shape.
+    kind: (str(formData, 'kind') || 'working_line') as BudgetLineInput['kind'],
+    parentId: strOrNull(formData, 'parentId'),
+    activityId: strOrNull(formData, 'activityId'),
+    categoryKey: strOrNull(formData, 'categoryKey'),
   };
   const parsed = budgetLineInputSchema.safeParse(candidate);
   if (!parsed.success) Object.assign(errors, { ...zodErrors(parsed.error), ...errors });
@@ -233,4 +256,201 @@ export async function importBudgetLinesAction(grantId: string, formData: FormDat
     );
   const result = await importBudgetLines(orgId, grantId, rows);
   redirect(`/grants/${grantId}/budget?imported=${result.created}&updated=${result.updated}`);
+}
+
+// --- JPH-21: activities, revisions, grant rules, decisions ---------------------
+
+export async function saveActivityAction(
+  grantId: string,
+  activityId: string | null,
+  formData: FormData,
+): Promise<void> {
+  const back = `/grants/${grantId}/budget`;
+  const prefix = activityId ? `activity.${activityId}.` : 'activity.';
+  const parsed = activityInputSchema.safeParse({
+    name: str(formData, 'name'),
+    aliases: str(formData, 'aliases')
+      .split(/[,;\n]/)
+      .map((a) => a.trim())
+      .filter((a) => a !== ''),
+    plannedCount: Number(str(formData, 'plannedCount') || '0'),
+    completedCount: Number(str(formData, 'completedCount') || '0'),
+    sortOrder: Number(str(formData, 'sortOrder') || '0'),
+  });
+  const prefixed = (errors: Record<string, string>) =>
+    Object.fromEntries(Object.entries(errors).map(([k, v]) => [prefix + k, v]));
+  if (!parsed.success) redirectWithErrors(back, prefixed(zodErrors(parsed.error)), formData);
+  const orgId = await getOrgId();
+  try {
+    await upsertActivity(orgId, grantId, parsed.data, activityId ?? undefined);
+  } catch (e) {
+    if (e instanceof ValidationError) redirectWithErrors(back, prefixed(e.fieldErrors), formData);
+    throw e;
+  }
+  redirect(`${back}?saved=1#activities`);
+}
+
+export async function addRevisionAction(grantId: string, formData: FormData): Promise<void> {
+  const back = `/grants/${grantId}/budget`;
+  const errors: Record<string, string> = {};
+  const deltaCents = money(formData, 'delta', errors);
+  const parsed = revisionInputSchema.safeParse({
+    budgetLineId: str(formData, 'budgetLineId'),
+    date: date(formData, 'date', errors),
+    deltaCents,
+    counterpartLineId: strOrNull(formData, 'counterpartLineId'),
+    note: str(formData, 'note'),
+  });
+  if (!parsed.success) Object.assign(errors, { ...zodErrors(parsed.error), ...errors });
+  const prefixed = (errs: Record<string, string>) =>
+    Object.fromEntries(Object.entries(errs).map(([k, v]) => [`revision.${k}`, v]));
+  if (Object.keys(errors).length > 0) redirectWithErrors(back, prefixed(errors), formData);
+  const orgId = await getOrgId();
+  try {
+    await addRevision(orgId, grantId, parsed.data!);
+  } catch (e) {
+    if (e instanceof ValidationError) redirectWithErrors(back, prefixed(e.fieldErrors), formData);
+    throw e;
+  }
+  redirect(`${back}?saved=1#revisions`);
+}
+
+function parseGrantRule(formData: FormData) {
+  const dimension = str(formData, 'dimension') || 'line';
+  const matchers = {
+    accountIds: list(formData, 'accountIds'),
+    classIds: list(formData, 'classIds'),
+    partyIds: list(formData, 'partyIds'),
+    descriptionContains: str(formData, 'descriptionContains'),
+    descriptionContainsAny: str(formData, 'descriptionContainsAny')
+      .split(/[,;\n]/)
+      .map((a) => a.trim())
+      .filter((a) => a !== ''),
+    txnTypes: list(formData, 'txnTypes'),
+    ...(str(formData, 'amountSign') ? { amountSign: str(formData, 'amountSign') } : {}),
+    ...(str(formData, 'dateFrom') ? { dateFrom: str(formData, 'dateFrom') } : {}),
+    ...(str(formData, 'dateTo') ? { dateTo: str(formData, 'dateTo') } : {}),
+  };
+  const result = grantRuleInputSchema.safeParse({
+    name: str(formData, 'name'),
+    dimension,
+    grantBudgetLineId: dimension === 'line' ? strOrNull(formData, 'grantBudgetLineId') : null,
+    targetActivityId: dimension === 'activity' ? strOrNull(formData, 'targetActivityId') : null,
+    targetCategoryKey: dimension === 'category' ? strOrNull(formData, 'targetCategoryKey') : null,
+    priority: Number(str(formData, 'priority')),
+    active: bool(formData, 'active'),
+    matchers,
+  });
+  const errors = result.success ? {} : zodErrors(result.error);
+  if (matchers.dateFrom && matchers.dateTo && matchers.dateFrom > matchers.dateTo)
+    errors['matchers.dateTo'] = 'End date must be on or after start';
+  return { data: result.success ? result.data : null, errors };
+}
+
+async function saveGrantRule(
+  grantId: string,
+  ruleId: string | null,
+  back: string,
+  formData: FormData,
+): Promise<void> {
+  // Preview follows the crosswalk pattern: bounce the form state back with ?preview=1.
+  if (str(formData, 'intent') === 'preview') redirectWithErrors(`${back}?preview=1`, {}, formData);
+  const parsed = parseGrantRule(formData);
+  if (!parsed.data || Object.keys(parsed.errors).length)
+    redirectWithErrors(back, parsed.errors, formData);
+  const orgId = await getOrgId();
+  let id = ruleId;
+  try {
+    const rule = ruleId
+      ? await updateGrantRule(orgId, grantId, ruleId, parsed.data)
+      : await createGrantRule(orgId, grantId, parsed.data);
+    id = rule.id;
+  } catch (e) {
+    if (e instanceof ValidationError) redirectWithErrors(back, e.fieldErrors, formData);
+    throw e;
+  }
+  redirect(`/grants/${grantId}/rules/${id}?saved=1`);
+}
+
+export async function createGrantRuleAction(grantId: string, formData: FormData): Promise<void> {
+  await saveGrantRule(grantId, null, `/grants/${grantId}/rules/new`, formData);
+}
+export async function updateGrantRuleAction(
+  grantId: string,
+  ruleId: string,
+  formData: FormData,
+): Promise<void> {
+  await saveGrantRule(grantId, ruleId, `/grants/${grantId}/rules/${ruleId}`, formData);
+}
+export async function deactivateGrantRuleAction(grantId: string, ruleId: string): Promise<void> {
+  const orgId = await getOrgId();
+  await deactivateGrantRule(orgId, grantId, ruleId);
+  redirect(`/grants/${grantId}/rules?deactivated=1`);
+}
+
+/** Review queue decision form: assign / exclude / at_risk over the checked lines. */
+export async function recordDecisionAction(grantId: string, formData: FormData): Promise<void> {
+  const back = `/grants/${grantId}/review`;
+  const kind = str(formData, 'kind');
+  const lineIds = list(formData, 'lineIds');
+  const note = str(formData, 'note');
+  const reason = str(formData, 'reason');
+  const errors: Record<string, string> = {};
+  if (lineIds.length === 0) errors['lineIds'] = 'Select at least one line';
+  if (!['assign', 'exclude', 'at_risk'].includes(kind)) errors['kind'] = 'Choose a decision';
+  if (kind === 'assign' && !str(formData, 'targetBudgetLineId'))
+    errors['targetBudgetLineId'] = 'Select a working line or cell';
+  if (kind === 'exclude' && !reason) errors['reason'] = 'A reason is required to exclude';
+  if (!note) errors['note'] = 'A note is required';
+  if (Object.keys(errors).length > 0) redirectWithErrors(back, errors, formData);
+  const orgId = await getOrgId();
+  try {
+    await recordDecision(orgId, grantId, {
+      kind: kind as 'assign' | 'exclude' | 'at_risk',
+      lineIds,
+      targetBudgetLineId: kind === 'assign' ? str(formData, 'targetBudgetLineId') : null,
+      reason: reason || null,
+      note,
+    });
+  } catch (e) {
+    if (e instanceof ValidationError) redirectWithErrors(back, e.fieldErrors, formData);
+    throw e;
+  }
+  redirect(`${back}?saved=1`);
+}
+
+/** Confirms a proposed reversal pair (two lines netting to zero). */
+export async function confirmReversalPairAction(
+  grantId: string,
+  formData: FormData,
+): Promise<void> {
+  const back = `/grants/${grantId}/review`;
+  const positiveId = str(formData, 'positiveId');
+  const negativeId = str(formData, 'negativeId');
+  const orgId = await getOrgId();
+  try {
+    await recordDecision(orgId, grantId, {
+      kind: 'reversal_pair',
+      lineIds: [positiveId, negativeId],
+      targetBudgetLineId: null,
+      reason: REVERSAL_PAIR_REASON,
+      note: str(formData, 'note') || 'Confirmed reversal pair from the review queue',
+    });
+  } catch (e) {
+    if (e instanceof ValidationError) redirectWithErrors(back, e.fieldErrors, formData);
+    throw e;
+  }
+  redirect(`${back}?saved=1`);
+}
+
+export async function revertDecisionAction(grantId: string, formData: FormData): Promise<void> {
+  const orgId = await getOrgId();
+  await revertDecision(orgId, grantId, list(formData, 'lineIds'));
+  redirect(`/grants/${grantId}/review?saved=1`);
+}
+
+export async function clearAtRiskAction(grantId: string, formData: FormData): Promise<void> {
+  const orgId = await getOrgId();
+  await clearAtRisk(orgId, grantId, list(formData, 'lineIds'));
+  redirect(`/grants/${grantId}/review?saved=1`);
 }

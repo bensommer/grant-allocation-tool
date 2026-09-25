@@ -16,6 +16,10 @@
  *      program) whose grant period contains the line date. Lowest priority
  *      wins; a tie is a conflict (piece excluded from grant totals). No match →
  *      unmapped (grantId null, not an error).
+ *   4. Grant stage (JPH-21, ./grant-stage.ts) — runs per grant over its member
+ *      lines: decisions → grant rules → activity × category cells, producing
+ *      exactly one assigned / excluded / needs_review state per member line.
+ *      Grant-scoped CrosswalkRules (grantId set) never take part in stage 3.
  */
 import { type Matchers, lineMatches, type MatchableLine } from '@/domain/matchers';
 import { splitLargestRemainder } from '@/domain/split';
@@ -36,6 +40,9 @@ export interface EngineLine {
   memo: string | null;
   txnDate: Date;
   amountCents: number;
+  /** Transaction type (TxnType enum name) and document number, for matchers and review. */
+  txnType?: string | null;
+  docNumber?: string | null;
 }
 
 export interface EngineProgram {
@@ -75,6 +82,10 @@ export interface EngineBudgetLine {
   id: string;
   grantId: string;
   programId: string | null;
+  /** JPH-21 two-level budgets; older callers may omit these. */
+  kind?: 'funder_category' | 'working_line' | 'cell';
+  activityId?: string | null;
+  categoryKey?: string | null;
 }
 
 export interface EngineGrant {
@@ -93,6 +104,16 @@ export interface EngineConfig {
   /** key: `${driverKey}|${period}|${programId}` → value */
   driverValues: Map<string, number>;
 }
+
+export {
+  assignGrantLines,
+  type GrantStageConfig,
+  type GrantStageRule,
+  type GrantStageBudgetLine,
+  type GrantStageDecision,
+  type GrantLineDraft,
+  type GrantLineState,
+} from './grant-stage';
 
 export type PieceStatus =
   'ok' | 'allocation_conflict' | 'crosswalk_conflict' | 'unassigned_program';
@@ -157,6 +178,8 @@ function toMatchable(line: EngineLine, programId: string | null): MatchableLine 
     memo: line.memo,
     txnDate: line.txnDate,
     programId,
+    txnType: line.txnType ?? null,
+    amountCents: line.amountCents,
   };
 }
 

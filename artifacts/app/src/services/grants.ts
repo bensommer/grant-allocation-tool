@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { categoryKeyPattern } from '@/domain/categories';
 import { prisma } from '@/lib/db';
 import { recordAudit } from '@/lib/audit';
 import { markCurrentRunStale } from '@/lib/stale';
@@ -100,7 +101,7 @@ export async function updateGrant(orgId: string, id: string, rawInput: GrantInpu
   });
 }
 
-/** Hard delete only when no ComputeRun references the grant; otherwise archive. */
+/** Hard delete only when no run, import or decision references the grant; otherwise archive. */
 export async function deleteOrArchiveGrant(
   orgId: string,
   id: string,
@@ -113,7 +114,9 @@ export async function deleteOrArchiveGrant(
   const referenced =
     (await prisma.allocatedLine.count({
       where: { OR: [{ grantId: id }, { grantBudgetLine: { grantId: id } }] },
-    })) + (await prisma.importBatch.count({ where: { scopeGrantId: id } }));
+    })) +
+    (await prisma.importBatch.count({ where: { scopeGrantId: id } })) +
+    (await prisma.lineDecision.count({ where: { grantId: id } }));
   if (referenced > 0) {
     await prisma.$transaction(async (tx) => {
       const after = await tx.grant.update({ where: { id }, data: { status: 'archived' } });
@@ -150,15 +153,72 @@ export const budgetLineInputSchema = z.object({
   budgetCents: z.number().int().min(0, 'Budget cannot be negative').max(MAX_CENTS),
   programId: z.string().nullable(),
   sortOrder: z.number().int().min(0).max(9999),
+  /** JPH-21 two-level budget. Defaults keep flat (phase-1) budgets working unchanged. */
+  kind: z.enum(['funder_category', 'working_line', 'cell']).default('working_line'),
+  parentId: z.string().nullable().default(null),
+  activityId: z.string().nullable().default(null),
+  categoryKey: z
+    .string()
+    .regex(categoryKeyPattern, 'Category key: lower-case letters, digits, underscore')
+    .nullable()
+    .default(null),
 });
-export type BudgetLineInput = z.infer<typeof budgetLineInputSchema>;
+export type BudgetLineInput = z.input<typeof budgetLineInputSchema>;
+
+/** Structural rules for a two-level budget line, beyond the field shapes. */
+async function assertBudgetLineShape(
+  grantId: string,
+  input: BudgetLineInput,
+  id: string | undefined,
+): Promise<void> {
+  const errors: Record<string, string> = {};
+  if (input.kind === 'funder_category') {
+    if (input.parentId) errors['parentId'] = 'A funder category cannot have a parent';
+    if (input.activityId || input.categoryKey)
+      errors['activityId'] = 'Only cells carry an activity and category';
+  } else {
+    if (input.parentId) {
+      const parent = await prisma.grantBudgetLine.findFirst({
+        where: { id: input.parentId, grantId },
+      });
+      if (!parent) errors['parentId'] = 'Parent not found in this grant';
+      else if (parent.kind !== 'funder_category')
+        errors['parentId'] = 'Parent must be a funder category';
+      else if (id && parent.id === id) errors['parentId'] = 'A line cannot be its own parent';
+    }
+    if (input.kind === 'cell') {
+      if (!input.activityId || !input.categoryKey)
+        errors['activityId'] = 'A cell needs both an activity and a category';
+      else {
+        const activity = await prisma.grantActivity.findFirst({
+          where: { id: input.activityId, grantId },
+        });
+        if (!activity) errors['activityId'] = 'Activity not found in this grant';
+        const dup = await prisma.grantBudgetLine.findFirst({
+          where: {
+            grantId,
+            kind: 'cell',
+            activityId: input.activityId,
+            categoryKey: input.categoryKey,
+            ...(id ? { id: { not: id } } : {}),
+          },
+        });
+        if (dup) errors['categoryKey'] = `Cell ${dup.code} already covers this activity × category`;
+      }
+    } else if (input.activityId || input.categoryKey) {
+      errors['activityId'] = 'Only cells carry an activity and category';
+    }
+  }
+  if (Object.keys(errors).length > 0) throw new ValidationError(errors);
+}
 
 export async function upsertBudgetLine(
   orgId: string,
   grantId: string,
-  input: BudgetLineInput,
+  rawInput: BudgetLineInput,
   id?: string,
 ) {
+  const input = budgetLineInputSchema.parse(rawInput);
   const grant = await prisma.grant.findFirst({ where: { id: grantId, orgId } });
   if (!grant) throw new ValidationError({ _: 'Grant not found' });
   await assertOrgRefs(prisma, orgId, 'programId', {
@@ -168,9 +228,15 @@ export async function upsertBudgetLine(
     where: { grantId, code: input.code, ...(id ? { id: { not: id } } : {}) },
   });
   if (dup) throw new ValidationError({ code: `Code ${input.code} is already used in this grant` });
+  await assertBudgetLineShape(grantId, input, id);
   return prisma.$transaction(async (tx) => {
     if (id) {
       const before = await tx.grantBudgetLine.findFirstOrThrow({ where: { id, grantId } });
+      if (before.kind === 'funder_category' && input.kind !== 'funder_category') {
+        const children = await tx.grantBudgetLine.count({ where: { parentId: id } });
+        if (children > 0)
+          throw new ValidationError({ kind: 'Move its lines out before changing the kind' });
+      }
       const after = await tx.grantBudgetLine.update({ where: { id }, data: input });
       await recordAudit(tx, {
         orgId,
@@ -219,7 +285,12 @@ export async function deleteBudgetLine(orgId: string, grantId: string, id: strin
 }
 
 /** Bulk import: rows already parsed + validated by the caller. Upserts by code. */
-export async function importBudgetLines(orgId: string, grantId: string, rows: BudgetLineInput[]) {
+export async function importBudgetLines(
+  orgId: string,
+  grantId: string,
+  rawRows: BudgetLineInput[],
+) {
+  const rows = rawRows.map((r) => budgetLineInputSchema.parse(r));
   await assertOrgRefs(prisma, orgId, '_', { grantIds: [grantId] });
   await assertOrgRefs(prisma, orgId, 'programId', {
     programIds: rows.flatMap((r) => (r.programId ? [r.programId] : [])),

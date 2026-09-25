@@ -30,7 +30,9 @@ export default async function CrosswalkPage({
       include: {
         budgetLines: {
           orderBy: { sortOrder: 'asc' },
-          include: { crosswalkRules: { where: { orgId }, orderBy: { priority: 'asc' } } },
+          include: {
+            crosswalkRules: { where: { orgId, grantId: null }, orderBy: { priority: 'asc' } },
+          },
         },
       },
     }),

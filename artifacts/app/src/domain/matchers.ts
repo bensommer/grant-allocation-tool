@@ -10,6 +10,12 @@ export const matchersSchema = z
     locationIds: z.array(z.string()).optional(),
     partyIds: z.array(z.string()).optional(),
     descriptionContains: z.string().optional(),
+    /** Any of these (normalized) needles in description/memo (JPH-21). */
+    descriptionContainsAny: z.array(z.string()).optional(),
+    /** Transaction types, e.g. ["JournalEntry", "Check"] (JPH-21). */
+    txnTypes: z.array(z.string()).optional(),
+    /** Only positive or only negative amounts (JPH-21). */
+    amountSign: z.enum(['positive', 'negative']).optional(),
     dateFrom: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -39,6 +45,25 @@ export interface MatchableLine {
   memo: string | null;
   txnDate: Date;
   programId: string | null;
+  /** Optional: only checked when a matcher needs it. */
+  txnType?: string | null;
+  amountCents?: number;
+}
+
+/**
+ * Text normalization used by every description matcher: lower-case, curly
+ * quotes and dashes flattened, punctuation dropped, whitespace collapsed.
+ * "Kira's  hours – Sept" and "kiras hours sept" compare equal.
+ */
+export function normalizeText(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[\u2018\u2019\u201a\u201b\u2032]/g, "'")
+    .replace(/[\u201c\u201d\u201e\u201f\u2033]/g, '"')
+    .replace(/[\u2013\u2014\u2212]/g, '-')
+    .replace(/['"]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
 }
 
 function inSet(value: string | null, set: string[] | undefined): boolean {
@@ -74,10 +99,21 @@ export function lineMatches(line: MatchableLine, m: Matchers): boolean {
     const party = line.partyId ?? line.txnPartyId;
     if (party === null || !m.partyIds.includes(party)) return false;
   }
+  const hay = normalizeText(`${line.description ?? ''} ${line.memo ?? ''}`);
   if (m.descriptionContains && m.descriptionContains.trim() !== '') {
-    const needle = m.descriptionContains.toLowerCase();
-    const hay = `${line.description ?? ''}\n${line.memo ?? ''}`.toLowerCase();
-    if (!hay.includes(needle)) return false;
+    if (!hay.includes(normalizeText(m.descriptionContains))) return false;
+  }
+  if (m.descriptionContainsAny && m.descriptionContainsAny.length > 0) {
+    const needles = m.descriptionContainsAny.map(normalizeText).filter((n) => n !== '');
+    if (needles.length > 0 && !needles.some((n) => hay.includes(n))) return false;
+  }
+  if (m.txnTypes && m.txnTypes.length > 0) {
+    if (!line.txnType || !m.txnTypes.includes(line.txnType)) return false;
+  }
+  if (m.amountSign) {
+    const amt = line.amountCents ?? 0;
+    if (m.amountSign === 'positive' && amt <= 0) return false;
+    if (m.amountSign === 'negative' && amt >= 0) return false;
   }
   const iso = line.txnDate.toISOString().slice(0, 10);
   if (m.dateFrom && iso < m.dateFrom) return false;

@@ -5,12 +5,14 @@ export function GrantTabs({
   active,
 }: {
   id: string;
-  active: 'detail' | 'bva' | 'budget' | 'history' | 'narratives' | 'edit';
+  active: 'detail' | 'bva' | 'budget' | 'review' | 'rules' | 'history' | 'narratives' | 'edit';
 }) {
   const tabs = [
     { key: 'detail', href: `/grants/${id}`, label: 'Overview' },
     { key: 'bva', href: `/grants/${id}/bva`, label: 'BvA' },
     { key: 'budget', href: `/grants/${id}/budget`, label: 'Budget lines' },
+    { key: 'review', href: `/grants/${id}/review`, label: 'Review' },
+    { key: 'rules', href: `/grants/${id}/rules`, label: 'Rules' },
     { key: 'history', href: `/grants/${id}/history`, label: 'History' },
     { key: 'narratives', href: `/grants/${id}/narratives`, label: 'Narratives' },
     { key: 'edit', href: `/grants/${id}/edit`, label: 'Edit' },

@@ -19,6 +19,7 @@
     "e2e": "playwright test",
     "import:csv": "tsx src/cli/import-csv.ts",
     "seed:demo": "tsx src/cli/seed-demo.ts",
+    "seed:pilot": "tsx src/cli/seed-pilot.ts",
     "recompute": "tsx src/cli/recompute.ts",
     "fixtures:generate": "tsx src/cli/generate-fixtures.ts",
     "fixtures:anonymize": "tsx src/cli/anonymize-qbo-report.ts",

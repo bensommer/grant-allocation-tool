@@ -18,17 +18,26 @@ import type { Prisma } from '@/generated/prisma/client';
 import { prisma } from '@/lib/db';
 import { toJson } from '@/lib/audit';
 import { reconciliationChecks } from '@/services/reconciliation';
+import { lineFingerprint } from '@/services/line-decisions';
 import { parseMatchers } from '@/domain/matchers';
-import { assertAllocationBalanced, AllocationImbalanceError } from '@/domain/invariants';
+import {
+  assertAllocationBalanced,
+  assertGrantStatesBalanced,
+  AllocationImbalanceError,
+} from '@/domain/invariants';
 import {
   allocate,
+  assignGrantLines,
   type AccountKind,
   type EngineConfig,
   type EngineLine,
   type EngineResult,
+  type GrantLineDraft,
+  type GrantStageConfig,
 } from './core';
 
 export type ComputeFn = (lines: EngineLine[], config: EngineConfig) => EngineResult;
+export type GrantStageFn = (lines: EngineLine[], config: GrantStageConfig) => GrantLineDraft[];
 
 export interface RecomputeResult {
   runId: string;
@@ -54,7 +63,8 @@ export async function loadEngineConfig(orgId: string): Promise<EngineConfig> {
         include: { targets: { orderBy: { sortOrder: 'asc' } } },
         orderBy: { id: 'asc' },
       }),
-      prisma.crosswalkRule.findMany({ where: { orgId }, orderBy: { id: 'asc' } }),
+      // Grant-scoped rules (JPH-21) belong to the grant stage, not the program crosswalk.
+      prisma.crosswalkRule.findMany({ where: { orgId, grantId: null }, orderBy: { id: 'asc' } }),
       prisma.grantBudgetLine.findMany({ where: { orgId }, orderBy: { id: 'asc' } }),
       prisma.grant.findMany({ where: { orgId }, orderBy: { id: 'asc' } }),
       prisma.allocationDriverValue.findMany({ where: { orgId }, orderBy: { id: 'asc' } }),
@@ -81,14 +91,23 @@ export async function loadEngineConfig(orgId: string): Promise<EngineConfig> {
         shareBps: t.shareBps,
       })),
     })),
-    crosswalkRules: crosswalkRules.map((r) => ({
-      id: r.id,
-      matchers: parseMatchers(r.matchers),
-      grantBudgetLineId: r.grantBudgetLineId,
-      priority: r.priority,
-      active: r.active,
+    crosswalkRules: crosswalkRules
+      .filter((r) => r.grantBudgetLineId !== null)
+      .map((r) => ({
+        id: r.id,
+        matchers: parseMatchers(r.matchers),
+        grantBudgetLineId: r.grantBudgetLineId!,
+        priority: r.priority,
+        active: r.active,
+      })),
+    budgetLines: budgetLines.map((b) => ({
+      id: b.id,
+      grantId: b.grantId,
+      programId: b.programId,
+      kind: b.kind,
+      activityId: b.activityId,
+      categoryKey: b.categoryKey,
     })),
-    budgetLines: budgetLines.map((b) => ({ id: b.id, grantId: b.grantId, programId: b.programId })),
     grants: grants.map((g) => ({
       id: g.id,
       startDate: g.startDate,
@@ -126,7 +145,16 @@ export async function loadEngineLines(
     },
     include: {
       account: { select: { number: true, type: true } },
-      transaction: { select: { txnDate: true, partyId: true, memo: true, importBatchId: true } },
+      transaction: {
+        select: {
+          txnDate: true,
+          partyId: true,
+          memo: true,
+          importBatchId: true,
+          txnType: true,
+          docNumber: true,
+        },
+      },
     },
     orderBy: { id: 'asc' },
   });
@@ -146,32 +174,136 @@ export async function loadEngineLines(
       memo: r.transaction.memo,
       txnDate: r.transaction.txnDate,
       amountCents: r.amountCents,
+      txnType: r.transaction.txnType,
+      docNumber: r.transaction.docNumber,
     })),
+  };
+}
+
+/**
+ * Grant-stage inputs (JPH-21): active memberships, grant rules, budget lines
+ * and active decisions with their fingerprints resolved to the loaded lines.
+ * A decision whose fingerprint no longer exists (line removed by a re-import)
+ * simply has nothing to act on.
+ */
+export async function loadGrantStageConfig(
+  orgId: string,
+  lines: EngineLine[],
+): Promise<GrantStageConfig> {
+  const lineIds = new Set(lines.map((l) => l.id));
+  const [grants, memberships, rules, budgetLines, decisions] = await Promise.all([
+    prisma.grant.findMany({
+      where: { orgId, status: { not: 'archived' } },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+    }),
+    prisma.grantMembership.findMany({
+      where: { orgId, supersededAt: null },
+      select: { grantId: true, transactionLineId: true },
+    }),
+    prisma.crosswalkRule.findMany({
+      where: { orgId, grantId: { not: null } },
+      orderBy: { id: 'asc' },
+    }),
+    prisma.grantBudgetLine.findMany({ where: { orgId }, orderBy: { id: 'asc' } }),
+    prisma.lineDecision.findMany({
+      where: { orgId, supersededAt: null },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        grantId: true,
+        fingerprint: true,
+        kind: true,
+        targetBudgetLineId: true,
+        reason: true,
+      },
+    }),
+  ]);
+  const fingerprints = [...new Set(decisions.map((d) => d.fingerprint))];
+  const externalIds = [...new Set(fingerprints.map((f) => f.slice(0, f.lastIndexOf('#'))))];
+  const rows =
+    externalIds.length === 0
+      ? []
+      : await prisma.transactionLine.findMany({
+          where: {
+            orgId,
+            deletedAt: null,
+            transaction: { deletedAt: null, externalId: { in: externalIds } },
+          },
+          select: { id: true, lineNumber: true, transaction: { select: { externalId: true } } },
+        });
+  const lineByFingerprint = new Map<string, string>();
+  for (const r of rows) {
+    if (lineIds.has(r.id)) lineByFingerprint.set(lineFingerprint(r), r.id);
+  }
+  return {
+    grantIds: grants.map((g) => g.id),
+    memberships: memberships
+      .filter((m) => lineIds.has(m.transactionLineId))
+      .map((m) => ({ grantId: m.grantId, lineId: m.transactionLineId })),
+    rules: rules.map((r) => ({
+      id: r.id,
+      grantId: r.grantId!,
+      dimension: r.dimension,
+      matchers: parseMatchers(r.matchers),
+      priority: r.priority,
+      active: r.active,
+      targetBudgetLineId: r.grantBudgetLineId,
+      targetActivityId: r.targetActivityId,
+      targetCategoryKey: r.targetCategoryKey,
+    })),
+    budgetLines: budgetLines.map((b) => ({
+      id: b.id,
+      grantId: b.grantId,
+      kind: b.kind,
+      activityId: b.activityId,
+      categoryKey: b.categoryKey,
+    })),
+    decisions: decisions.flatMap((d, seq) => {
+      const lineId = lineByFingerprint.get(d.fingerprint);
+      if (!lineId) return [];
+      return [
+        {
+          id: d.id,
+          grantId: d.grantId,
+          lineId,
+          kind: d.kind,
+          targetBudgetLineId: d.targetBudgetLineId,
+          reason: d.reason,
+          seq,
+        },
+      ];
+    }),
   };
 }
 
 export async function recompute(
   orgId: string,
-  opts: { compute?: ComputeFn; actor?: string } = {},
+  opts: { compute?: ComputeFn; grantStage?: GrantStageFn; actor?: string } = {},
 ): Promise<RecomputeResult> {
   const started = Date.now();
   const compute = opts.compute ?? allocate;
+  const grantStage = opts.grantStage ?? assignGrantLines;
   const [config, { lines, batchIds }] = await Promise.all([
     loadEngineConfig(orgId),
     loadEngineLines(orgId),
   ]);
+  const grantConfig = await loadGrantStageConfig(orgId, lines);
   const hash = configHash(config);
   const run = await prisma.computeRun.create({
     data: { orgId, status: 'running', configHash: hash, sourceBatchIds: batchIds },
   });
 
-  const fail = async (message: string): Promise<RecomputeResult> => {
+  const fail = async (
+    message: string,
+    check: 'sum_per_source_line' | 'grant_line_states' = 'sum_per_source_line',
+  ): Promise<RecomputeResult> => {
     await prisma.computeRun.update({
       where: { id: run.id },
       data: {
         status: 'failed',
         finishedAt: new Date(),
-        checks: toJson([{ name: 'sum_per_source_line', ok: false, detail: message }]),
+        checks: toJson([{ name: check, ok: false, detail: message }]),
       },
     });
     return {
@@ -215,6 +347,25 @@ export async function recompute(
     return fail((e as Error).message);
   }
 
+  // --- grant stage (JPH-21) ---------------------------------------------------
+  let grantDrafts: GrantLineDraft[];
+  try {
+    grantDrafts = grantStage(lines, grantConfig);
+  } catch (e) {
+    return fail(`Grant stage error: ${(e as Error).message}`, 'grant_line_states');
+  }
+  for (let i = 0; i < grantDrafts.length; i += CHUNK) {
+    const data: Prisma.GrantLineResultCreateManyInput[] = grantDrafts
+      .slice(i, i + CHUNK)
+      .map((d) => ({ orgId, computeRunId: run.id, ...d }));
+    await prisma.grantLineResult.createMany({ data });
+  }
+  try {
+    await assertGrantStatesBalanced(run.id);
+  } catch (e) {
+    return fail((e as Error).message, 'grant_line_states');
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.computeRun.updateMany({
       where: { orgId, isCurrent: true, id: { not: run.id } },
@@ -235,6 +386,7 @@ export async function recompute(
             detail: `${lines.length} lines, ${result.pieces.length} pieces`,
           },
           { name: 'stats', ok: true, detail: result.stats },
+          { name: 'grant_line_states', ok: true, detail: `${grantDrafts.length} grant lines` },
         ]),
       },
     });
@@ -262,6 +414,12 @@ export async function recompute(
           href: `/runs/${run.id}`,
         },
         { name: 'stats', ok: true, detail: result.stats },
+        {
+          name: 'grant_line_states',
+          ok: true,
+          status: 'pass',
+          detail: `${grantDrafts.length} grant lines, one state each`,
+        },
         ...checks.filter((c) => c.name !== 'sum_per_source_line'),
       ]),
     },

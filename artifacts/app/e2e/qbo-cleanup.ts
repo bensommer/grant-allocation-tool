@@ -12,6 +12,9 @@ export async function removeQboReportData(orgId: string): Promise<void> {
   const batch = (table: string) =>
     `USING "ImportBatch" b WHERE ${table}."importBatchId" = b.id AND b."orgId" = $1 AND b."sourceSystem" = 'qbo_report'`;
   const statements = [
+    `DELETE FROM "GrantLineResult" r USING "TransactionLine" l, "Transaction" t, "ImportBatch" b
+       WHERE r."transactionLineId" = l.id AND l."transactionId" = t.id AND t."importBatchId" = b.id
+         AND b."orgId" = $1 AND b."sourceSystem" = 'qbo_report'`,
     `DELETE FROM "AllocatedLine" a USING "TransactionLine" l, "Transaction" t, "ImportBatch" b
        WHERE a."sourceLineId" = l.id AND l."transactionId" = t.id AND t."importBatchId" = b.id
          AND b."orgId" = $1 AND b."sourceSystem" = 'qbo_report'`,

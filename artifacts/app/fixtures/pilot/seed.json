@@ -1,0 +1,591 @@
+{
+  "$comment": "JPH-21 pilot seed (anonymized). Loaded by `pnpm seed:pilot`. Budgets from JPH-19 §3 / Appendix 2, rules from Appendix 1 with pseudonyms. Accounts are matched by name (every account with that name), classes by full path, payees by display name. Amounts are integer cents.",
+  "grants": [
+    {
+      "key": "salah",
+      "name": "Salah Foundation — Trauma Programs",
+      "funder": "Salah Foundation",
+      "awardCents": 5000000,
+      "startDate": "2026-03-13",
+      "endDate": "2027-02-28",
+      "scope": {
+        "kind": "class",
+        "classPath": "Trauma Grants",
+        "note": "Tracked in QuickBooks with the class \"Trauma Grants\". The report export carries no class column, so membership comes from the import scope."
+      },
+      "export": "salah-export.csv",
+      "activities": [],
+      "categories": [
+        {
+          "code": "FAC",
+          "name": "Facilitators & Trauma Informed",
+          "budgetCents": 2940000,
+          "sortOrder": 10
+        },
+        {
+          "code": "FOODBEV",
+          "name": "Food & Beverage",
+          "budgetCents": 500000,
+          "sortOrder": 20
+        },
+        {
+          "code": "CULINARY",
+          "name": "Culinary Staff",
+          "budgetCents": 960000,
+          "sortOrder": 30
+        },
+        {
+          "code": "SUPPLIES",
+          "name": "Supplies",
+          "budgetCents": 600000,
+          "sortOrder": 40
+        }
+      ],
+      "lines": [
+        {
+          "code": "KIRA",
+          "name": "Kira Tanaka",
+          "parent": "FAC",
+          "budgetCents": 926200,
+          "sortOrder": 11
+        },
+        {
+          "code": "PRACT",
+          "name": "Practitioners",
+          "parent": "FAC",
+          "budgetCents": 1249600,
+          "sortOrder": 12
+        },
+        {
+          "code": "TRAIN",
+          "name": "Training",
+          "parent": "FAC",
+          "budgetCents": 760001,
+          "sortOrder": 13
+        },
+        {
+          "code": "FOOD",
+          "name": "Food",
+          "parent": "FOODBEV",
+          "budgetCents": 500060,
+          "sortOrder": 21
+        },
+        {
+          "code": "LEAH",
+          "name": "Leah (Sept+)",
+          "parent": "CULINARY",
+          "budgetCents": 633600,
+          "sortOrder": 31
+        },
+        {
+          "code": "DANA",
+          "name": "Dana Fairley",
+          "parent": "CULINARY",
+          "budgetCents": 110000,
+          "sortOrder": 32
+        },
+        {
+          "code": "CULSTAFF",
+          "name": "Culinary Staff",
+          "parent": "CULINARY",
+          "budgetCents": 220000,
+          "sortOrder": 33
+        },
+        {
+          "code": "SUPP",
+          "name": "Supplies",
+          "parent": "SUPPLIES",
+          "budgetCents": 600600,
+          "sortOrder": 41
+        }
+      ],
+      "cells": [],
+      "revisions": [
+        {
+          "line": "PRACT",
+          "counterpart": "TRAIN",
+          "date": "2026-06-30",
+          "deltaCents": 140000,
+          "note": "Moved 1,400 from Training to Practitioners (workbook revision)."
+        }
+      ],
+      "rules": [
+        {
+          "name": "Kira payroll",
+          "dimension": "line",
+          "target": "KIRA",
+          "priority": 10,
+          "matchers": {
+            "accounts": [
+              "Salaries"
+            ],
+            "descriptionContainsAny": [
+              "Kira"
+            ]
+          }
+        },
+        {
+          "name": "Leah payroll from September",
+          "dimension": "line",
+          "target": "LEAH",
+          "priority": 20,
+          "matchers": {
+            "accounts": [
+              "Salaries"
+            ],
+            "descriptionContainsAny": [
+              "Leah"
+            ],
+            "dateFrom": "2026-09-01"
+          }
+        },
+        {
+          "name": "Training costs",
+          "dimension": "line",
+          "target": "TRAIN",
+          "priority": 30,
+          "matchers": {
+            "accounts": [
+              "Training Costs"
+            ]
+          }
+        },
+        {
+          "name": "Food & refreshments",
+          "dimension": "line",
+          "target": "FOOD",
+          "priority": 40,
+          "matchers": {
+            "accounts": [
+              "Food and Refreshments - Programs"
+            ]
+          }
+        },
+        {
+          "name": "Program supplies",
+          "dimension": "line",
+          "target": "SUPP",
+          "priority": 50,
+          "matchers": {
+            "accounts": [
+              "Program Supplies"
+            ]
+          }
+        },
+        {
+          "name": "Dana Fairley (payee)",
+          "dimension": "line",
+          "target": "DANA",
+          "priority": 60,
+          "matchers": {
+            "accounts": [
+              "Service Providers - Programs"
+            ],
+            "parties": [
+              "Dana Fairley"
+            ]
+          }
+        },
+        {
+          "name": "Culinary trainers (Celeste Norwood, Luna Abruzzi)",
+          "dimension": "line",
+          "target": "CULSTAFF",
+          "priority": 70,
+          "matchers": {
+            "accounts": [
+              "Service Providers - Programs"
+            ],
+            "parties": [
+              "Celeste Norwood",
+              "Luna Abruzzi"
+            ],
+            "descriptionContainsAny": [
+              "culinary trainer"
+            ]
+          }
+        },
+        {
+          "name": "Practitioners (service providers)",
+          "dimension": "line",
+          "target": "PRACT",
+          "priority": 80,
+          "matchers": {
+            "accounts": [
+              "Service Providers - Programs"
+            ]
+          }
+        }
+      ],
+      "decisions": [
+        {
+          "kind": "assign",
+          "target": "PRACT",
+          "note": "Manual: JE 19-64 camp fee belongs with practitioners (Appendix 1).",
+          "select": {
+            "accounts": [
+              "Salaries"
+            ],
+            "docNumber": "19-64"
+          }
+        }
+      ]
+    },
+    {
+      "key": "opioid",
+      "name": "Opioid Prevention — Town of Bayport",
+      "funder": "Town of Bayport",
+      "awardCents": 2000000,
+      "startDate": "2025-01-01",
+      "endDate": "2026-09-30",
+      "scope": {
+        "kind": "project",
+        "projectName": "2025-2026 Opioid Grant",
+        "note": "Tracked in QuickBooks with a Project. The report export has no project column, so membership comes from the import scope."
+      },
+      "export": "opioid-export.csv",
+      "activities": [
+        {
+          "name": "Daytime Mother's",
+          "aliases": [
+            "Carroll's Light",
+            "Carrolls Light"
+          ],
+          "plannedCount": 10,
+          "completedCount": 10,
+          "sortOrder": 10
+        },
+        {
+          "name": "Conference",
+          "aliases": [
+            "Breaking the Cycle",
+            "conference"
+          ],
+          "plannedCount": 1,
+          "completedCount": 1,
+          "sortOrder": 20
+        },
+        {
+          "name": "Teen Monthly",
+          "aliases": [
+            "Fun Friday",
+            "teen"
+          ],
+          "plannedCount": 10,
+          "completedCount": 6,
+          "sortOrder": 30
+        },
+        {
+          "name": "Mother's Exhaustion (virtual)",
+          "aliases": [
+            "Centered in Recovery",
+            "Zoom"
+          ],
+          "plannedCount": 6,
+          "completedCount": 6,
+          "sortOrder": 40
+        },
+        {
+          "name": "Sober Socials",
+          "aliases": [
+            "Friendsgiving",
+            "Game night",
+            "sober social"
+          ],
+          "plannedCount": 4,
+          "completedCount": 2,
+          "sortOrder": 50
+        }
+      ],
+      "categories": [
+        {
+          "code": "PRACT",
+          "name": "Practitioner / Speaker",
+          "budgetCents": 735000,
+          "sortOrder": 10
+        },
+        {
+          "code": "FACADMIN",
+          "name": "Facility Use & Administrative Cost",
+          "budgetCents": 300000,
+          "sortOrder": 20
+        },
+        {
+          "code": "COORD",
+          "name": "Program Coordinator",
+          "budgetCents": 625300,
+          "sortOrder": 30
+        },
+        {
+          "code": "SUPPORT",
+          "name": "Program Support",
+          "budgetCents": 33700,
+          "sortOrder": 40
+        },
+        {
+          "code": "FOODSUPP",
+          "name": "Food & Supplies",
+          "budgetCents": 306000,
+          "sortOrder": 50
+        }
+      ],
+      "lines": [
+        {
+          "code": "OVERHEAD",
+          "name": "Overhead (de minimis)",
+          "parent": "FACADMIN",
+          "budgetCents": 0,
+          "sortOrder": 29
+        }
+      ],
+      "cellCategories": {
+        "practitioners": "PRACT",
+        "facility_admin": "FACADMIN",
+        "coordinator": "COORD",
+        "program_support": "SUPPORT",
+        "food": "FOODSUPP",
+        "supplies": "FOODSUPP"
+      },
+      "cells": [
+        {
+          "activity": "Daytime Mother's",
+          "budgets": {
+            "practitioners": 300000,
+            "facility_admin": 100000,
+            "coordinator": 143300,
+            "program_support": 0,
+            "food": 20000,
+            "supplies": 0
+          }
+        },
+        {
+          "activity": "Conference",
+          "budgets": {
+            "practitioners": 105000,
+            "facility_admin": 40000,
+            "coordinator": 64500,
+            "program_support": 15000,
+            "food": 25000,
+            "supplies": 0
+          }
+        },
+        {
+          "activity": "Teen Monthly",
+          "budgets": {
+            "practitioners": 170000,
+            "facility_admin": 100000,
+            "coordinator": 161300,
+            "program_support": 0,
+            "food": 151000,
+            "supplies": 0
+          }
+        },
+        {
+          "activity": "Mother's Exhaustion (virtual)",
+          "budgets": {
+            "practitioners": 60000,
+            "facility_admin": 20000,
+            "coordinator": 184500,
+            "program_support": 0,
+            "food": 0,
+            "supplies": 0
+          }
+        },
+        {
+          "activity": "Sober Socials",
+          "budgets": {
+            "practitioners": 100000,
+            "facility_admin": 40000,
+            "coordinator": 71700,
+            "program_support": 18700,
+            "food": 110000,
+            "supplies": 0
+          }
+        }
+      ],
+      "revisions": [],
+      "rules": [
+        {
+          "name": "Overhead JE → de minimis overhead",
+          "dimension": "line",
+          "target": "OVERHEAD",
+          "priority": 10,
+          "matchers": {
+            "accounts": [
+              "Overhead Expense"
+            ]
+          }
+        },
+        {
+          "name": "Activity: Daytime Mother's",
+          "dimension": "activity",
+          "target": "Daytime Mother's",
+          "priority": 10,
+          "matchers": {
+            "descriptionContainsAny": [
+              "Carroll's Light",
+              "Carrolls Light"
+            ]
+          }
+        },
+        {
+          "name": "Activity: Conference",
+          "dimension": "activity",
+          "target": "Conference",
+          "priority": 20,
+          "matchers": {
+            "descriptionContainsAny": [
+              "Breaking the Cycle",
+              "conference"
+            ]
+          }
+        },
+        {
+          "name": "Activity: Teen Monthly",
+          "dimension": "activity",
+          "target": "Teen Monthly",
+          "priority": 30,
+          "matchers": {
+            "descriptionContainsAny": [
+              "Fun Friday",
+              "teen"
+            ]
+          }
+        },
+        {
+          "name": "Activity: Mother's Exhaustion",
+          "dimension": "activity",
+          "target": "Mother's Exhaustion (virtual)",
+          "priority": 40,
+          "matchers": {
+            "descriptionContainsAny": [
+              "Centered in Recovery",
+              "Zoom"
+            ]
+          }
+        },
+        {
+          "name": "Activity: Zoom (payee) → Mother's Exhaustion",
+          "dimension": "activity",
+          "target": "Mother's Exhaustion (virtual)",
+          "priority": 41,
+          "matchers": {
+            "parties": [
+              "Zoom"
+            ]
+          }
+        },
+        {
+          "name": "Activity: Sober Socials",
+          "dimension": "activity",
+          "target": "Sober Socials",
+          "priority": 50,
+          "matchers": {
+            "descriptionContainsAny": [
+              "Friendsgiving",
+              "Game night",
+              "sober social"
+            ]
+          }
+        },
+        {
+          "name": "Activity: Youth Programs class → Teen Monthly",
+          "dimension": "activity",
+          "target": "Teen Monthly",
+          "priority": 90,
+          "matchers": {
+            "classes": [
+              "Programs:Youth Programs"
+            ]
+          }
+        },
+        {
+          "name": "Category: service providers → practitioners",
+          "dimension": "category",
+          "target": "practitioners",
+          "priority": 10,
+          "matchers": {
+            "accounts": [
+              "Service Providers - Programs"
+            ]
+          }
+        },
+        {
+          "name": "Category: food",
+          "dimension": "category",
+          "target": "food",
+          "priority": 20,
+          "matchers": {
+            "accounts": [
+              "Food and Refreshments - Programs"
+            ]
+          }
+        },
+        {
+          "name": "Category: supplies & software",
+          "dimension": "category",
+          "target": "supplies",
+          "priority": 30,
+          "matchers": {
+            "accounts": [
+              "Program Supplies",
+              "Software & apps"
+            ]
+          }
+        },
+        {
+          "name": "Category: Leah / Cole payroll → program support",
+          "dimension": "category",
+          "target": "program_support",
+          "priority": 40,
+          "matchers": {
+            "accounts": [
+              "Salaries",
+              "Payroll Tax Expense",
+              "Camp - Salaries & wages",
+              "Camp - Payroll Taxes"
+            ],
+            "descriptionContainsAny": [
+              "Leah",
+              "Cole"
+            ]
+          }
+        }
+      ],
+      "decisions": [
+        {
+          "kind": "assign",
+          "target": {
+            "activity": "Sober Socials",
+            "category": "program_support"
+          },
+          "note": "Manual: Nov 2025 \"8.52x22\" payroll line is Sober Socials program support (Appendix 1).",
+          "select": {
+            "accounts": [
+              "Salaries"
+            ],
+            "descriptionContainsAny": [
+              "8.52x22"
+            ],
+            "date": "2025-11-28"
+          }
+        },
+        {
+          "kind": "exclude",
+          "reason": "pending effort charge (phase 3)",
+          "note": "Coordinator payroll is charged by effort in phase 3; booked payroll stays out of the direct spend.",
+          "select": {
+            "accounts": [
+              "Salaries",
+              "Payroll Tax Expense"
+            ],
+            "descriptionContainsAny": [
+              "Kira",
+              "adjustment to Opioid Grant",
+              "Conference Leah"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -5,8 +5,8 @@ export async function routes(): Promise<string[]> {
   const org = await prisma.org.findFirst({ orderBy: { createdAt: 'asc' } });
   if (!org) throw new Error('Demo organization missing. Restore fixtures/demo before running e2e.');
   const orgId = org.id;
-  const [grant, batch, run, rule, allocation, program, line, period, narrative] = await Promise.all(
-    [
+  const [grant, batch, run, rule, allocation, program, line, period, narrative, grantRule] =
+    await Promise.all([
       prisma.grant.findFirst({ where: { orgId }, orderBy: { name: 'asc' } }),
       prisma.importBatch.findFirst({ where: { orgId }, orderBy: { startedAt: 'desc' } }),
       prisma.computeRun.findFirst({ where: { orgId }, orderBy: { startedAt: 'desc' } }),
@@ -16,8 +16,8 @@ export async function routes(): Promise<string[]> {
       prisma.transactionLine.findFirst({ where: { orgId } }),
       prisma.periodLock.findFirst({ where: { orgId } }),
       prisma.narrative.findFirst({ where: { orgId } }),
-    ],
-  );
+      prisma.crosswalkRule.findFirst({ where: { orgId, grantId: { not: null } } }),
+    ]);
   if (!grant || !batch || !run || !rule || !allocation || !program || !line)
     throw new Error('Demo records missing. Restore fixtures/demo before running e2e.');
   return [
@@ -29,6 +29,10 @@ export async function routes(): Promise<string[]> {
     `/grants/${grant.id}/bva`,
     `/grants/${grant.id}/budget`,
     `/grants/${grant.id}/budget/import`,
+    `/grants/${grant.id}/review`,
+    `/grants/${grant.id}/review?show=all`,
+    `/grants/${grant.id}/rules`,
+    `/grants/${grant.id}/rules/new`,
     `/grants/${grant.id}/history`,
     `/grants/${grant.id}/narratives`,
     `/grants/${grant.id}/narratives/new`,
@@ -67,5 +71,6 @@ export async function routes(): Promise<string[]> {
     `/lines/${line.id}`,
     ...(period ? [`/periods/${period.id}/drift`] : []),
     ...(narrative ? [`/grants/${narrative.grantId}/narratives/${narrative.id}`] : []),
+    ...(grantRule ? [`/grants/${grantRule.grantId}/rules/${grantRule.id}`] : []),
   ];
 }

@@ -47,27 +47,27 @@ enum ImportStatus {
 }
 
 model ImportBatch {
-  id           String       @id @default(cuid())
-  orgId        String
-  sourceSystem SourceSystem
-  startedAt    DateTime     @default(now())
-  finishedAt   DateTime?
-  status       ImportStatus @default(running)
-  rangeFrom    DateTime?
-  rangeTo      DateTime?
-  fullRange    Boolean      @default(true)
-  counts       Json         @default("{}")
-  errors       Json         @default("[]")
-  fileHashes   Json         @default("{}")
+  id            String       @id @default(cuid())
+  orgId         String
+  sourceSystem  SourceSystem
+  startedAt     DateTime     @default(now())
+  finishedAt    DateTime?
+  status        ImportStatus @default(running)
+  rangeFrom     DateTime?
+  rangeTo       DateTime?
+  fullRange     Boolean      @default(true)
+  counts        Json         @default("{}")
+  errors        Json         @default("[]")
+  fileHashes    Json         @default("{}")
   /// Report imports (qbo_report) are scoped to one grant and the report's date range;
   /// "removed" detection only looks inside this scope (JPH-20).
   scopeGrantId  String?
-  scopeDateFrom DateTime?   @db.Date
-  scopeDateTo   DateTime?   @db.Date
+  scopeDateFrom DateTime?    @db.Date
+  scopeDateTo   DateTime?    @db.Date
   /// Per "Total for …"/TOTAL row: { row, label, expectedCents, actualCents, passed } (JPH-20).
-  checksums     Json        @default("[]")
+  checksums     Json         @default("[]")
   /// Report header (company name, report title, date-range text, file/sheet name).
-  reportMeta    Json        @default("{}")
+  reportMeta    Json         @default("{}")
 
   scopeGrant   Grant?             @relation(fields: [scopeGrantId], references: [id], onDelete: Restrict)
   memberships  GrantMembership[]
@@ -251,6 +251,8 @@ model TransactionLine {
   party       Party?            @relation(fields: [partyId], references: [id], onDelete: Restrict)
   allocated   AllocatedLine[]
   memberships GrantMembership[]
+  decisions   LineDecision[]
+  lineResults GrantLineResult[]
 
   @@unique([transactionId, lineNumber])
   @@index([orgId, accountId])
@@ -347,6 +349,11 @@ model Grant {
   memberships    GrantMembership[]
   scopedImports  ImportBatch[]
   reportUploads  QboReportUpload[]
+  activities     GrantActivity[]
+  grantRules     CrosswalkRule[]
+  revisions      BudgetRevision[]
+  decisions      LineDecision[]
+  lineResults    GrantLineResult[]
 
   @@index([orgId, status])
 }
@@ -409,43 +416,194 @@ model GrantProgram {
   @@id([grantId, programId])
 }
 
+enum BudgetLineKind {
+  funder_category
+  working_line
+  cell
+}
+
+/// Two-level budgets (JPH-21). A `funder_category` groups `working_line`s
+/// (line-keyed grants) or `cell`s (activity × category grants) through
+/// `parentId`. A cell is addressed by (activityId, categoryKey). `budgetCents`
+/// is the original budget; BudgetRevision rows adjust it and are never folded in.
 model GrantBudgetLine {
-  id          String  @id @default(cuid())
+  id          String         @id @default(cuid())
   orgId       String
   grantId     String
   code        String
   name        String
   budgetCents Int
   programId   String?
-  sortOrder   Int     @default(0)
+  sortOrder   Int            @default(0)
+  kind        BudgetLineKind @default(working_line)
+  parentId    String?
+  activityId  String?
+  categoryKey String?
 
   grant          Grant              @relation(fields: [grantId], references: [id], onDelete: Cascade)
   program        Program?           @relation(fields: [programId], references: [id], onDelete: SetNull)
+  parent         GrantBudgetLine?   @relation("BudgetLineParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children       GrantBudgetLine[]  @relation("BudgetLineParent")
+  activity       GrantActivity?     @relation(fields: [activityId], references: [id], onDelete: SetNull)
   crosswalkRules CrosswalkRule[]
   allocTargets   AllocationTarget[]
   allocatedLines AllocatedLine[]
+  revisions      BudgetRevision[]   @relation("RevisionLine")
+  counterpartOf  BudgetRevision[]   @relation("RevisionCounterpart")
+  decisions      LineDecision[]
+  lineResults    GrantLineResult[]
 
   @@unique([grantId, code])
+  @@index([grantId, activityId, categoryKey])
+}
+
+/// An activity of an activity × category grant (JPH-21). `aliases` are the
+/// keyword hints shown next to the activity; the matching itself lives in
+/// activity-dimension CrosswalkRules so it stays auditable and previewable.
+model GrantActivity {
+  id             String   @id @default(cuid())
+  orgId          String
+  grantId        String
+  name           String
+  aliases        String[] @default([])
+  plannedCount   Int      @default(0)
+  completedCount Int      @default(0)
+  sortOrder      Int      @default(0)
+
+  grant       Grant             @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  budgetLines GrantBudgetLine[]
+  rules       CrosswalkRule[]
+  lineResults GrantLineResult[]
+
+  @@index([orgId, grantId])
+}
+
+/// Budget change with a note. Current budget of a line = original budgetCents
+/// + Σ deltaCents where it is the line − Σ deltaCents where it is the counterpart.
+model BudgetRevision {
+  id                String   @id @default(cuid())
+  orgId             String
+  grantId           String
+  budgetLineId      String
+  date              DateTime @db.Date
+  deltaCents        Int
+  counterpartLineId String?
+  note              String
+  actor             String
+  createdAt         DateTime @default(now())
+
+  grant       Grant            @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  budgetLine  GrantBudgetLine  @relation("RevisionLine", fields: [budgetLineId], references: [id], onDelete: Cascade)
+  counterpart GrantBudgetLine? @relation("RevisionCounterpart", fields: [counterpartLineId], references: [id], onDelete: SetNull)
+
+  @@index([grantId, budgetLineId])
+}
+
+enum DecisionKind {
+  assign
+  exclude
+  at_risk
+  reversal_pair
+}
+
+/// A recorded judgement about one grant line (JPH-21). Keyed by the line's
+/// import fingerprint (Transaction.externalId) so it survives re-import; one
+/// row per line, `groupId` ties the lines of one decision together. Superseded,
+/// never deleted.
+model LineDecision {
+  id                 String       @id @default(cuid())
+  orgId              String
+  grantId            String
+  groupId            String
+  fingerprint        String
+  transactionLineId  String?
+  kind               DecisionKind
+  targetBudgetLineId String?
+  reason             String?
+  note               String
+  actor              String
+  createdAt          DateTime     @default(now())
+  supersededAt       DateTime?
+
+  grant            Grant            @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  line             TransactionLine? @relation(fields: [transactionLineId], references: [id], onDelete: SetNull)
+  targetBudgetLine GrantBudgetLine? @relation(fields: [targetBudgetLineId], references: [id], onDelete: Restrict)
+
+  @@index([orgId, grantId, supersededAt])
+  @@index([grantId, fingerprint])
+  @@index([groupId])
+}
+
+enum GrantLineState {
+  assigned
+  excluded
+  needs_review
+}
+
+/// Per-run state of every grant member line (JPH-21). Invariant, per grant
+/// and run: every member line has exactly one row, and Σ assigned + Σ excluded
+/// + Σ needs_review = Σ membership, to the cent (src/domain/invariants.ts).
+model GrantLineResult {
+  id                String         @id @default(cuid())
+  orgId             String
+  computeRunId      String
+  grantId           String
+  transactionLineId String
+  state             GrantLineState
+  budgetLineId      String?
+  activityId        String?
+  ruleId            String?
+  categoryRuleId    String?
+  decisionId        String?
+  reason            String?
+  atRisk            Boolean        @default(false)
+  amountCents       Int
+
+  run        ComputeRun       @relation(fields: [computeRunId], references: [id], onDelete: Cascade)
+  grant      Grant            @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  line       TransactionLine  @relation(fields: [transactionLineId], references: [id], onDelete: Restrict)
+  budgetLine GrantBudgetLine? @relation(fields: [budgetLineId], references: [id], onDelete: Restrict)
+  activity   GrantActivity?   @relation(fields: [activityId], references: [id], onDelete: Restrict)
+
+  @@index([computeRunId, grantId, state])
+  @@index([computeRunId, grantId, transactionLineId])
+  @@index([computeRunId, budgetLineId])
 }
 
 /// Matchers are stored as JSON with the shape validated by src/domain/matchers.ts:
 /// { programIds?, accountIds?, accountRange?: {from,to}, classIds?, locationIds?,
-///   partyIds?, descriptionContains?, dateFrom?, dateTo? }
+///   partyIds?, descriptionContains?, descriptionContainsAny?, txnTypes?,
+///   amountSign?, dateFrom?, dateTo? }
+enum RuleDimension {
+  line
+  activity
+  category
+}
+
 model CrosswalkRule {
-  id                String   @id @default(cuid())
+  id                String        @id @default(cuid())
   orgId             String
   name              String?
   matchers          Json
-  grantBudgetLineId String
-  priority          Int      @default(100)
-  active            Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  grantBudgetLineId String?
+  priority          Int           @default(100)
+  active            Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  /// Grant rules (JPH-21): set → the rule only sees that grant's member lines
+  /// and runs in the grant stage, not the program crosswalk.
+  grantId           String?
+  dimension         RuleDimension @default(line)
+  targetActivityId  String?
+  targetCategoryKey String?
 
-  grantBudgetLine GrantBudgetLine @relation(fields: [grantBudgetLineId], references: [id], onDelete: Cascade)
+  grantBudgetLine GrantBudgetLine? @relation(fields: [grantBudgetLineId], references: [id], onDelete: Cascade)
+  grant           Grant?           @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  targetActivity  GrantActivity?   @relation(fields: [targetActivityId], references: [id], onDelete: SetNull)
   allocatedLines  AllocatedLine[]
 
   @@index([orgId, active])
+  @@index([grantId, dimension, priority])
 }
 
 enum AllocationMethod {
@@ -524,6 +682,7 @@ model ComputeRun {
   allocatedLines AllocatedLine[]
   periodLocks    PeriodLock[]
   narratives     Narrative[]
+  lineResults    GrantLineResult[]
 
   @@index([orgId, startedAt])
 }

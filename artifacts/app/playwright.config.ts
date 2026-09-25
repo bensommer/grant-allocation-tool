@@ -34,13 +34,13 @@ export default defineConfig({
     { name: 'visual', testMatch: /visual\.spec\.ts/, use: { browserName: 'chromium' } },
     {
       name: 'chromium',
-      testIgnore: [/visual\.spec\.ts/, /qbo-report\.spec\.ts/],
+      testIgnore: [/visual\.spec\.ts/, /qbo-report\.spec\.ts/, /pilot\.spec\.ts/],
       dependencies: ['visual'],
       use: { browserName: 'chromium' },
     },
     {
       name: 'chromium-nojs',
-      testIgnore: [/visual\.spec\.ts/, /qbo-report\.spec\.ts/],
+      testIgnore: [/visual\.spec\.ts/, /qbo-report\.spec\.ts/, /pilot\.spec\.ts/],
       dependencies: ['visual'],
       use: { browserName: 'chromium', javaScriptEnabled: false },
     },
@@ -54,6 +54,14 @@ export default defineConfig({
       name: 'qbo-report-nojs',
       testMatch: /qbo-report\.spec\.ts/,
       dependencies: ['qbo-report'],
+      use: { browserName: 'chromium', javaScriptEnabled: false },
+    },
+    // The pilot spec seeds both pilot grants (imports, budgets, rules, decisions) into the demo
+    // org and removes them afterwards; it runs last and alone for the same reason.
+    {
+      name: 'pilot',
+      testMatch: /pilot\.spec\.ts/,
+      dependencies: ['qbo-report-nojs'],
       use: { browserName: 'chromium', javaScriptEnabled: false },
     },
   ],
