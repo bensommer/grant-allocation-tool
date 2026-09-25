@@ -21,3 +21,5 @@ the durable scope blows the 3 MB per-block budget. Parse `git diff --name-status
 in shellExec output).
 - After every push, verify by comparing `git ls-tree -r HEAD` blob shas against the remote recursive tree;
   a per-commit-range replay once silently skipped a file (programs/labels.ts) and the remote wouldn't build.
+- shellExec output carries `\r` at line ends: strip it from every parsed path before fs.readFile inside the impure block, or reads fail with ENOENT on a path that plainly exists.
+- createCommit can return "Tree SHA does not exist" immediately after createTree (eventual consistency); retry with backoff instead of rebuilding the tree.
