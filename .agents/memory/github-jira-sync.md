@@ -17,3 +17,5 @@ and full test pass itself.
 Read files with node:fs inside the "use impure" function and base64 there; passing base64 through
 the durable scope blows the 3 MB per-block budget. Parse `git diff --name-status -z` (tabs are lost
 in shellExec output).
+- After every push, verify by comparing `git ls-tree -r HEAD` blob shas against the remote recursive tree;
+  a per-commit-range replay once silently skipped a file (programs/labels.ts) and the remote wouldn't build.
