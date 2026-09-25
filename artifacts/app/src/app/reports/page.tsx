@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { StaleRunBanner } from '@/components/stale-run-banner';
 import { Button, ButtonLink, Card, DataTable, DateText, PageHeader, Th } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
@@ -34,12 +35,7 @@ export default async function Page({
         }
         primaryAction={<ButtonLink href="/reports/custom">Build custom report</ButtonLink>}
       />
-      {run?.stale ? (
-        <div className="banner banner-warn">
-          Configuration changed since the current run. Reports show numbers from{' '}
-          <DateText date={run.finishedAt ?? run.startedAt} time /> until you recompute.
-        </div>
-      ) : null}
+      <StaleRunBanner run={run} />
       {saved ? <div className="banner banner-ok">Saved.</div> : null}
       {state?.errors.name || state?.errors.query ? (
         <div className="banner banner-bad">{state.errors.name ?? state.errors.query}</div>

@@ -40,10 +40,14 @@ export const reportSchema = z.object({
   unmapped: z.boolean().default(true),
   zeros: z.boolean().default(false),
   budget: z.boolean().default(false),
+  /** One-table layouts only: split rows into mapped / unmapped / non-grant groups. */
+  mapping: z.boolean().default(false),
   run: z.string().optional(),
   rowKey: z.string().optional(),
   colKey: z.string().optional(),
   pageKey: z.string().optional(),
+  /** Drill-down scope when a grouped table was clicked. */
+  group: z.enum(['mapped', 'program', 'non-grant']).optional(),
 });
 export type ReportParams = z.infer<typeof reportSchema>;
 
@@ -73,10 +77,12 @@ export function parseParams(
     unmapped: flag('unmapped', true),
     zeros: flag('zeros', false),
     budget: flag('budget', false),
+    mapping: flag('mapping', false),
     run: q.get('run') || undefined,
     rowKey: q.get('rowKey') || undefined,
     colKey: q.get('colKey') || undefined,
     pageKey: q.get('pageKey') || undefined,
+    group: q.get('group') || undefined,
   });
   if (parsed.rows === parsed.cols || parsed.page === parsed.rows || parsed.page === parsed.cols)
     throw new Error('Report dimensions must be distinct');

@@ -1,47 +1,81 @@
 import { getOrgId } from '@/lib/org';
 import { dimensionLabels, parseParams } from '@/reports/params';
 import { loadReport } from '@/reports/query';
-import { exportViews } from '@/reports/export';
+import { exportTables, sectionTitle } from '@/reports/export';
 import { cellId } from '@/reports/pivot';
-import { pdfDocument, pdfErrorResponse, pdfResponse } from '@/reports/pdf';
-import { budgetColumnsNote, displayLabel } from '@/reports/view';
+import { pdfDocument, pdfErrorResponse, pdfResponse, type PdfRowKind } from '@/reports/pdf';
+import { budgetColumnsNote, displayLabel, type ReportView } from '@/reports/view';
 import { formatPct1 } from '@/domain/money';
+import type { TableCell } from '@/reports/table-export';
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const p = parseParams(url.searchParams);
   const { org, run, facts, budgets } = await loadReport(await getOrgId(), p);
   if (!run) return new Response('No current run', { status: 404 });
-  const sections = exportViews(facts, p, budgets).map(({ section, pageKey, view }) => {
+  const sections = exportTables(facts, p, budgets).map(({ section, block }) => {
+    const { total, pageKey } = block;
+    const numeric = (view: ReportView, cells: number[], actual: number, budget: number) => [
+      ...cells,
+      actual,
+      ...(view.showBudget ? [budget, budget - actual, formatPct1(actual, budget)] : []),
+    ];
+    const rows: TableCell[][] = [];
+    const rowKinds: PdfRowKind[] = [];
+    const push = (kind: PdfRowKind, cells: TableCell[]) => {
+      rows.push(cells);
+      rowKinds.push(kind);
+    };
+    for (const group of block.groups) {
+      const view = group.view;
+      if (block.grouped) push('group', [group.heading!]);
+      for (const row of view.rows)
+        push('row', [
+          displayLabel(view.label(p.rows, row)),
+          ...numeric(
+            total,
+            total.cols.map((col) => view.data.cells.get(cellId(row, col)) ?? 0),
+            view.actualFor(row),
+            view.budgetFor(row),
+          ),
+        ]);
+      if (block.grouped)
+        push('subtotal', [
+          'Subtotal',
+          ...numeric(
+            total,
+            total.cols.map((col) => view.columnTotal(col)),
+            view.actualTotal,
+            view.budgetTotal,
+          ),
+        ]);
+    }
+    const title = sectionTitle(section, p);
     return {
-      heading: `${section}${pageKey === undefined ? '' : ` · ${dimensionLabels[p.page!]}: ${displayLabel(view.label(p.page!, pageKey))}`}`,
+      heading:
+        pageKey === undefined
+          ? title
+          : `${title} · ${dimensionLabels[p.page!]}: ${displayLabel(total.label(p.page!, pageKey))}`,
       table: {
         title: 'Report',
         parameters: {},
         headers: [
           dimensionLabels[p.rows],
-          ...view.cols.map((col) => displayLabel(view.label(p.cols, col))),
+          ...total.cols.map((col) => displayLabel(total.label(p.cols, col))),
           'Total',
-          ...(view.showBudget ? ['Budget', 'Remaining', 'Used (%)'] : []),
+          ...(total.showBudget ? ['Budget', 'Remaining', 'Used (%)'] : []),
         ],
-        rows: view.rows.map((row) => [
-          displayLabel(view.label(p.rows, row)),
-          ...view.cols.map((col) => view.data.cells.get(cellId(row, col)) ?? 0),
-          view.actualFor(row),
-          ...(view.showBudget
-            ? [
-                view.budgetFor(row),
-                view.budgetFor(row) - view.actualFor(row),
-                formatPct1(view.actualFor(row), view.budgetFor(row)),
-              ]
-            : []),
-        ]),
-        sumColumns: view.cols
-          .map((_, i) => i + 1)
-          .concat(
-            view.cols.length + 1,
-            ...(view.showBudget ? [view.cols.length + 2, view.cols.length + 3] : []),
+        rows,
+        rowKinds,
+        totals: [
+          'Total',
+          ...numeric(
+            total,
+            total.cols.map((col) => total.columnTotal(col)),
+            total.actualTotal,
+            total.budgetTotal,
           ),
+        ],
       },
     };
   });

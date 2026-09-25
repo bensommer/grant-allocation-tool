@@ -4,14 +4,16 @@ import type { Tone } from './display';
 export function Card({
   title,
   action,
+  className,
   children,
 }: {
   title?: ReactNode;
   action?: ReactNode;
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="card">
+    <section className={className ? `card ${className}` : 'card'}>
       {title || action ? (
         <div className="card-heading">
           {title ? <h2>{title}</h2> : <span />}

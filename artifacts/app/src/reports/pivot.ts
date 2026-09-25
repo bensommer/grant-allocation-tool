@@ -3,6 +3,25 @@ import type { Fact } from './query';
 
 export const cellId = (row: string, col: string) => JSON.stringify([row, col]);
 const splitCellId = (key: string) => JSON.parse(key) as [string, string];
+
+const categoryRank: Record<string, number> = { program: 0, management_general: 1, fundraising: 2 };
+const placeholderKeys = new Set(['Unmapped', 'Unassigned']);
+/**
+ * Axis order for a dimension: program services first, then Management & General, then
+ * Fundraising; "Unmapped"/"Unassigned" placeholders last; numeric-aware alphabetical otherwise.
+ */
+export function axisOrder(
+  dimension: Dimension,
+  meta: Map<string, { functionalCategory?: string }>,
+): (a: string, b: string) => number {
+  const rank = (key: string) => {
+    if (placeholderKeys.has(key)) return 10;
+    if (dimension === 'program') return categoryRank[meta.get(key)?.functionalCategory ?? ''] ?? 3;
+    if (dimension === 'functionalCategory') return categoryRank[key] ?? 3;
+    return 0;
+  };
+  return (a, b) => rank(a) - rank(b) || a.localeCompare(b, undefined, { numeric: true });
+}
 export function pivot(
   facts: Fact[],
   opts: { rows: Dimension; cols: Dimension; page?: Dimension; pageKey?: string; zeros?: boolean },
@@ -36,7 +55,7 @@ export function pivot(
     colTotals.set(c, (colTotals.get(c) ?? 0) + f.amountCents);
     grandTotal += f.amountCents;
   }
-  const sort = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+  const sort = axisOrder(opts.rows, rowLabels);
   // Zero suppression hides a row/column only when every one of its cells is zero, so
   // offsetting entries (e.g. a bill and its credit) still reconcile to the visible totals.
   const nonZeroRows = new Set<string>();
@@ -55,6 +74,8 @@ export function pivot(
         ? (a, b) => (order.get(a) ?? 999999) - (order.get(b) ?? 999999) || sort(a, b)
         : sort,
     );
-  const colKeys = [...colTotals.keys()].filter((k) => opts.zeros || nonZeroCols.has(k)).sort(sort);
+  const colKeys = [...colTotals.keys()]
+    .filter((k) => opts.zeros || nonZeroCols.has(k))
+    .sort(axisOrder(opts.cols, colLabels));
   return { rowKeys, colKeys, cells, rowTotals, colTotals, grandTotal, rowLabels, colLabels };
 }

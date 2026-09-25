@@ -175,6 +175,23 @@ export async function RuleForm({
     const target = rule?.targets.find((t) => t.sortOrder === i);
     return pick(state, `share_${i}`, target ? (target.shareBps / 100).toFixed(2) : '');
   });
+  const selectedParties = pickList(state, 'partyIds', m.partyIds ?? []);
+  const partyGroups = (
+    [
+      ['Funders', (kind: string) => kind === 'customer' || kind === 'project'],
+      ['Vendors', (kind: string) => kind === 'vendor'],
+      ['Employees', (kind: string) => kind === 'employee'],
+    ] as const
+  ).map(([label, match]) => {
+    const items = options.parties
+      .filter((party) => match(party.kind))
+      .map((party) => ({ value: party.id, label: party.displayName }));
+    return {
+      label,
+      options: items,
+      selected: items.filter((o) => selectedParties.includes(o.value)).length,
+    };
+  });
   return (
     <>
       <form action={action}>
@@ -206,30 +223,28 @@ export async function RuleForm({
               'Locations',
               options.locations.map((l) => ({ value: l.id, label: l.name })),
             )}
-            <Field name="partyIds" label="Parties" error={state?.errors.partyIds}>
-              <select
-                id="partyIds"
-                name="partyIds"
-                multiple
-                defaultValue={pickList(state, 'partyIds', m.partyIds ?? [])}
-              >
-                {(['Funder', 'Vendor', 'Employee'] as const).map((kind) => (
-                  <optgroup key={kind} label={`${kind}s`}>
-                    {options.parties
-                      .filter((p) =>
-                        kind === 'Funder'
-                          ? ['customer', 'project'].includes(p.kind)
-                          : p.kind === kind.toLowerCase(),
-                      )
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.displayName}
-                        </option>
-                      ))}
-                  </optgroup>
-                ))}
-              </select>
-            </Field>
+            <fieldset>
+              <legend className="mb-0.5 text-xs font-semibold text-ink-soft">Parties</legend>
+              {partyGroups.map((group) => (
+                <details key={group.label} className="party-group" open={group.selected > 0}>
+                  <summary>
+                    {group.label}
+                    <span className="muted font-normal" data-party-count={group.label}>
+                      {' '}
+                      · {group.selected} selected
+                    </span>
+                  </summary>
+                  <CheckboxList
+                    name="partyIds"
+                    options={group.options}
+                    selected={selectedParties}
+                  />
+                </details>
+              ))}
+              {state?.errors.partyIds ? (
+                <p className="field-error">{state.errors.partyIds}</p>
+              ) : null}
+            </fieldset>
             <div className="flex gap-2">
               {field('accountFrom', 'Account range from', m.accountRange?.from)}
               {field('accountTo', 'Account range to', m.accountRange?.to)}

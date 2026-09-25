@@ -1,10 +1,9 @@
 import type { Metadata } from 'next';
 import localFont from 'next/font/local';
-import Link from 'next/link';
+import { headers } from 'next/headers';
 import './globals.css';
-import { Nav } from '@/components/nav';
-import { StatusPill } from '@/components/ui';
-import { formatDate, formatDateTime } from '@/domain/format';
+import { Nav, navContext } from '@/components/nav';
+import { StatusIndicator } from '@/components/status-indicator';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { getGlobalStatus } from '@/lib/status';
@@ -27,36 +26,41 @@ export const dynamic = 'force-dynamic';
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const orgId = await getOrgId();
-  const org = await prisma.org.findUniqueOrThrow({ where: { id: orgId } });
-  const status = await getGlobalStatus(orgId);
+  const [org, status, requestHeaders] = await Promise.all([
+    prisma.org.findUniqueOrThrow({ where: { id: orgId } }),
+    getGlobalStatus(orgId),
+    headers(),
+  ]);
+  const pathname = requestHeaders.get('x-pathname') ?? '/';
+  const returnTo = `${pathname}${requestHeaders.get('x-search') ?? ''}`;
+  const context = navContext(pathname);
   return (
     <html lang="en" className={inter.variable}>
       <body>
-        <Nav orgName={org.name} />
-        <div className="border-b border-line bg-paper-2 px-4 py-2 text-xs text-ink-soft">
-          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-2 gap-y-1">
-            <span>
-              Books through{' '}
-              {status.booksThrough ? formatDate(status.booksThrough) : 'no imported transactions'}
-            </span>
-            <span aria-hidden="true">·</span>
-            <span data-volatile>
-              Current run{' '}
-              {status.currentRun
-                ? formatDateTime(status.currentRun.finishedAt ?? status.currentRun.startedAt)
-                : 'none'}
-            </span>
-            {status.currentRun?.stale ? (
-              <>
-                <span aria-hidden="true">·</span>
-                <Link href="/runs" prefetch={false}>
-                  <StatusPill tone="warn">Recompute needed</StatusPill>
-                </Link>
-              </>
-            ) : null}
+        <div className="app-shell">
+          <Nav orgName={org.name} />
+          <div className="app-body">
+            <header className="app-header">
+              <div className="hidden min-w-0 truncate text-xs text-ink-soft lg:block" data-page-context>
+                {context ? (
+                  <>
+                    <span>{context.group}</span>
+                    {context.item !== context.group ? (
+                      <>
+                        <span aria-hidden="true"> › </span>
+                        <span className="font-semibold text-ink">{context.item}</span>
+                      </>
+                    ) : null}
+                  </>
+                ) : (
+                  <span>{org.name}</span>
+                )}
+              </div>
+              <StatusIndicator status={status} returnTo={returnTo} />
+            </header>
+            <main className="app-main">{children}</main>
           </div>
         </div>
-        <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
       </body>
     </html>
   );

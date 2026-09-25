@@ -1,13 +1,13 @@
 import Link from 'next/link';
+import { StaleRunBanner } from '@/components/stale-run-banner';
 import { Button, ButtonLink, DateText, FilterBar, PageHeader, Toolbar } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { dimensionLabels, dimensions, parseParams } from '@/reports/params';
 import { loadReport } from '@/reports/query';
-import { ReportTable } from '../table';
+import { ReportSections } from '../table';
 import { saveView } from '../actions';
-import { pivot } from '@/reports/pivot';
-import { budgetColumnsNote, reportPages, reportSections } from '@/reports/view';
+import { budgetColumnsNote, reportLayout, reportSections } from '@/reports/view';
 
 export const dynamic = 'force-dynamic';
 export default async function Custom({
@@ -29,7 +29,7 @@ export default async function Custom({
     for (const value of Array.isArray(v) ? v : v === undefined ? [] : [v])
       if (!['rowKey', 'colKey', 'pageKey'].includes(k)) q.append(k, value);
   const query = q.toString();
-  const sections = reportSections(facts);
+  const sections = reportSections(facts, p, budgets);
   return (
     <>
       <PageHeader
@@ -49,12 +49,7 @@ export default async function Custom({
           </ButtonLink>
         }
       />
-      {run?.stale ? (
-        <div className="banner banner-warn">
-          Configuration changed since the current run. Reports show numbers from{' '}
-          <DateText date={run.finishedAt ?? run.startedAt} time /> until you recompute.
-        </div>
-      ) : null}
+      <StaleRunBanner run={run} />
       {!run ? (
         <div className="banner banner-warn">
           No current run — recompute on <Link href="/runs">/runs</Link>.
@@ -161,6 +156,12 @@ export default async function Custom({
               budget, remaining and % for budget-line rows
             </label>
           )}
+          {reportLayout(p) === 'single' && (
+            <label>
+              <input type="checkbox" name="mapping" value="1" defaultChecked={p.mapping} /> Group
+              by mapping status
+            </label>
+          )}
           {p.run ? <input type="hidden" name="run" value={p.run} /> : null}
         </div>
       </FilterBar>
@@ -191,40 +192,7 @@ export default async function Custom({
               Budget columns are shown when the report is broken by grant or not at all
             </p>
           )}
-          {sections.map((section) => {
-            if (
-              !section.facts.length &&
-              !(
-                section.kind === 'mapped' &&
-                budgets.length &&
-                p.budget &&
-                p.rows === 'grantBudgetLine'
-              )
-            )
-              return null;
-            const columns = pivot(section.facts, {
-              rows: p.rows,
-              cols: p.cols,
-              zeros: p.zeros,
-            }).colKeys;
-            return (
-              <section key={section.kind} aria-label={section.heading || 'Grant expenses'}>
-                {section.heading && <h2>{section.heading}</h2>}
-                {reportPages(section.facts, p, budgets, section.kind === 'mapped').map((key) => (
-                  <ReportTable
-                    key={key ?? '_'}
-                    facts={section.facts}
-                    budgets={budgets}
-                    mapped={section.kind === 'mapped'}
-                    params={p}
-                    query={query}
-                    pageKey={key}
-                    columns={columns}
-                  />
-                ))}
-              </section>
-            );
-          })}
+          <ReportSections sections={sections} params={p} query={query} />
         </>
       ) : null}
     </>

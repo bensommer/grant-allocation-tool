@@ -32,8 +32,50 @@ test('invalid 60/50 split retains values, then fixed 50/50 saves', async ({ page
   await expect(page.getByRole('link', { name })).toBeVisible();
 });
 
+async function createRuleWithParty(page: import('@playwright/test').Page, name: string) {
+  await page.goto('/allocation/new');
+  await page.fill('input[name="name"]', name);
+  await page.locator('input[name="accountIds"]').first().check();
+  const employees = page.locator('details.party-group').filter({ hasText: 'Employees' });
+  await employees.locator('summary').click();
+  const party = employees.locator('input[name="partyIds"]').first();
+  const partyId = await party.getAttribute('value');
+  await party.check();
+  const program = await page
+    .locator('select[name="program_0"] option:not([value=""])')
+    .first()
+    .getAttribute('value');
+  await page.selectOption('select[name="program_0"]', program!);
+  await page.fill('input[name="share_0"]', '100');
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await page.waitForURL(/\/allocation\/[a-z0-9]+\?saved=1/);
+  return partyId!;
+}
+
+test('party groups persist the selected party and summarise the count', async ({ page }) => {
+  const name = `Allocation E2E parties ${Date.now()}`;
+  const partyId = await createRuleWithParty(page, name);
+  const rule = await prisma.allocationRule.findFirstOrThrow({ where: { name } });
+  expect((rule.matchers as { partyIds?: string[] }).partyIds).toEqual([partyId]);
+  await page.reload();
+  const employees = page.locator('details.party-group').filter({ hasText: 'Employees' });
+  await expect(employees).toHaveAttribute('open', '');
+  await expect(employees.locator('summary')).toContainText('1 selected');
+  await expect(employees.locator(`input[value="${partyId}"]`)).toBeChecked();
+  await expect(
+    page.locator('details.party-group').filter({ hasText: 'Vendors' }).locator('summary'),
+  ).toContainText('0 selected');
+});
+
 test.describe('JavaScript disabled', () => {
   test.use({ javaScriptEnabled: false });
+
+  test('party checkboxes submit without JavaScript', async ({ page }) => {
+    const name = `Allocation E2E nojs parties ${Date.now()}`;
+    const partyId = await createRuleWithParty(page, name);
+    const rule = await prisma.allocationRule.findFirstOrThrow({ where: { name } });
+    expect((rule.matchers as { partyIds?: string[] }).partyIds).toEqual([partyId]);
+  });
 
   test('GET editor controls keep unsaved form fields', async ({ page }) => {
     await page.goto('/allocation/new');

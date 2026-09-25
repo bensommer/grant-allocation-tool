@@ -3,10 +3,6 @@ import { routes } from './routes';
 import { execFileSync } from 'node:child_process';
 import { prisma } from '../src/lib/db';
 
-test.beforeEach(() => {
-  test.skip(test.info().project.name !== 'chromium', 'Snapshots use JS-enabled Chromium only');
-});
-
 const pages = [
   'dashboard',
   'grants',
@@ -33,6 +29,8 @@ test('twelve key pages at desktop and mobile', async ({ page }) => {
     await prisma.grant.delete({ where: { id: grant.id } });
   }
   await prisma.program.deleteMany({ where: { orgId: org.id, name: 'Temp program' } });
+  // The demo fixture ships no narratives; the narratives spec leaves drafts behind.
+  await prisma.narrative.deleteMany({ where: { orgId: org.id } });
   // Other e2e cases write imports and rules. Restore the documented fixture so
   // screenshots always describe the same current computation.
   for (const [command, args] of [
@@ -61,7 +59,9 @@ test('twelve key pages at desktop and mobile', async ({ page }) => {
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
     for (let i = 0; i < pages.length; i++) {
-      await page.goto(paths[i]!);
+      await page.goto(paths[i]!, { waitUntil: 'networkidle' });
+      // The Next dev-tools badge appears only when the dev overlay has logged something.
+      await page.addStyleTag({ content: 'nextjs-portal { display: none !important; }' });
       if (paths[i] === '/import' || paths[i] === '/runs') {
         await page.addStyleTag({ content: 'main tbody { display: none !important; }' });
       }
@@ -70,7 +70,7 @@ test('twelve key pages at desktop and mobile', async ({ page }) => {
         animations: 'disabled',
         mask:
           paths[i] === '/import' || paths[i] === '/runs'
-            ? [page.locator('body > div.border-b [data-volatile]')]
+            ? [page.locator('header.app-header [data-volatile]')]
             : [page.locator('[data-volatile]')],
         maxDiffPixelRatio: 0.01,
       });

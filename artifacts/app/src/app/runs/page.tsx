@@ -54,13 +54,7 @@ export default async function RunsPage({
           {failedCheck ? String(failedCheck.detail) : null}
         </div>
       ) : null}
-      {current?.stale ? (
-        <div className="banner banner-warn">
-          Configuration changed since the current run. Reports show numbers from{' '}
-          <DateText date={current.finishedAt ?? current.startedAt} time /> until you recompute.
-        </div>
-      ) : null}
-      {!current ? (
+            {!current ? (
         <div className="banner banner-warn">
           No successful run yet. Import data, then recompute.
         </div>

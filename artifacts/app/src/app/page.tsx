@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { StaleRunBanner } from '@/components/stale-run-banner';
 import {
   Banner,
   Card,
@@ -108,12 +109,7 @@ export default async function DashboardPage({
           pacing will look under pace until newer books are imported.
         </Banner>
       )}
-      {run?.stale && (
-        <Banner tone="warn">
-          Configuration changed since the current run. Reports show numbers from{' '}
-          <DateText date={run.finishedAt ?? run.startedAt} time /> until you recompute.
-        </Banner>
-      )}
+      <StaleRunBanner run={run} />
       {!run && (
         <Banner tone="warn">
           No current run — recompute on <Link href="/runs">Compute runs</Link>.
@@ -133,7 +129,7 @@ export default async function DashboardPage({
         <label htmlFor="dashboard-as-of">As of</label>
         <input id="dashboard-as-of" name="asOf" type="date" defaultValue={label} />
       </FilterBar>
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid items-start gap-4 md:grid-cols-2">
         <Card
           title="Restricted balances"
           action={<Link href={`/restricted?asOf=${label}`}>View funds →</Link>}

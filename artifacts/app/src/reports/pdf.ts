@@ -1,7 +1,14 @@
 import PDFDocument from 'pdfkit';
 import type { ExportTable, TableCell } from './table-export';
 
-export type PdfTable = ExportTable & { colAlign?: ('left' | 'right')[] };
+export type PdfRowKind = 'row' | 'group' | 'subtotal';
+export type PdfTable = ExportTable & {
+  colAlign?: ('left' | 'right')[];
+  /** Per-row styling parallel to `rows`; group headings and subtotals render bold. */
+  rowKinds?: PdfRowKind[];
+  /** Explicit totals row; use when `rows` already contain subtotals that must not be re-summed. */
+  totals?: TableCell[];
+};
 export interface PdfSection {
   heading?: string;
   paragraphs?: string[];
@@ -140,13 +147,15 @@ export async function pdfDocument({
               (_, j) => 1 + i * perGroup + j,
             ),
           ]);
-    const totals: TableCell[] = table.headers.map(() => '');
-    totals[0] = 'Total';
-    for (const i of table.sumColumns ?? [])
-      totals[i] = table.rows.reduce(
-        (sum, row) => sum + (typeof row[i] === 'number' ? row[i] : 0),
-        0,
-      );
+    const totals: TableCell[] = table.totals ?? table.headers.map(() => '');
+    if (!table.totals) {
+      totals[0] = 'Total';
+      for (const i of table.sumColumns ?? [])
+        totals[i] = table.rows.reduce(
+          (sum, row) => sum + (typeof row[i] === 'number' ? row[i] : 0),
+          0,
+        );
+    }
 
     for (const [groupIndex, columns] of groups.entries()) {
       if (groupIndex) nextPage();
@@ -201,8 +210,10 @@ export async function pdfDocument({
         );
         y += h;
       };
-      const drawRow = (cells: TableCell[], total = false) => {
-        doc.font(total ? 'Helvetica-Bold' : 'Helvetica').fontSize(8);
+      const drawRow = (cells: TableCell[], kind: PdfRowKind | 'total' = 'row') => {
+        const bold = kind !== 'row';
+        const total = kind === 'subtotal' || kind === 'total';
+        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8);
         const lines = columns.map((i, j) => wrap(display(cells[i] ?? null), widths[j]! - 10));
         const fullHeight = Math.max(19, ...lines.map((list) => list.length * lineHeight + 8));
         if (y + fullHeight > bottom && y > 42 + 19) {
@@ -217,7 +228,7 @@ export async function pdfDocument({
           const height = Math.max(19, taken * lineHeight + 8);
           if (total) doc.rect(left, y, width, height).fill('#f0f4f8');
           doc
-            .font(total ? 'Helvetica-Bold' : 'Helvetica')
+            .font(bold ? 'Helvetica-Bold' : 'Helvetica')
             .fontSize(8)
             .fillColor('#172033');
           lines.forEach((list, j) => {
@@ -249,8 +260,8 @@ export async function pdfDocument({
       room(30);
       doc.font('Helvetica-Bold').fontSize(8);
       drawHeader();
-      for (const row of table.rows) drawRow(row);
-      if (table.sumColumns?.length) drawRow(totals, true);
+      table.rows.forEach((row, i) => drawRow(row, table.rowKinds?.[i] ?? 'row'));
+      if (table.totals || table.sumColumns?.length) drawRow(totals, 'total');
       y += 17;
     }
   }

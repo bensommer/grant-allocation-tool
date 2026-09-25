@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { StaleRunBanner } from '@/components/stale-run-banner';
 import {
   Banner,
   ButtonLink,
@@ -13,6 +14,7 @@ import {
 import { getOrgId } from '@/lib/org';
 import { loadReport } from '@/reports/query';
 import { parseParams } from '@/reports/params';
+import { mappingKinds } from '@/reports/view';
 export const dynamic = 'force-dynamic';
 export default async function Lines({
   searchParams,
@@ -22,15 +24,17 @@ export default async function Lines({
   const raw = await searchParams,
     p = parseParams(raw);
   const { run, facts } = await loadReport(await getOrgId(), p);
+  const inGroup = mappingKinds.find((m) => m.kind === p.group)?.match ?? (() => true);
   const filtered = facts.filter(
     (f) =>
       f[p.rows] === p.rowKey &&
       f[p.cols] === p.colKey &&
-      (!p.page || !p.pageKey || f[p.page] === p.pageKey),
+      (!p.page || !p.pageKey || f[p.page] === p.pageKey) &&
+      inGroup(f),
   );
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(raw))
-    if (!['rowKey', 'colKey', 'pageKey'].includes(k))
+    if (!['rowKey', 'colKey', 'pageKey', 'group'].includes(k))
       for (const s of Array.isArray(v) ? v : v ? [v] : []) q.append(k, s);
   return (
     <>
@@ -52,12 +56,7 @@ export default async function Lines({
           </ButtonLink>
         }
       />
-      {run?.stale ? (
-        <div className="banner banner-warn">
-          Configuration changed since the current run. Reports show numbers from{' '}
-          <DateText date={run.finishedAt ?? run.startedAt} time /> until you recompute.
-        </div>
-      ) : null}
+      <StaleRunBanner run={run} />
       <Card>
         <DataTable caption="Report source lines">
           <thead>

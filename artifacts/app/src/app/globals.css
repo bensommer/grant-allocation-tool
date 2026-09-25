@@ -97,6 +97,24 @@
     font-weight: 600;
     border-top: 2px solid var(--color-ink);
   }
+  tr.row-group th {
+    padding-top: 12px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-ink-soft);
+    background: var(--color-paper);
+  }
+  tr.subtotal :is(th, td) {
+    font-weight: 600;
+    border-top: 1px solid var(--color-ink-soft);
+  }
+  .row-note {
+    display: block;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--color-ink-soft);
+  }
   input,
   select,
   textarea {
@@ -125,6 +143,50 @@
 }
 
 @layer components {
+  /* Application shell: sidebar from 1024px, top bar with a <details> menu below. */
+  .app-shell {
+    min-height: 100vh;
+  }
+  .app-sidebar {
+    flex-direction: column;
+    background: white;
+    border-right: 1px solid var(--color-line);
+  }
+  .app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 44px;
+    padding: 6px 16px;
+    background: white;
+    border-bottom: 1px solid var(--color-line);
+  }
+  .app-main {
+    max-width: 1400px;
+    padding: 24px 16px;
+  }
+  @media (min-width: 1024px) {
+    .app-shell {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+    }
+    .app-sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    .app-body {
+      min-width: 0;
+    }
+    .app-header {
+      padding: 6px 24px;
+    }
+    .app-main {
+      padding: 24px;
+    }
+  }
   .btn {
     display: inline-block;
     padding: 6px 12px;
@@ -163,6 +225,13 @@
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-card);
     padding: 16px;
+  }
+  .card-unmapped {
+    border-left: 4px solid var(--color-warn);
+  }
+  .section-unmapped h2 {
+    margin: 20px 0 8px;
+    font-size: 1rem;
   }
   .card-heading,
   .page-header,
@@ -235,6 +304,9 @@
   }
   .table-wrap.sticky-first thead th:first-child {
     z-index: 3;
+  }
+  .table-wrap.sticky-first :is(th, td):first-child {
+    min-width: 180px;
   }
   .table-wrap caption {
     text-align: left;
@@ -355,6 +427,26 @@
     background: var(--color-paper-2);
     color: var(--color-ink-soft);
   }
+  .party-group {
+    border: 1px solid var(--color-line);
+    border-radius: 4px;
+    background: white;
+    margin-bottom: 6px;
+  }
+  .party-group > summary {
+    cursor: pointer;
+    padding: 6px 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .party-group[open] > summary {
+    border-bottom: 1px solid var(--color-line);
+  }
+  .party-group > div {
+    border: 0;
+    max-height: 220px;
+    overflow-y: auto;
+  }
   .field-error {
     color: var(--color-bad);
     font-size: 12px;
@@ -382,8 +474,17 @@
 
 @media print {
   nav,
+  .app-sidebar,
+  .app-header,
   .no-print {
     display: none !important;
+  }
+  .app-shell {
+    display: block;
+  }
+  .app-main {
+    max-width: none;
+    padding: 0;
   }
   body {
     font-size: 11px;

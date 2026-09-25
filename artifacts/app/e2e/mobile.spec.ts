@@ -16,9 +16,15 @@ test('every route fits a 390px viewport; navigation stays collapsed', async ({ p
   }
 });
 
-test('desktop navigation occupies one row', async ({ page }) => {
+test('desktop shows the sidebar and a slim header', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
-  const height = await page.locator('nav').evaluate((nav) => nav.getBoundingClientRect().height);
-  expect(height).toBeLessThan(60);
+  const sidebar = page.getByRole('complementary', { name: 'Sidebar' });
+  await expect(sidebar).toBeVisible();
+  const width = await sidebar.evaluate((el) => el.getBoundingClientRect().width);
+  expect(width).toBeGreaterThanOrEqual(200);
+  expect(width).toBeLessThanOrEqual(240);
+  const header = await page.locator('header.app-header').boundingBox();
+  expect(header!.height).toBeLessThan(60);
+  await expect(page.getByText('Menu', { exact: true })).toBeHidden();
 });

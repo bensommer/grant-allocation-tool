@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { StaleRunBanner } from '@/components/stale-run-banner';
 import {
   Banner,
   ButtonLink,
@@ -94,12 +95,7 @@ export default async function RestrictedPage({
           </>
         }
       />
-      {run?.stale && (
-        <Banner tone="warn">
-          Configuration changed since the current run. Reports show numbers from{' '}
-          <DateText date={run.finishedAt ?? run.startedAt} time /> until you recompute.
-        </Banner>
-      )}
+      <StaleRunBanner run={run} />
       {!run && (
         <Banner tone="warn">
           No current run — recompute on <Link href="/runs">Compute runs</Link>.

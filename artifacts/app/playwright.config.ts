@@ -24,8 +24,22 @@ export default defineConfig({
         reuseExistingServer: true,
         timeout: 120_000,
       },
+  // Visual baselines are captured against freshly restored demo data, so they run alone and first;
+  // the functional projects (which create records and recompute) depend on that project.
+  // Pass --no-deps to run a functional project on its own.
   projects: [
-    { name: 'chromium', use: { browserName: 'chromium' } },
-    { name: 'chromium-nojs', use: { browserName: 'chromium', javaScriptEnabled: false } },
+    { name: 'visual', testMatch: /visual\.spec\.ts/, use: { browserName: 'chromium' } },
+    {
+      name: 'chromium',
+      testIgnore: /visual\.spec\.ts/,
+      dependencies: ['visual'],
+      use: { browserName: 'chromium' },
+    },
+    {
+      name: 'chromium-nojs',
+      testIgnore: /visual\.spec\.ts/,
+      dependencies: ['visual'],
+      use: { browserName: 'chromium', javaScriptEnabled: false },
+    },
   ],
 });

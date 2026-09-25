@@ -66,12 +66,7 @@ export default async function CrosswalkPage({
           </div>
         }
       />
-      {run?.stale ? (
-        <Banner tone="warn">
-          Current run is stale — recompute on <Link href="/runs">/runs</Link>.
-        </Banner>
-      ) : null}
-      {deleted ? <Banner tone="ok">Rule deleted.</Banner> : null}
+            {deleted ? <Banner tone="ok">Rule deleted.</Banner> : null}
       {grants.map((grant) =>
         grant.budgetLines.filter((b) => b.crosswalkRules.length).length ? (
           <div className="card mb-4" key={grant.id}>

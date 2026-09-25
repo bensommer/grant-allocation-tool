@@ -69,3 +69,24 @@
   keep their input; the client island only adds instant feedback.
 - Report budget columns come from `GrantBudgetLine` (not allocated facts) and are offered only when
   rows are budget lines and the page break is by grant or none.
+
+## JPH-18 UI follow-up
+
+- Program × GL is one table whenever `program` is on an axis and the page break is not by grant:
+  mapped, program-unmapped and non-grant expense are rows of the same table (ordered program
+  services → M&G → fundraising, then Unmapped/Unassigned) with one grand total. `mapping=1` groups
+  the same table by charge status with subtotals; the mapped/unmapped split is presentation only and
+  all tables of a report share one column set so exports and grant pages line up.
+- Grant-paged reports keep a separate unmapped block titled "Program expense not charged to any
+  grant" (never "Grant: Unmapped"); rows that carry no grant/budget line say so in words.
+- Navigation is a 220px sidebar from 1024px (grouped, Settings pinned to the bottom, active item by
+  route prefix incl. `/lines` → Reports and `/periods` → Settings) and a `<details>` menu below.
+  `src/proxy.ts` forwards the request path in `x-pathname`/`x-search` so the server-rendered layout
+  can show page context and the header Recompute can post-redirect-get back to the same URL.
+- Data freshness has one home: the header status indicator (books through · run · Recompute needed +
+  button). Report-type pages (dashboard, reports, BvA, restricted) keep a one-line stale note; config
+  pages (allocation, crosswalk, runs) no longer repeat it. The header action calls
+  `revalidatePath('/', 'layout')` before redirecting so the client router re-renders the layout even
+  when it lands on the current URL.
+- Allocation "Parties" is three collapsible checkbox groups (Funders/Vendors/Employees) that post the
+  same repeated `partyIds` field; no client code and it works with JS disabled.

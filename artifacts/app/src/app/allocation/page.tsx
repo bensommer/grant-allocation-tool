@@ -68,13 +68,7 @@ export default async function AllocationPage({
         }
       />
       {deleted ? <Banner tone="ok">Rule deleted.</Banner> : null}
-      {run?.stale ? (
-        <Banner tone="warn">
-          Current run is stale. Recompute on <Link href="/runs">Runs</Link> to update allocation
-          totals.
-        </Banner>
-      ) : null}
-      <div className="card">
+            <div className="card">
         {rules.length ? (
           <DataTable caption="Allocation rules">
             <thead>

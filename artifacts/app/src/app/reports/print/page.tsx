@@ -1,10 +1,9 @@
 import { getOrgId } from '@/lib/org';
 import { dimensionLabels, parseParams } from '@/reports/params';
 import { loadReport } from '@/reports/query';
-import { ReportTable } from '../table';
+import { ReportSections } from '../table';
 import { DateText } from '@/components/ui';
-import { pivot } from '@/reports/pivot';
-import { budgetColumnsNote, reportPages, reportSections } from '@/reports/view';
+import { budgetColumnsNote, reportSections } from '@/reports/view';
 export const dynamic = 'force-dynamic';
 export default async function Print({
   searchParams,
@@ -32,36 +31,7 @@ export default async function Print({
           Budget columns are shown when the report is broken by grant or not at all
         </p>
       )}
-      {reportSections(facts).map((section) => {
-        if (
-          !section.facts.length &&
-          !(section.kind === 'mapped' && budgets.length && p.budget && p.rows === 'grantBudgetLine')
-        )
-          return null;
-        const columns = pivot(section.facts, {
-          rows: p.rows,
-          cols: p.cols,
-          zeros: p.zeros,
-        }).colKeys;
-        return (
-          <section key={section.kind}>
-            {section.heading && <h2>{section.heading}</h2>}
-            {reportPages(section.facts, p, budgets, section.kind === 'mapped').map((key) => (
-              <ReportTable
-                key={key ?? '_'}
-                facts={section.facts}
-                budgets={budgets}
-                mapped={section.kind === 'mapped'}
-                params={p}
-                query=""
-                pageKey={key}
-                columns={columns}
-                links={false}
-              />
-            ))}
-          </section>
-        );
-      })}
+      <ReportSections sections={reportSections(facts, p, budgets)} params={p} query="" links={false} />
     </main>
   );
 }
