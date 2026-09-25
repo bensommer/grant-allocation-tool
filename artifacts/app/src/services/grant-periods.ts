@@ -475,6 +475,39 @@ export async function recordReportedPeriod(
 }
 
 /**
+ * Change the note on a reported period. The figures of record never change here —
+ * only the free-text context a reviewer attaches to them (JPH-23 design pass).
+ */
+export async function updateReportedPeriodNote(
+  orgId: string,
+  grantId: string,
+  periodLockId: string,
+  note: string,
+  actor = 'local-user',
+) {
+  const trimmed = note.trim();
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.grantPeriodSnapshot.findMany({
+      where: { orgId, grantId, periodLockId, source: 'reported', supersededAt: null },
+    });
+    if (rows.length === 0) throw new ValidationError({ _: 'No reported period to annotate' });
+    await tx.grantPeriodSnapshot.updateMany({
+      where: { id: { in: rows.map((r) => r.id) } },
+      data: { note: trimmed || null },
+    });
+    await recordAudit(tx, {
+      orgId,
+      entity: 'GrantPeriodSnapshot',
+      entityId: periodLockId,
+      action: 'update',
+      before: { note: rows[0]!.note },
+      after: { note: trimmed || null },
+      actor,
+    });
+  });
+}
+
+/**
  * Freeze the current-period figures of every active grant when the app locks a
  * period. Grants that already carry a snapshot for it — reported, or computed by an
  * earlier attempt — are left alone: a closed period is never recomputed.

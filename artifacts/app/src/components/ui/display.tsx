@@ -125,3 +125,58 @@ export function Legend({ items }: { items: { tone: Tone; label: string }[] }) {
     </div>
   );
 }
+
+/** Superscript marker pointing at a `Footnote` under the table. */
+export function FootnoteMark({ id, mark = '¹' }: { id: string; mark?: string }) {
+  return (
+    <sup className="footnote-mark">
+      <a href={`#${id}`} aria-label={`Footnote ${mark}`}>
+        {mark}
+      </a>
+    </sup>
+  );
+}
+
+export function Footnote({
+  id,
+  mark = '¹',
+  children,
+}: {
+  id: string;
+  mark?: string;
+  children: ReactNode;
+}) {
+  return (
+    <p id={id} className="footnote muted">
+      <sup>{mark}</sup> {children}
+    </p>
+  );
+}
+
+/**
+ * Two thin bars on one scale — time elapsed and share spent — so pace reads at a
+ * glance without a colour alarm. Percentages are basis points.
+ */
+export function PairedBar({
+  rows,
+  tone = 'neutral',
+}: {
+  rows: Array<{ label: string; bps: number }>;
+  tone?: 'neutral' | 'warn';
+}) {
+  return (
+    <div className={`paired-bar paired-bar-${tone}`} aria-hidden="true">
+      {rows.map((r) => (
+        <div key={r.label} className="paired-bar-row">
+          <span className="paired-bar-label">{r.label}</span>
+          <span className="paired-bar-track">
+            <span
+              className="paired-bar-fill"
+              style={{ width: `${Math.max(0, Math.min(100, r.bps / 100))}%` }}
+            />
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}

@@ -263,6 +263,9 @@
     font-size: 1.5rem;
     font-variant-numeric: tabular-nums;
   }
+  .key-figure-hint {
+    font-size: smaller;
+  }
   .key-figure-bad {
     border-color: var(--color-bad);
   }
@@ -454,6 +457,151 @@
   }
   .muted {
     color: var(--color-ink-soft);
+  }
+  /* JPH-23 design pass ------------------------------------------------------- */
+  .key-figure-lead strong {
+    font-size: 2rem;
+  }
+  .key-figure-quiet {
+    border-left-color: var(--color-line);
+  }
+  .key-figure-quiet strong {
+    font-size: 1.125rem;
+  }
+  .paired-bar {
+    display: grid;
+    gap: 3px;
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--color-ink-soft);
+  }
+  .paired-bar-row {
+    display: grid;
+    grid-template-columns: 3.2rem 1fr;
+    align-items: center;
+    gap: 6px;
+  }
+  .paired-bar-track {
+    display: block;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--color-paper-2);
+    overflow: hidden;
+  }
+  .paired-bar-fill {
+    display: block;
+    height: 100%;
+    background: var(--color-harbor);
+  }
+  .paired-bar-row:first-child .paired-bar-fill {
+    background: var(--color-ink-soft);
+  }
+  .paired-bar-warn .paired-bar-row:last-child .paired-bar-fill {
+    background: var(--color-warn);
+  }
+  .footnote-mark a {
+    text-decoration: none;
+    color: var(--color-ink-soft);
+    padding: 0 1px;
+  }
+  .footnote {
+    font-size: 12px;
+    margin-top: 6px;
+  }
+  .tab-groups {
+    display: flex;
+    gap: 1.25rem;
+    max-width: 100%;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--color-line);
+  }
+  .tab-group {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .tab-group + .tab-group {
+    border-left: 1px solid var(--color-line);
+    padding-left: 1.25rem;
+  }
+  .tab-group-label {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-ink-soft);
+    padding: 4px 12px 0;
+  }
+  .tab-group-links {
+    display: flex;
+    gap: 4px;
+  }
+  .tab-count {
+    position: relative; /* anchors the sr-only text inside the scrolling strip */
+    display: inline-block;
+    min-width: 1.25rem;
+    margin-left: 5px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--color-warn-soft);
+    color: var(--color-ink);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.25rem;
+    text-align: center;
+    vertical-align: 1px;
+  }
+  .ledger td.op {
+    width: 1.5rem;
+    text-align: center;
+    color: var(--color-ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+  .ledger tr.ledger-sum td,
+  .ledger tr.ledger-sum th {
+    border-top: 2px solid var(--color-ink);
+    font-weight: 600;
+  }
+  .chip {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 6px;
+    border-radius: 3px;
+    border: 1px solid var(--color-bad);
+    color: var(--color-bad);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.2rem;
+    vertical-align: 1px;
+  }
+  tr.category-total th,
+  tr.category-total td {
+    background: var(--color-paper-2);
+    border-top: 1px solid var(--color-ink-soft);
+    font-weight: 600;
+  }
+  .not-computed {
+    font-style: italic;
+    color: var(--color-ink-soft);
+  }
+  .drift-neutral,
+  .drift-neutral .negative {
+    color: var(--color-ink-soft);
+  }
+  .check-ok {
+    color: var(--color-ink-soft);
+  }
+  .locked-values {
+    color: var(--color-ink-soft);
+  }
+  details.breakdown > summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--color-ink-soft);
+  }
+  details.breakdown[open] > summary {
+    margin-bottom: 6px;
   }
   .grid-form {
     display: grid;

@@ -357,6 +357,51 @@ the tracked exports, never hand-written.
 11. **AC2 finding recorded in the parity report:** the FY2025 direct gap of −187.66 is one November
     2025 staff payroll line (187.44) she counted as direct plus 0.22 of whole-dollar rounding.
 
+#### Design pass (2026-09-25) — 22 decisions from the design review, applied as written
+
+12. **AC6 revised: a proposed reversal pair is not green.** The ticket read Opioid's ±207.02 pair
+    as "counted as paired" and therefore green. The design decision is that green means *nothing
+    waiting for a reviewer*, and a proposed pair still needs one. The tie-out now has three states:
+    `clean` (green check), `pairs` ("N pair(s) to confirm (nets $0.00)" — amber, no red because the
+    released figure does not move) and `open` (lines waiting, the first three shown inline, oldest
+    first). Opioid seeds as `pairs`; confirming the pair on the review queue and recomputing turns
+    it green. `tests/db/jph23-rollforward.test.ts` and `e2e/pilot.spec.ts` AC6 assert the amber
+    state first and then the green one — the figures (5,376.03 effort, 16,286.10 charged, 0.00
+    needs review) are unchanged. The rollforward note "coded but not yet released" is only written
+    in the `open` state, since a pending pair nets to zero.
+13. **Overview header:** two lead figures (restricted balance; spent vs. award with a paired
+    time/spend bar and "N pts ahead of/behind pace · M months left"), four quiet ones. Colour
+    appears only when pacing is outside the org thresholds or a line is over budget.
+14. **Tie-out as a mini ledger:** assigned + excluded + needs review = coded, then effort and
+    charged, zeros as 0.00; excluded-by-reason lives in a collapsed details block. Print layout at
+    `/grants/[id]/tie-out/pdf`.
+15. **Tabs grouped** Report | Work | Close, with the needs-review count as a badge on Review.
+16. **Working view:** pacing callout with months left; the forecast strip starts with three blank
+    rows and "Add row" is a GET re-render (no JS); an empty forecast says so instead of showing a
+    zero table.
+17. **Activity grid:** a column whose name joins two costs ("… & …" / "… and …") gets a footnote
+    that it is one funder budget line (a heuristic on the name, not pilot-specific code); no
+    per-occurrence figure renders as an em dash titled "none remaining"; over-budget cells carry
+    an "over" chip; the category-total row is styled distinctly and footnoted "net of rows over
+    and under budget".
+18. **Periods:** reported rows are marked 🔒 Reported with muted, read-only figures; only the note
+    is editable inline (`updateReportedPeriodNote`, audited, figures untouched). Drift is
+    introduced as "Informational: books vs. what was reported. Not an error.", its difference
+    column is neutral grey, and staff shows "Not computed¹" with the footnote explaining why.
+19. **Rollforward:** GET presets — fiscal year to date (default), last closed period,
+    grant-to-date (earliest active grant start → today) — plus custom from/to; presets fall back to
+    the fiscal year with a banner when there is no closed period or no grant. The check row is a
+    muted "0.00 ✓" when it ties and red otherwise; decision notes are numbered footnotes on the
+    fund's direct-released cell with the note under the table (no banner); zeros print as 0.00.
+    Print layout at `/grants/rollforward/pdf`; "Rollforward →" links from Restricted funds and
+    each grant's Periods tab.
+20. **Rollforward XLSX mirrors her tab cell for cell:** fund headers on row 7 from column C,
+    beginning balance on row 8 (period start in A, "Restricted Grant Balance" in B), "Grants
+    Received" on row 10, Direct Expenses / Staff Costs / Overhead as *negatives* on rows 11–13,
+    "Current" / "Restricted Grant Balance" on row 15 as `=SUM(C8:C13)`, a Total column of SUMs and
+    the check beside it as `=ROUND(SUM(G8:G13)-G15,2)`. The AC4 LibreOffice test reads these
+    positions from `ROLLFORWARD_LAYOUT`; the figures asserted are unchanged.
+
 ### Follow-ups (out of phase)
 
 - **Date effort occurrences per period** so staff drift and per-period staff releases can be

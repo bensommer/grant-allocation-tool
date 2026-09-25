@@ -1,4 +1,16 @@
-export { Money, Period, Month, Pct, DateText, StatusPill, ProgressBar, Legend } from './display';
+export {
+  Money,
+  Period,
+  Month,
+  Pct,
+  DateText,
+  StatusPill,
+  ProgressBar,
+  Legend,
+  Footnote,
+  FootnoteMark,
+  PairedBar,
+} from './display';
 export type { Tone } from './display';
 export { Button, ButtonLink, FilterBar, Toolbar } from './actions';
 export type { ButtonVariant, ButtonSize } from './actions';

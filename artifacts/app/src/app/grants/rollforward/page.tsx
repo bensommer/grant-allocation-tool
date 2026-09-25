@@ -1,11 +1,14 @@
 import { Fragment } from 'react';
 import Link from 'next/link';
 import {
+  Banner,
   ButtonLink,
   Card,
   DataTable,
   EmptyState,
   FilterBar,
+  Footnote,
+  FootnoteMark,
   Money,
   NumTd,
   PageHeader,
@@ -13,12 +16,12 @@ import {
   TotalRow,
 } from '@/components/ui';
 import { Field } from '@/components/form';
-import { parseDateInput, toISODate } from '@/domain/dates';
+import { toISODate } from '@/domain/dates';
 import { RELEASE_CLASSES, RELEASE_CLASS_LABEL } from '@/domain/periods';
 import { getOrgId } from '@/lib/org';
 import { rollforward, type RollforwardRow } from '@/services/grant-periods';
 import { rollforwardNotes } from '@/services/grant-workspace';
-import { resolveRange } from './range';
+import { RANGE_PRESET_LABEL, RANGE_PRESETS, resolveRange } from './range';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,22 +31,36 @@ const checkOf = (r: RollforwardRow) =>
   (r.released.direct + r.released.staff + r.released.overhead) -
   r.endingCents;
 
-/** Restricted funds rollforward: one column per fund, totals, and a check row. */
+/**
+ * Restricted funds rollforward: one column per fund, totals, and a check row.
+ * Range presets and the custom from/to are plain GET parameters, so the URL is the
+ * report. Decision notes behind a fund's released figure appear as numbered
+ * footnotes on the cell, with the note under the table.
+ */
 export default async function RollforwardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{ range?: string; from?: string; to?: string }>;
 }) {
   const sp = await searchParams;
   const orgId = await getOrgId();
-  const { from, to, error } = await resolveRange(orgId, sp.from, sp.to);
+  const { from, to, preset, error, fallback } = await resolveRange(orgId, sp);
   const rf = error ? null : await rollforward(orgId, from, to);
   const notes = rf
     ? await Promise.all(
         rf.rows.map(async (r) => ({ grant: r, notes: await rollforwardNotes(orgId, r.grantId) })),
       )
     : [];
-  const query = `from=${toISODate(from)}&to=${toISODate(to)}`;
+  // Footnote numbers run across funds in column order.
+  let n = 0;
+  const numbered = notes.map(({ grant, notes: ns }) => ({
+    grant,
+    notes: ns.map((note) => ({ ...note, mark: String(++n) })),
+  }));
+  const marksFor = (grantId: string) =>
+    numbered.find((x) => x.grant.grantId === grantId)?.notes ?? [];
+  const query =
+    preset === 'custom' ? `from=${toISODate(from)}&to=${toISODate(to)}` : `range=${preset}`;
   return (
     <>
       <PageHeader
@@ -51,12 +68,40 @@ export default async function RollforwardPage({
         subtitle="Beginning balance, received, released by class, ending — per fund, with a check row."
         secondaryActions={
           rf && (
-            <ButtonLink href={`/grants/rollforward/xlsx?${query}`} variant="secondary">
-              XLSX (formulas)
-            </ButtonLink>
+            <>
+              <ButtonLink href={`/grants/rollforward/pdf?${query}`} variant="secondary">
+                PDF
+              </ButtonLink>
+              <ButtonLink href={`/grants/rollforward/xlsx?${query}`} variant="secondary">
+                XLSX (formulas)
+              </ButtonLink>
+            </>
           )
         }
       />
+      <nav className="mb-3 flex flex-wrap gap-2 text-sm" aria-label="Range" data-testid="rf-presets">
+        {RANGE_PRESETS.filter((p) => p !== 'custom').map((p) => (
+          <Link
+            key={p}
+            href={`/grants/rollforward?range=${p}`}
+            aria-current={preset === p ? 'page' : undefined}
+            className={`rounded-full border px-3 py-1 hover:no-underline ${
+              preset === p ? 'border-harbor bg-harbor-soft font-semibold text-ink' : 'border-line text-ink-soft'
+            }`}
+            data-preset={p}
+          >
+            {RANGE_PRESET_LABEL[p]}
+          </Link>
+        ))}
+        <span
+          aria-current={preset === 'custom' ? 'page' : undefined}
+          className={`rounded-full border px-3 py-1 ${
+            preset === 'custom' ? 'border-harbor bg-harbor-soft font-semibold text-ink' : 'border-line text-ink-soft'
+          }`}
+        >
+          {RANGE_PRESET_LABEL.custom}
+        </span>
+      </nav>
       <FilterBar action="/grants/rollforward">
         <Field label="From" name="from" error={error ?? undefined}>
           <input id="from" name="from" type="date" defaultValue={toISODate(from)} />
@@ -65,10 +110,18 @@ export default async function RollforwardPage({
           <input id="to" name="to" type="date" defaultValue={toISODate(to)} />
         </Field>
       </FilterBar>
+      {fallback && <Banner tone="info">{fallback}</Banner>}
       {!rf ? null : rf.rows.length === 0 ? (
         <EmptyState title="No restricted funds in this period" />
       ) : (
-        <Card title="Rollforward" action={<span className="muted text-sm">{toISODate(from)} → {toISODate(to)}</span>}>
+        <Card
+          title="Rollforward"
+          action={
+            <span className="muted text-sm">
+              {RANGE_PRESET_LABEL[preset]} · {toISODate(from)} → {toISODate(to)}
+            </span>
+          }
+        >
           <DataTable stickyFirstColumn>
             <thead>
               <tr>
@@ -85,46 +138,47 @@ export default async function RollforwardPage({
               <tr data-testid="rf-beginning">
                 <Th scope="row">Beginning restricted balance</Th>
                 {rf.rows.map((r) => (
-                  <NumTd key={r.grantId} cents={r.beginningCents} dollar />
+                  <NumTd key={r.grantId} cents={r.beginningCents} zero="zero" dollar />
                 ))}
-                <NumTd cents={rf.totals.beginningCents} dollar />
+                <NumTd cents={rf.totals.beginningCents} zero="zero" dollar />
               </tr>
               <tr data-testid="rf-received">
                 <Th scope="row">Received</Th>
                 {rf.rows.map((r) => (
-                  <NumTd key={r.grantId} cents={r.receivedCents} />
+                  <NumTd key={r.grantId} cents={r.receivedCents} zero="zero" />
                 ))}
-                <NumTd cents={rf.totals.receivedCents} />
+                <NumTd cents={rf.totals.receivedCents} zero="zero" />
               </tr>
               {RELEASE_CLASSES.map((cls) => (
                 <tr key={cls} data-testid={`rf-${cls}`}>
                   <Th scope="row">Released — {RELEASE_CLASS_LABEL[cls].toLowerCase()}</Th>
                   {rf.rows.map((r) => (
-                    <NumTd key={r.grantId} cents={r.released[cls]} />
+                    <NumTd key={r.grantId}>
+                      <Money cents={r.released[cls]} zero="zero" />
+                      {cls === 'direct' &&
+                        marksFor(r.grantId).map((m) => (
+                          <FootnoteMark key={m.mark} id={`rf-fn-${m.mark}`} mark={m.mark} />
+                        ))}
+                    </NumTd>
                   ))}
-                  <NumTd cents={rf.totals.released[cls]} />
+                  <NumTd cents={rf.totals.released[cls]} zero="zero" />
                 </tr>
               ))}
               <TotalRow data-testid="rf-ending">
                 <Th scope="row">Ending restricted balance</Th>
                 {rf.rows.map((r) => (
-                  <NumTd key={r.grantId} cents={r.endingCents} dollar />
+                  <NumTd key={r.grantId} cents={r.endingCents} zero="zero" dollar />
                 ))}
-                <NumTd cents={rf.totals.endingCents} dollar />
+                <NumTd cents={rf.totals.endingCents} zero="zero" dollar />
               </TotalRow>
               <tr data-testid="rf-check">
-                <Th scope="row">Check (should be 0.00)</Th>
+                <Th scope="row" className="check-ok">
+                  Check
+                </Th>
                 {rf.rows.map((r) => (
-                  <NumTd key={r.grantId}>
-                    <Money cents={checkOf(r)} zero="zero" />
-                  </NumTd>
+                  <CheckCell key={r.grantId} cents={checkOf(r)} />
                 ))}
-                <NumTd
-                  className={rf.totals.checkCents ? 'text-bad' : undefined}
-                  data-testid="rf-check-total"
-                >
-                  <Money cents={rf.totals.checkCents} zero="zero" />
-                </NumTd>
+                <CheckCell cents={rf.totals.checkCents} testId="rf-check-total" />
               </tr>
             </tbody>
           </DataTable>
@@ -133,33 +187,43 @@ export default async function RollforwardPage({
             exist, computed ones otherwise). Released this period = released to date − released in
             earlier periods. Effort charges carry no date and count in the current period.
           </p>
-          {notes.some((n) => n.notes.length > 0 || n.grant.priorPeriods.length > 0) && (
+          {numbered.some((x) => x.notes.length > 0 || x.grant.priorPeriods.length > 0) && (
             <div className="mt-3 text-sm" data-testid="rf-notes">
-              <h3 className="mb-1 font-semibold">Notes</h3>
-              <ul className="list-disc space-y-1 pl-5">
-                {notes.map(({ grant, notes: ns }) => (
-                  <Fragment key={grant.grantId}>
-                    {grant.priorPeriods.length > 0 && (
-                      <li>
-                        <strong>{grant.name}:</strong> beginning balance from{' '}
-                        {grant.priorPeriods
-                          .map((p) => `${p.name} (${p.source === 'reported' ? 'reported' : 'computed at lock'})`)
-                          .join(', ')}
-                        . <Link href={`/grants/${grant.grantId}/periods`}>Periods →</Link>
-                      </li>
-                    )}
-                    {ns.map((n, i) => (
-                      <li key={i} data-testid="rf-note">
-                        <strong>{grant.name}:</strong> {n.text} <Link href={n.href}>Open →</Link>
-                      </li>
-                    ))}
-                  </Fragment>
-                ))}
-              </ul>
+              {numbered.map(({ grant, notes: ns }) => (
+                <Fragment key={grant.grantId}>
+                  {ns.map((note) => (
+                    <Footnote key={note.mark} id={`rf-fn-${note.mark}`} mark={note.mark}>
+                      <span data-testid="rf-note">
+                        <strong>{grant.name}:</strong> {note.text} <Link href={note.href}>Open →</Link>
+                      </span>
+                    </Footnote>
+                  ))}
+                  {grant.priorPeriods.length > 0 && (
+                    <p className="muted mt-1 text-xs">
+                      <strong>{grant.name}:</strong> beginning balance from{' '}
+                      {grant.priorPeriods
+                        .map((p) => `${p.name} (${p.source === 'reported' ? 'reported' : 'computed at lock'})`)
+                        .join(', ')}
+                      . <Link href={`/grants/${grant.grantId}/periods`}>Periods →</Link>
+                    </p>
+                  )}
+                </Fragment>
+              ))}
             </div>
           )}
         </Card>
       )}
     </>
+  );
+}
+
+/** Ties: a muted "0.00 ✓". Anything else is an error and stays red. */
+function CheckCell({ cents, testId }: { cents: number; testId?: string }) {
+  const ok = cents === 0;
+  return (
+    <NumTd className={ok ? 'check-ok' : 'text-bad'} data-testid={testId}>
+      <Money cents={cents} zero="zero" />
+      {ok && <span aria-label="ties"> ✓</span>}
+    </NumTd>
   );
 }

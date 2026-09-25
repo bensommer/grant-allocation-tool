@@ -27,6 +27,9 @@ export interface HeaderMetrics {
   restrictedBalanceCents: number;
   elapsedBps: number;
   spentBps: number;
+  /** spent % − elapsed %, in whole points: negative = behind pace, positive = ahead. */
+  pacePts: number;
+  monthsLeft: number;
   projectedAtEndCents: number | null;
   asOf: Date;
 }
@@ -42,14 +45,18 @@ export async function headerMetrics(
     receivedBetween(orgId, grant.id, { to: asOf }),
   ]);
   const spentCents = released.direct + released.staff + released.overhead;
+  const elapsed = elapsedBps(grant.startDate, grant.endDate, asOf);
+  const spent =
+    grant.awardAmountCents > 0 ? Math.round((spentCents / grant.awardAmountCents) * 10000) : 0;
   return {
     awardCents: grant.awardAmountCents,
     receivedCents,
     spentCents,
     restrictedBalanceCents: receivedCents - spentCents,
-    elapsedBps: elapsedBps(grant.startDate, grant.endDate, asOf),
-    spentBps:
-      grant.awardAmountCents > 0 ? Math.round((spentCents / grant.awardAmountCents) * 10000) : 0,
+    elapsedBps: elapsed,
+    spentBps: spent,
+    pacePts: Math.round(spent / 100) - Math.round(elapsed / 100),
+    monthsLeft: monthsLeft(asOf, grant.endDate),
     projectedAtEndCents: projectedAtEnd(spentCents, grant.startDate, grant.endDate, asOf),
     asOf,
   };
@@ -70,11 +77,26 @@ export interface TieOut {
   pairedCount: number;
   effortCents: number;
   chargedCents: number;
-  /** Nothing is waiting: needs review nets to zero and every such line is in a proposed pair. */
+  /**
+   * `clean`: nothing is waiting. `pairs`: the only lines waiting sit in proposed
+   * reversal pairs that net to zero — a reviewer still has to confirm them.
+   * `open`: lines are waiting that no pair explains.
+   */
+  status: TieOutStatus;
+  /** Proposed reversal pairs with at least one line still waiting. */
+  pendingPairs: number;
+  /** The first few unpaired lines waiting, oldest first, for the panel. */
+  waiting: ReviewLine[];
+  /** Fully clean (`status === 'clean'`); a pending pair is not green. */
   green: boolean;
   /** Manual decisions active in the current run, for the rollforward note. */
   decisionGroups: Array<{ groupId: string; kind: string; note: string; cents: number }>;
 }
+
+export type TieOutStatus = 'clean' | 'pairs' | 'open';
+
+/** How many waiting lines the panel shows inline before pointing at the queue. */
+export const TIE_OUT_INLINE_LINES = 3;
 
 export function tieOutFromQueue(queue: ReviewQueue, effortCents: number): TieOut {
   const excludedBy = new Map<string, { count: number; cents: number }>();
@@ -88,6 +110,19 @@ export function tieOutFromQueue(queue: ReviewQueue, effortCents: number): TieOut
   const needsReview: ReviewLine[] = queue.groups.flatMap((g) => g.lines);
   const paired = new Set(queue.proposals.flatMap((p) => [p.positive.id, p.negative.id]));
   const pairedCount = needsReview.filter((l) => paired.has(l.id)).length;
+  const waitingIds = new Set(needsReview.map((l) => l.id));
+  const pendingPairs = queue.proposals.filter(
+    (p) => waitingIds.has(p.positive.id) || waitingIds.has(p.negative.id),
+  ).length;
+  const unpaired = needsReview
+    .filter((l) => !paired.has(l.id))
+    .sort((a, b) => a.txnDate.getTime() - b.txnDate.getTime());
+  const status: TieOutStatus =
+    unpaired.length > 0 || queue.totals.needsReviewCents !== 0
+      ? 'open'
+      : needsReview.length > 0
+        ? 'pairs'
+        : 'clean';
   const decisionOf = new Map(queue.decisions.map((d) => [d.id, d]));
   const groups = new Map<string, TieOut['decisionGroups'][number]>();
   for (const l of [...queue.assigned, ...queue.excluded]) {
@@ -111,9 +146,19 @@ export function tieOutFromQueue(queue: ReviewQueue, effortCents: number): TieOut
     pairedCount,
     effortCents,
     chargedCents: queue.totals.assignedCents + effortCents,
-    green: queue.totals.needsReviewCents === 0 && pairedCount === needsReview.length,
+    status,
+    pendingPairs,
+    waiting: unpaired.slice(0, TIE_OUT_INLINE_LINES),
+    green: status === 'clean',
     decisionGroups: [...groups.values()],
   };
+}
+
+/** Lines waiting for review in the current run — the badge on the Review tab. */
+export async function needsReviewCount(orgId: string, grantId: string): Promise<number> {
+  return prisma.grantLineResult.count({
+    where: { orgId, grantId, state: 'needs_review', source: 'transaction', run: { isCurrent: true } },
+  });
 }
 
 export async function tieOut(orgId: string, grantId: string, tree?: BudgetTree): Promise<TieOut> {
@@ -293,7 +338,9 @@ export async function rollforwardNotes(
     text: `${g.kind === 'exclude' ? 'Excluded' : 'Assigned'} by decision: ${g.note}`,
     href: `${href}#decision-${g.groupId}`,
   }));
-  if (!t.green)
+  // A pending reversal pair nets to zero and does not move the released figure, so only
+  // lines no pair explains earn a note.
+  if (t.status === 'open')
     notes.push({
       text: `Coded to the grant but not yet released: needs review (${t.needsReviewCount} line${t.needsReviewCount === 1 ? '' : 's'}).`,
       href,

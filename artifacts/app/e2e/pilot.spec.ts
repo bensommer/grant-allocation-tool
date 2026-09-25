@@ -292,20 +292,45 @@ async function rfCell(page: Page, row: string, col: number) {
   return page.locator(`tr[data-testid="rf-${row}"] td`).nth(col).locator('[data-cents]').first();
 }
 
-test('JPH-23 AC6: Salah overview shows coded 22,708.81 with 1,188.41 waiting (no green); Opioid is green with effort on its own line', async ({
+test('JPH-23 AC6: Salah overview shows coded 22,708.81 with 1,188.41 waiting (no green); Opioid shows its ±207.02 pair to confirm, then is green once confirmed', async ({
   page,
 }) => {
   await page.goto(`/grants/${salahId}`);
   const tie = page.getByTestId('tie-out');
   await expect(tie).toHaveAttribute('data-green', '0');
+  await expect(tie).toHaveAttribute('data-status', 'open');
   await expect(page.getByTestId('tie-coded')).toHaveAttribute('data-cents', '2270881');
   await expect(page.getByTestId('tie-needs-review')).toHaveAttribute('data-cents', '118841');
   await expect(page.getByTestId('tie-sum')).toHaveAttribute('data-cents', '2270881');
+  // Open state: the first three waiting lines inline, the rest behind the queue link.
+  await expect(page.getByTestId('tie-waiting-line')).toHaveCount(3);
+  await expect(page.getByTestId('tie-out-waiting')).toContainText(/more in the/);
+  await expect(page.getByTestId('review-tab-count')).toContainText('7');
   await expect(page.getByTestId('metric-award')).toHaveAttribute('data-cents', '5000000');
   await expect(page.getByTestId('metric-received')).toHaveAttribute('data-cents', '5000000');
+  await expect(page.getByTestId('metric-balance')).toHaveAttribute('data-cents', String(5000000 - 2152040));
 
+  // Design decision: a proposed reversal pair is not green until a reviewer confirms it.
+  await page.goto(`/grants/${opioidId}`);
+  await expect(page.getByTestId('tie-out')).toHaveAttribute('data-green', '0');
+  await expect(page.getByTestId('tie-out')).toHaveAttribute('data-status', 'pairs');
+  await expect(page.getByTestId('tie-out-status')).toContainText('1 pair to confirm (nets $0.00)');
+  await expect(page.getByTestId('tie-needs-review')).toHaveAttribute('data-cents', '0');
+  await expect(page.getByTestId('tie-effort')).toHaveAttribute('data-cents', '537603');
+  await expect(page.getByTestId('tie-charged')).toHaveAttribute('data-cents', '1628610');
+  await expect(page.getByTestId('metric-spent')).toHaveAttribute('data-cents', '1628610');
+
+  await page.goto(`/grants/${opioidId}/review`);
+  await page
+    .getByTestId('proposals')
+    .locator('tr[data-pair="20702"]')
+    .getByRole('button', { name: 'Confirm pair' })
+    .click();
+  await page.waitForURL(/\/review\?saved=1/);
+  await recomputeFromHeader(page);
   await page.goto(`/grants/${opioidId}`);
   await expect(page.getByTestId('tie-out')).toHaveAttribute('data-green', '1');
+  await expect(page.getByTestId('tie-out')).toHaveAttribute('data-status', 'clean');
   await expect(page.getByTestId('tie-needs-review')).toHaveAttribute('data-cents', '0');
   await expect(page.getByTestId('tie-effort')).toHaveAttribute('data-cents', '537603');
   await expect(page.getByTestId('tie-charged')).toHaveAttribute('data-cents', '1628610');
@@ -352,7 +377,7 @@ test('JPH-23 AC1/AC2: Opioid periods page shows the reported FY2025 snapshot and
   await expect(drift('direct').getByTestId('drift-books')).toHaveAttribute('data-cents', '193234');
   await expect(drift('direct').getByTestId('drift-diff')).toHaveAttribute('data-cents', '-18766');
   await expect(drift('overhead').getByTestId('drift-diff')).toHaveAttribute('data-cents', '0');
-  await expect(drift('staff').getByTestId('drift-not-computed')).toContainText('not computed');
+  await expect(drift('staff').getByTestId('drift-not-computed')).toContainText('Not computed');
 });
 
 test('JPH-23 AC3/AC4: rollforward 1/1–9/22/2026 renders each fund, ties its check row, notes the Salah lines still waiting, and exports XLSX', async ({

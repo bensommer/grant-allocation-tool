@@ -25,10 +25,10 @@ import {
   rollforward,
   snapshotLockedPeriod,
 } from '@/services/grant-periods';
-import { rollforwardNotes, tieOut } from '@/services/grant-workspace';
+import { rollforwardNotes, tieOut, tieOutFromQueue } from '@/services/grant-workspace';
 import { recordDecision } from '@/services/line-decisions';
 import { deletePeriodLock, lockPeriod } from '@/services/periods';
-import { ROLLFORWARD_LAYOUT, rollforwardXlsx } from '@/reports/rollforward-xlsx';
+import { ROLLFORWARD_LAYOUT, ROLLFORWARD_ROWS, rollforwardXlsx } from '@/reports/rollforward-xlsx';
 import { reviewQueue } from '@/services/review';
 import { seedPilot } from '@/seed/pilot';
 import { createTestOrg, resetDatabase } from './helpers';
@@ -205,8 +205,9 @@ describe('AC4 rollforward XLSX uses formulas', () => {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buf as unknown as ArrayBuffer);
     const ws = wb.getWorksheet('Restricted Grants')!;
-    const { beginning, ending, check, firstCol } = ROLLFORWARD_LAYOUT;
+    const { ending, valueRows, firstCol, labelCol } = ROLLFORWARD_LAYOUT;
     const totalCol = firstCol + rf.rows.length;
+    const checkCol = totalCol + 1;
     let formulas = 0;
     for (let c = firstCol; c <= totalCol; c++) {
       const v = ws.getCell(ending, c).value as ExcelJS.CellFormulaValue;
@@ -215,15 +216,15 @@ describe('AC4 rollforward XLSX uses formulas', () => {
       ws.getCell(ending, c).value = { formula: v.formula, result: -1 };
       formulas++;
     }
-    for (let r = beginning; r <= ending; r++) {
+    for (const r of valueRows) {
       const v = ws.getCell(r, totalCol).value as ExcelJS.CellFormulaValue;
       expect(typeof v === 'object' && v !== null && 'formula' in v, `total row ${r}`).toBe(true);
       ws.getCell(r, totalCol).value = { formula: v.formula, result: -1 };
       formulas++;
     }
-    const chk = ws.getCell(check, totalCol).value as ExcelJS.CellFormulaValue;
+    const chk = ws.getCell(ending, checkCol).value as ExcelJS.CellFormulaValue;
     expect(chk.formula).toMatch(/ROUND/);
-    ws.getCell(check, totalCol).value = { formula: chk.formula, result: -1 };
+    ws.getCell(ending, checkCol).value = { formula: chk.formula, result: -1 };
     expect(formulas).toBeGreaterThanOrEqual(3 + 6);
 
     const dir = mkdtempSync(path.join(os.tmpdir(), 'jph23-lo-'));
@@ -257,25 +258,57 @@ describe('AC4 rollforward XLSX uses formulas', () => {
     expect(csvName, 'LibreOffice wrote a CSV').toBeDefined();
     const lines = readFileSync(path.join(dir, csvName!), 'utf8').split(/\r?\n/);
     const endingRow = lines[ending - 1]!.split(',');
-    expect(endingRow[0]).toBe('Ending restricted balance');
+    expect(endingRow[labelCol - 1]).toBe(ROLLFORWARD_ROWS.ending);
     // Opioid 3,713.90 and Salah 27,291.19 (D1-A) from AC1/AC3; total 31,005.09.
     expect(Number(endingRow[firstCol - 1])).toBe(3713.9);
     expect(Number(endingRow[firstCol])).toBe(27291.19);
     expect(Number(endingRow[totalCol - 1])).toBe(31005.09);
-    const checkRow = lines[check - 1]!.split(',');
-    expect(Number(checkRow[totalCol - 1])).toBe(0);
+    // Her check sits beside the ending total on the same row.
+    expect(Number(endingRow[checkCol - 1])).toBe(0);
   }, 240_000);
 });
 
 describe('AC6 tie-out', () => {
-  it('Opioid: green check, effort charges on their own line, ±207.02 pair counted as paired', async () => {
+  // Design decision (2026-09-25): a proposed reversal pair is not green until a reviewer
+  // confirms it. Opioid's ±207.02 pair nets to zero, so the panel shows "1 pair to
+  // confirm" rather than the green check; confirming the pair (e2e) turns it green.
+  it('Opioid: ±207.02 pair pending — nets to 0.00, not green; effort charges on their own line', async () => {
     const t = await tieOut(orgId, opioidId);
-    expect(t.green).toBe(true);
+    expect(t.status).toBe('pairs');
+    expect(t.green).toBe(false);
+    expect(t.pendingPairs).toBe(1);
+    expect(t.waiting).toEqual([]);
     expect(t.effortCents).toBe(537603);
     expect(t.needsReviewCents).toBe(0);
     expect(t.needsReviewCount).toBe(2);
     expect(t.pairedCount).toBe(2);
     expect(t.chargedCents).toBe(t.assignedCents + t.effortCents);
+    expect(t.codedCents).toBe(t.assignedCents + t.excludedCents + t.needsReviewCents);
+  });
+
+  it('Opioid: green once the pair is confirmed (excluded as a reversal pair), with the same coded total', async () => {
+    const queue = await reviewQueue(orgId, opioidId);
+    const paired = queue.groups.flatMap((g) => g.lines);
+    expect(paired).toHaveLength(2);
+    const confirmed: typeof queue = {
+      ...queue,
+      groups: [],
+      excluded: [
+        ...queue.excluded,
+        ...paired.map((l) => ({ ...l, state: 'excluded' as const, reason: 'reversal pair' })),
+      ],
+      totals: {
+        ...queue.totals,
+        needsReviewCents: 0,
+        excludedCents: queue.totals.excludedCents + paired.reduce((s, l) => s + l.amountCents, 0),
+      },
+    };
+    const before = await tieOut(orgId, opioidId);
+    const t = tieOutFromQueue(confirmed, before.effortCents);
+    expect(t.status).toBe('clean');
+    expect(t.green).toBe(true);
+    expect(t.needsReviewCount).toBe(0);
+    expect(t.codedCents).toBe(before.codedCents);
     expect(t.codedCents).toBe(t.assignedCents + t.excludedCents + t.needsReviewCents);
   });
 });

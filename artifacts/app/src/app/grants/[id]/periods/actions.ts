@@ -6,7 +6,7 @@ import { parseDateInput } from '@/domain/dates';
 import { MoneyParseError, parseMoneyToCents } from '@/domain/money';
 import { redirectWithErrors, str, zodErrors } from '@/lib/forms';
 import { getOrgId } from '@/lib/org';
-import { recordReportedPeriod } from '@/services/grant-periods';
+import { recordReportedPeriod, updateReportedPeriodNote } from '@/services/grant-periods';
 import { ValidationError } from '@/services/programs';
 
 const MONEY_FIELDS = ['direct', 'staff', 'overhead', 'received'] as const;
@@ -74,4 +74,15 @@ export async function recordReportedPeriodAction(grantId: string, formData: Form
     throw e;
   }
   redirect(`/grants/${grantId}/periods?saved=1`);
+}
+
+/** Only the note of a reported period is editable; its figures are locked. */
+export async function updateReportedNoteAction(grantId: string, formData: FormData) {
+  await updateReportedPeriodNote(
+    await getOrgId(),
+    grantId,
+    str(formData, 'lockId'),
+    str(formData, 'note'),
+  );
+  redirect(`/grants/${grantId}/periods?noted=1`);
 }

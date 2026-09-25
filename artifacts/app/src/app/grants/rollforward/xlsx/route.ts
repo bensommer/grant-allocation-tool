@@ -9,11 +9,11 @@ import { resolveRange } from '../range';
 export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams;
   const orgId = await getOrgId();
-  const { from, to, error } = await resolveRange(
-    orgId,
-    sp.get('from') ?? undefined,
-    sp.get('to') ?? undefined,
-  );
+  const { from, to, error } = await resolveRange(orgId, {
+    range: sp.get('range') ?? undefined,
+    from: sp.get('from') ?? undefined,
+    to: sp.get('to') ?? undefined,
+  });
   if (error) return new Response(error, { status: 400 });
   const rf = await rollforward(orgId, from, to);
   const notes: Array<{ grant: string; text: string }> = [];

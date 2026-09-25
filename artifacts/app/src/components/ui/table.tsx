@@ -52,17 +52,25 @@ export function NumTd({
   cents,
   children,
   dollar,
+  zero,
   ...props
 }:
-  | (TdHTMLAttributes<HTMLTableCellElement> & { cents: number; children?: never; dollar?: boolean })
+  | (TdHTMLAttributes<HTMLTableCellElement> & {
+      cents: number;
+      children?: never;
+      dollar?: boolean;
+      /** Zero as "—" (grids, the default) or "0.00" (audit schedules: rollforward, tie-out). */
+      zero?: 'dash' | 'zero';
+    })
   | (TdHTMLAttributes<HTMLTableCellElement> & {
       cents?: never;
       children: ReactNode;
       dollar?: never;
+      zero?: never;
     })) {
   return (
     <td {...props} className={`num ${props.className ?? ''}`} data-cents={cents}>
-      {cents !== undefined ? <Money cents={cents} dollar={dollar} /> : children}
+      {cents !== undefined ? <Money cents={cents} dollar={dollar} zero={zero} /> : children}
     </td>
   );
 }

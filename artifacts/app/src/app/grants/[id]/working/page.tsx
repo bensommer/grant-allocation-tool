@@ -4,6 +4,7 @@ import {
   Card,
   DataTable,
   DateText,
+  EmptyState,
   NumTd,
   PageHeader,
   Period,
@@ -12,17 +13,28 @@ import {
   TotalRow,
 } from '@/components/ui';
 import { Field } from '@/components/form';
+import { PacingCallout } from '@/components/pacing-callout';
 import { parseDateInput, toISODate } from '@/domain/dates';
+import { pacing } from '@/domain/pacing';
 import type { PlannedEntry } from '@/domain/periods';
 import { getOrgId } from '@/lib/org';
 import { defaultReportDate } from '@/services/bva';
 import { budgetTree } from '@/services/grant-budget';
-import { forecast, grantHeader, workingView, type WorkingRow } from '@/services/grant-workspace';
+import {
+  forecast,
+  grantHeader,
+  headerMetrics,
+  workingView,
+  type WorkingRow,
+} from '@/services/grant-workspace';
+import { getPacingSettings } from '@/services/settings';
 import { GrantTabs } from '../tabs';
 
 export const dynamic = 'force-dynamic';
 
-const SLOTS = [0, 1, 2] as const;
+/** Blank planned-entry rows shown at first; "Add row" re-renders with one more. */
+const MIN_SLOTS = 3;
+const MAX_SLOTS = 12;
 
 /** Remaining per month left in the grant, plus a forecast strip for planned entries. */
 export default async function WorkingViewPage({
@@ -37,11 +49,22 @@ export default async function WorkingViewPage({
   const orgId = await getOrgId();
   const grant = await grantHeader(orgId, id);
   if (!grant) notFound();
-  const [{ date }, tree] = await Promise.all([
+  const [{ date }, tree, thresholds] = await Promise.all([
     defaultReportDate(orgId, sp.asOf),
     budgetTree(orgId, id),
+    getPacingSettings(orgId),
   ]);
   const view = workingView(tree, grant, date);
+  const metrics = await headerMetrics(orgId, grant, date);
+  const pace = pacing(
+    grant.awardAmountCents,
+    metrics.spentCents,
+    grant.startDate,
+    grant.endDate,
+    date,
+    thresholds.underPercent,
+    thresholds.overPercent,
+  );
 
   // Forecast strip: a stateless GET form so the URL carries the plan.
   let fcTo: Date = grant.endDate;
@@ -53,11 +76,23 @@ export default async function WorkingViewPage({
       fcError = 'Enter the forecast date as YYYY-MM-DD.';
     }
   }
-  const entries: PlannedEntry[] = SLOTS.map((i) => ({
-    count: Number(sp[`count${i}`] ?? 0) || 0,
-    hours: sp[`hours${i}`] ?? '',
-    rate: sp[`rate${i}`] ?? '',
-  })).filter((e) => e.count > 0 && e.hours !== '' && e.rate !== '');
+  // Rows: at least MIN_SLOTS; the highest slot named in the URL plus one when "Add row" asked.
+  const named = Object.keys(sp)
+    .map((k) => /^(?:count|hours|rate)(\d+)$/.exec(k)?.[1])
+    .filter((n): n is string => n !== undefined)
+    .map(Number);
+  const slotCount = Math.min(
+    MAX_SLOTS,
+    Math.max(MIN_SLOTS, (named.length ? Math.max(...named) + 1 : 0) + (sp.add ? 1 : 0)),
+  );
+  const slots = Array.from({ length: slotCount }, (_, i) => i);
+  const entries: PlannedEntry[] = slots
+    .map((i) => ({
+      count: Number(sp[`count${i}`] ?? 0) || 0,
+      hours: sp[`hours${i}`] ?? '',
+      rate: sp[`rate${i}`] ?? '',
+    }))
+    .filter((e) => e.count > 0 && e.hours !== '' && e.rate !== '');
   const lineCode = sp.line ?? '';
   const target = tree.all.find((l) => l.code === lineCode && l.kind !== 'funder_category');
   const fc = forecast(
@@ -79,14 +114,10 @@ export default async function WorkingViewPage({
         }
       />
       <GrantTabs id={id} active="working" />
-      <Card
-        title="Working view"
-        action={
-          <span className="muted text-sm" data-testid="months-left" data-months={view.months}>
-            <DateText date={date} /> · {view.months} months left in the grant period
-          </span>
-        }
-      >
+      <Card title="Pacing">
+        <PacingCallout metrics={metrics} pace={pace} />
+      </Card>
+      <Card title="Working view" action={<span className="muted text-sm">Report date <DateText date={date} /></span>}>
         <DataTable stickyFirstColumn>
           <thead>
             <tr>
@@ -141,7 +172,7 @@ export default async function WorkingViewPage({
                 defaultValue={sp.to ?? toISODate(grant.endDate)}
               />
             </Field>
-            {SLOTS.map((i) => (
+            {slots.map((i) => (
               <div key={i} className="grid grid-cols-3 gap-2 sm:col-span-2 sm:grid-cols-6">
                 <Field label={`Entry ${i + 1}: count`} name={`count${i}`}>
                   <input
@@ -176,42 +207,56 @@ export default async function WorkingViewPage({
               </div>
             ))}
           </div>
-          <div className="self-end">
+          <div className="flex flex-wrap gap-2 self-end">
             <Button type="submit" variant="secondary">
               Project
             </Button>
+            {slotCount < MAX_SLOTS && (
+              <Button type="submit" name="add" value="1" variant="ghost" data-testid="add-row">
+                Add row
+              </Button>
+            )}
           </div>
         </form>
-        <DataTable>
-          <tbody data-testid="forecast">
-            <tr>
-              <Td>Spent to date{target ? ` on ${target.code}` : ''}</Td>
-              <NumTd cents={fc.spentCents} />
-            </tr>
-            {fc.entries.map((e, i) => (
-              <tr key={i}>
-                <Td>
-                  Planned: {e.count} × {e.hours} h × ${e.rate}
-                </Td>
-                <NumTd cents={e.cents} data-testid="planned-entry" />
+        {fc.entries.length === 0 ? (
+          <div data-testid="forecast">
+            <EmptyState
+              title="No planned spend"
+              hint="Add planned programs to project spend to grant end."
+            />
+          </div>
+        ) : (
+          <DataTable>
+            <tbody data-testid="forecast">
+              <tr>
+                <Td>Spent to date{target ? ` on ${target.code}` : ''}</Td>
+                <NumTd cents={fc.spentCents} />
               </tr>
-            ))}
-            <tr>
-              <Td>Planned total</Td>
-              <NumTd cents={fc.plannedCents} data-testid="planned-total" />
-            </tr>
-            <TotalRow>
-              <Th scope="row">
-                Projected spend at <DateText date={fc.to} />
-              </Th>
-              <NumTd cents={fc.projectedCents} dollar data-testid="projected" />
-            </TotalRow>
-            <tr>
-              <Td>Budget remaining after plan</Td>
-              <NumTd cents={fc.remainingAfterCents} data-testid="remaining-after" />
-            </tr>
-          </tbody>
-        </DataTable>
+              {fc.entries.map((e, i) => (
+                <tr key={i}>
+                  <Td>
+                    Planned: {e.count} × {e.hours} h × ${e.rate}
+                  </Td>
+                  <NumTd cents={e.cents} data-testid="planned-entry" />
+                </tr>
+              ))}
+              <tr>
+                <Td>Planned total</Td>
+                <NumTd cents={fc.plannedCents} data-testid="planned-total" />
+              </tr>
+              <TotalRow>
+                <Th scope="row">
+                  Projected spend at <DateText date={fc.to} />
+                </Th>
+                <NumTd cents={fc.projectedCents} dollar data-testid="projected" />
+              </TotalRow>
+              <tr>
+                <Td>Budget remaining after plan</Td>
+                <NumTd cents={fc.remainingAfterCents} data-testid="remaining-after" />
+              </tr>
+            </tbody>
+          </DataTable>
+        )}
       </Card>
     </>
   );
@@ -219,7 +264,7 @@ export default async function WorkingViewPage({
 
 function PerMonth({ cents, testId }: { cents: number | null; testId?: string }) {
   return cents === null ? (
-    <Td className="num muted" data-testid={testId}>
+    <Td className="num muted" data-testid={testId} title="grant period has ended">
       —
     </Td>
   ) : (

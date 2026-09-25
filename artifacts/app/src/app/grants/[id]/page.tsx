@@ -9,19 +9,20 @@ import {
   Money,
   NumTd,
   PageHeader,
-  Pct,
   Period,
   ProgressBar,
   Td,
   Th,
   TotalRow,
 } from '@/components/ui';
-import { GrantPaceStatus } from '@/components/grant-pace-status';
+import { PacingCallout } from '@/components/pacing-callout';
+import { pacing } from '@/domain/pacing';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { bvaData, defaultReportDate } from '@/services/bva';
 import { budgetTree } from '@/services/grant-budget';
 import { headerMetrics, tieOut } from '@/services/grant-workspace';
+import { getPacingSettings } from '@/services/settings';
 import { GrantTabs } from './tabs';
 import { TieOutPanel } from './tie-out-panel';
 
@@ -45,10 +46,21 @@ export default async function GrantPage({
   const grant = grants[0];
   if (!grant) notFound();
   const tree = await budgetTree(orgId, id);
-  const [metrics, tie] = await Promise.all([
+  const [metrics, tie, thresholds] = await Promise.all([
     headerMetrics(orgId, grant, date),
     tieOut(orgId, id, tree),
+    getPacingSettings(orgId),
   ]);
+  // Pace from the same spend the header shows (assigned lines + effort), not the BvA rows.
+  const pace = pacing(
+    grant.awardAmountCents,
+    metrics.spentCents,
+    grant.startDate,
+    grant.endDate,
+    date,
+    thresholds.underPercent,
+    thresholds.overPercent,
+  );
   const programNames = new Map(programs.map((p) => [p.id, p.name]));
   const receipts = await prisma.transactionLine.findMany({
     where: {
@@ -98,40 +110,53 @@ export default async function GrantPage({
           This grant appears in a compute run, so it was archived rather than deleted.
         </Banner>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-testid="header-metrics">
-        <Card>
-          <KeyFigure label="Award" value={<Money cents={metrics.awardCents} dollar data-testid="metric-award" />} />
-        </Card>
-        <Card>
-          <KeyFigure
-            label="Received"
-            value={<Money cents={metrics.receivedCents} dollar data-testid="metric-received" />}
-            hint="Grant income lines through the report date"
-          />
-        </Card>
-        <Card>
-          <KeyFigure
-            label="Spent"
-            value={<Money cents={metrics.spentCents} dollar data-testid="metric-spent" />}
-            hint="Assigned lines + effort charges, current run"
-          />
-        </Card>
+      <div className="grid gap-4 md:grid-cols-2" data-testid="header-metrics">
         <Card>
           <KeyFigure
             label="Restricted balance"
             value={<Money cents={metrics.restrictedBalanceCents} dollar data-testid="metric-balance" />}
             hint="Received − spent"
+            lead
           />
         </Card>
         <Card>
           <KeyFigure
-            label="Time elapsed vs. spent"
+            label="Spent vs. budget"
             value={
-              <span data-testid="elapsed-vs-spent">
-                <Pct basisPoints={metrics.elapsedBps} /> · <Pct basisPoints={metrics.spentBps} />
-              </span>
+              <>
+                <Money cents={metrics.spentCents} dollar data-testid="metric-spent" />
+                <span className="muted text-base font-normal">
+                  {' '}
+                  of <Money cents={metrics.awardCents} dollar data-testid="metric-award" />
+                </span>
+              </>
             }
-            hint="% of the grant period elapsed · % of the award spent"
+            hint={
+              <PacingCallout
+                metrics={metrics}
+                pace={pace}
+                overBudgetLines={grant.rows.filter((r) => r.overBudget).map((r) => r.name)}
+              />
+            }
+            lead
+          />
+        </Card>
+      </div>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <KeyFigure
+            label="Received"
+            value={<Money cents={metrics.receivedCents} dollar data-testid="metric-received" />}
+            hint="Grant income lines through the report date"
+            quiet
+          />
+        </Card>
+        <Card>
+          <KeyFigure
+            label="Remaining award"
+            value={<Money cents={metrics.awardCents - metrics.spentCents} dollar />}
+            hint="Award − spent"
+            quiet
           />
         </Card>
         <Card>
@@ -145,28 +170,15 @@ export default async function GrantPage({
               )
             }
             hint="Straight line from the spend rate to date"
+            quiet
           />
         </Card>
         <Card>
           <KeyFigure
-            label="Remaining award"
-            value={<Money cents={metrics.awardCents - metrics.spentCents} dollar />}
-          />
-        </Card>
-        <Card>
-          <KeyFigure
-            label="Pacing"
-            value={
-              <GrantPaceStatus
-                pace={grant.pace}
-                overBudgetLines={grant.rows.filter((r) => r.overBudget).map((r) => r.name)}
-              />
-            }
-            hint={
-              <>
-                As of <DateText date={date} />
-              </>
-            }
+            label="Spent"
+            value={<Money cents={metrics.spentCents} dollar />}
+            hint="Assigned lines + effort charges, current run"
+            quiet
           />
         </Card>
       </div>

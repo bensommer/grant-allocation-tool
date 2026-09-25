@@ -94,6 +94,11 @@ export default async function RestrictedPage({
             {run ? <DateText date={run.finishedAt ?? run.startedAt} time /> : 'none'}
           </>
         }
+        secondaryActions={
+          <ButtonLink href="/grants/rollforward" variant="secondary" data-testid="rollforward-link">
+            Rollforward →
+          </ButtonLink>
+        }
       />
       <StaleRunBanner run={run} />
       {!run && (

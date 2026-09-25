@@ -30,17 +30,25 @@ export function KeyFigure({
   value,
   hint,
   tone,
+  lead = false,
+  quiet = false,
 }: {
   label: string;
   value: ReactNode;
   hint?: ReactNode;
   tone?: Tone;
+  /** The figure the page is about: larger type. */
+  lead?: boolean;
+  /** Supporting figure: smaller type, no accent. */
+  quiet?: boolean;
 }) {
   return (
-    <div className={`key-figure ${tone ? `key-figure-${tone}` : ''}`}>
+    <div
+      className={`key-figure ${tone ? `key-figure-${tone}` : ''}${lead ? ' key-figure-lead' : ''}${quiet ? ' key-figure-quiet' : ''}`}
+    >
       <span className="muted">{label}</span>
       <strong>{value}</strong>
-      {hint ? <small className="muted">{hint}</small> : null}
+      {hint ? <div className="key-figure-hint muted">{hint}</div> : null}
     </div>
   );
 }
