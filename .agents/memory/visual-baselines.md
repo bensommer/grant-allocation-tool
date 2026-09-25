@@ -11,5 +11,9 @@ description: How the Playwright visual snapshots stay stable and how the e2e pro
 - **Why:** a baseline captured after the narratives spec ran encoded a draft row and a stale-run
   banner and failed on clean data; parallel workers also let `status.spec` mark the run stale
   mid-capture.
+- Any spec that imports extra transactions into the demo org (the QuickBooks report spec) must run in
+  its own project *after* chromium/chromium-nojs and hard-clean its own rows: its lines otherwise
+  land in the shared compute run and shift the fixture-cent totals other specs assert (seen as a
+  custom-report grand total off by the pilot lines and BVA cells at 0).
 - Header/subtitle timestamps are masked via `[data-volatile]`; anything new that prints a run time
   must carry that attribute or every baseline drifts.
