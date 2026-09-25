@@ -22,7 +22,12 @@ export interface BudgetLineView {
   originalCents: number;
   revisionCents: number;
   currentCents: number;
+  /** Assigned transaction lines in the current run. */
   spentCents: number;
+  /** Effort charges (JPH-22) in the current run; reported separately from spent. */
+  effortCents: number;
+  /** spentCents + effortCents. */
+  chargedCents: number;
   /** For funder categories: Σ current budgets of its children. */
   childrenCurrentCents: number;
   children: BudgetLineView[];
@@ -47,6 +52,8 @@ export interface BudgetTree {
     workingOriginalCents: number;
     workingCurrentCents: number;
     spentCents: number;
+    effortCents: number;
+    chargedCents: number;
   };
   runId: string | null;
   revisions: Array<{
@@ -61,29 +68,36 @@ export interface BudgetTree {
   }>;
 }
 
-/** Spent per budget line from the current run's assigned grant-stage results. */
+/**
+ * Spent per budget line from the current run's assigned grant-stage results:
+ * `spent` = transaction lines, `effort` = effort charges (JPH-22), kept apart
+ * so the member-line figures stay comparable with the phase-2 baselines.
+ */
 export async function spentByBudgetLine(
   orgId: string,
   grantId: string,
-): Promise<{ runId: string | null; spent: Map<string, number> }> {
+): Promise<{ runId: string | null; spent: Map<string, number>; effort: Map<string, number> }> {
   const run = await prisma.computeRun.findFirst({
     where: { orgId, isCurrent: true },
     select: { id: true },
   });
-  if (!run) return { runId: null, spent: new Map() };
+  if (!run) return { runId: null, spent: new Map(), effort: new Map() };
   const rows = await prisma.grantLineResult.groupBy({
-    by: ['budgetLineId'],
+    by: ['budgetLineId', 'source'],
     _sum: { amountCents: true },
     where: { computeRunId: run.id, grantId, state: 'assigned', budgetLineId: { not: null } },
   });
-  return {
-    runId: run.id,
-    spent: new Map(rows.map((r) => [r.budgetLineId!, r._sum.amountCents ?? 0])),
-  };
+  const spent = new Map<string, number>();
+  const effort = new Map<string, number>();
+  for (const r of rows) {
+    const target = r.source === 'effort' ? effort : spent;
+    target.set(r.budgetLineId!, (target.get(r.budgetLineId!) ?? 0) + (r._sum.amountCents ?? 0));
+  }
+  return { runId: run.id, spent, effort };
 }
 
 export async function budgetTree(orgId: string, grantId: string): Promise<BudgetTree> {
-  const [lines, activities, revisions, { runId, spent }] = await Promise.all([
+  const [lines, activities, revisions, { runId, spent, effort }] = await Promise.all([
     prisma.grantBudgetLine.findMany({
       where: { orgId, grantId },
       orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }],
@@ -125,6 +139,8 @@ export async function budgetTree(orgId: string, grantId: string): Promise<Budget
       revisionCents,
       currentCents: l.budgetCents + revisionCents,
       spentCents: spent.get(l.id) ?? 0,
+      effortCents: effort.get(l.id) ?? 0,
+      chargedCents: (spent.get(l.id) ?? 0) + (effort.get(l.id) ?? 0),
       childrenCurrentCents: 0,
       children: [],
     });
@@ -143,6 +159,8 @@ export async function budgetTree(orgId: string, grantId: string): Promise<Budget
   for (const c of categories) {
     c.childrenCurrentCents = c.children.reduce((a, b) => a + b.currentCents, 0);
     c.spentCents = c.children.reduce((a, b) => a + b.spentCents, 0);
+    c.effortCents = c.children.reduce((a, b) => a + b.effortCents, 0);
+    c.chargedCents = c.spentCents + c.effortCents;
   }
   const leaves = [...views.values()].filter((v) => v.kind !== 'funder_category');
   const all = [...views.values()];
@@ -160,6 +178,8 @@ export async function budgetTree(orgId: string, grantId: string): Promise<Budget
       workingOriginalCents: leaves.reduce((a, l) => a + l.originalCents, 0),
       workingCurrentCents: leaves.reduce((a, l) => a + l.currentCents, 0),
       spentCents: leaves.reduce((a, l) => a + l.spentCents, 0),
+      effortCents: leaves.reduce((a, l) => a + l.effortCents, 0),
+      chargedCents: leaves.reduce((a, l) => a + l.chargedCents, 0),
     },
     runId,
     revisions: revisions.map((r) => ({

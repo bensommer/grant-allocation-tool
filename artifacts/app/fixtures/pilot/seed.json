@@ -585,6 +585,49 @@
             ]
           }
         }
+      ],
+      "schedules": [
+        {
+          "personLabel": "Kira",
+          "salaryCents": 7500000,
+          "burdenBps": 765,
+          "targetCategoryKey": "coordinator",
+          "active": true,
+          "actualPayrollMatchers": {
+            "accounts": [
+              "Salaries",
+              "Payroll Tax Expense"
+            ],
+            "descriptionContainsAny": [
+              "Kira",
+              "adjustment to Opioid Grant",
+              "Conference Leah"
+            ]
+          },
+          "supersedesDecisionReason": "pending effort charge (phase 3)",
+          "entries": [
+            {
+              "activity": "Daytime Mother's",
+              "hoursPerOccurrence": "5.75"
+            },
+            {
+              "activity": "Conference",
+              "hoursPerOccurrence": "23"
+            },
+            {
+              "activity": "Teen Monthly",
+              "hoursPerOccurrence": "5.75"
+            },
+            {
+              "activity": "Mother's Exhaustion (virtual)",
+              "hoursPerOccurrence": "2"
+            },
+            {
+              "activity": "Sober Socials",
+              "hoursPerOccurrence": "5.75"
+            }
+          ]
+        }
       ]
     }
   ]

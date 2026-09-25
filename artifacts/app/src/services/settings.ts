@@ -30,3 +30,58 @@ export async function savePacingSettings(orgId: string, underPercent: number, ov
     },
   });
 }
+
+/**
+ * Default destination for correcting entries (JPH-22): the class and/or the
+ * project (customer party) that reclassed or trued-up amounts move to. Unset
+ * (both null) blocks drafting.
+ */
+export interface DefaultDestination {
+  classId: string | null;
+  partyId: string | null;
+}
+
+export function defaultDestination(json: unknown): DefaultDestination {
+  const obj =
+    json && typeof json === 'object' && !Array.isArray(json)
+      ? (json as Record<string, unknown>)
+      : {};
+  const classId = typeof obj.defaultDestinationClassId === 'string' ? obj.defaultDestinationClassId : null;
+  const partyId = typeof obj.defaultDestinationPartyId === 'string' ? obj.defaultDestinationPartyId : null;
+  return { classId: classId || null, partyId: partyId || null };
+}
+
+export function isDestinationSet(d: DefaultDestination): boolean {
+  return d.classId !== null || d.partyId !== null;
+}
+
+export async function getDefaultDestination(orgId: string): Promise<DefaultDestination> {
+  const org = await prisma.org.findUniqueOrThrow({ where: { id: orgId } });
+  return defaultDestination(org.settings);
+}
+
+export async function saveDefaultDestination(orgId: string, d: DefaultDestination): Promise<void> {
+  if (d.classId) {
+    const cls = await prisma.trackingClass.findFirst({ where: { id: d.classId, orgId } });
+    if (!cls) throw new Error('Class not found');
+  }
+  if (d.partyId) {
+    const party = await prisma.party.findFirst({ where: { id: d.partyId, orgId } });
+    if (!party) throw new Error('Project / customer not found');
+  }
+  const org = await prisma.org.findUniqueOrThrow({ where: { id: orgId } });
+  const original =
+    org.settings && typeof org.settings === 'object' && !Array.isArray(org.settings)
+      ? org.settings
+      : {};
+  await prisma.org.update({
+    where: { id: orgId },
+    data: {
+      settings: {
+        ...original,
+        defaultDestinationClassId: d.classId,
+        defaultDestinationPartyId: d.partyId,
+      },
+    },
+  });
+}

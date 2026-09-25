@@ -23,6 +23,7 @@ import { upsertBudgetLine } from '@/services/grants';
 import { addRevision, upsertActivity } from '@/services/grant-budget';
 import { createGrantRule, updateGrantRule, type GrantRuleInput } from '@/services/grant-rules';
 import { lineFingerprint, recordDecision } from '@/services/line-decisions';
+import { createSchedule, updateSchedule, upsertEntry } from '@/services/effort';
 
 const seedMatchers = z.object({
   accounts: z.array(z.string()).optional(),
@@ -114,6 +115,29 @@ const seedGrant = z.object({
       select: selector,
     }),
   ),
+  /** Effort schedules (JPH-22). */
+  schedules: z
+    .array(
+      z.object({
+        personLabel: z.string(),
+        salaryCents: z.number().int().optional(),
+        hourlyRate: z.string().optional(),
+        burdenBps: z.number().int(),
+        targetCategoryKey: z.string(),
+        active: z.boolean().default(true),
+        actualPayrollMatchers: seedMatchers,
+        /** Active exclude decisions with this reason on the matched lines are superseded. */
+        supersedesDecisionReason: z.string().optional(),
+        entries: z.array(
+          z.object({
+            activity: z.string(),
+            hoursPerOccurrence: z.string(),
+            completedCountOverride: z.number().int().optional(),
+          }),
+        ),
+      }),
+    )
+    .default([]),
 });
 export const seedFileSchema = z.object({
   $comment: z.string().optional(),
@@ -133,6 +157,7 @@ export interface SeedSummary {
     rules: number;
     decisions: number;
     revisions: number;
+    schedules: number;
   }>;
   notes: string[];
 }
@@ -242,6 +267,16 @@ async function seedGrantConfig(
   }
   const grantId = grant.id;
 
+  // The grant's QuickBooks coding (class full name / project) is what the grant
+  // side of a correcting entry must carry; keep it on the grant even when the
+  // export has no such row (JPH-22).
+  await prisma.grant.update({
+    where: { id: grantId },
+    data: {
+      qboClassName: g.scope.kind === 'class' ? (g.scope.classPath ?? null) : null,
+      qboProjectName: g.scope.kind === 'project' ? (g.scope.projectName ?? null) : null,
+    },
+  });
   // Scope descriptors the export cannot carry are reported, not invented.
   if (g.scope.kind === 'class' && g.scope.classPath) {
     const cls = await prisma.trackingClass.findFirst({
@@ -409,6 +444,15 @@ async function seedGrantConfig(
   // --- decisions ---------------------------------------------------------------
   let decisions = 0;
   for (const d of g.decisions) {
+    // A placeholder decision that a seeded effort schedule supersedes (JPH-22) is recorded once
+    // and then retired below; on later seed runs it is left in its superseded state.
+    if (
+      d.kind === 'exclude' &&
+      d.reason &&
+      g.schedules.some((sc) => sc.supersedesDecisionReason === d.reason) &&
+      (await prisma.lineDecision.count({ where: { orgId, grantId, reason: d.reason } })) > 0
+    )
+      continue;
     const ids = await selectMemberLines(orgId, grantId, d.select, resolver);
     if (ids.length === 0) {
       notes.push(`${ctx}: decision "${d.note}" selected no member lines`);
@@ -460,6 +504,68 @@ async function seedGrantConfig(
     decisions += fresh.length;
   }
 
+  // --- effort schedules (JPH-22) ------------------------------------------------
+  // Seeded before the decisions' "pending effort charge" placeholders are retired: the
+  // schedule's matchers now exclude those lines, so the placeholder decisions are
+  // superseded (never deleted) and the trail shows why.
+  let schedules = 0;
+  for (const sc of g.schedules) {
+    const input = {
+      personLabel: sc.personLabel,
+      personPartyId: null,
+      salaryCents: sc.salaryCents ?? null,
+      hourlyRate: sc.hourlyRate ?? null,
+      burdenBps: sc.burdenBps,
+      targetCategoryKey: sc.targetCategoryKey,
+      actualPayrollMatchers: await resolver.matchers(sc.actualPayrollMatchers),
+      active: sc.active,
+    };
+    const current = await prisma.effortSchedule.findFirst({
+      where: { orgId, grantId, personLabel: sc.personLabel },
+    });
+    const row = current
+      ? await updateSchedule(orgId, grantId, current.id, input, 'seed:pilot')
+      : await createSchedule(orgId, grantId, input, 'seed:pilot');
+    let sortOrder = 0;
+    for (const e of sc.entries) {
+      const aId = activityId.get(e.activity);
+      if (!aId) {
+        notes.push(`${ctx}: schedule "${sc.personLabel}": activity "${e.activity}" not found`);
+        continue;
+      }
+      sortOrder += 10;
+      await upsertEntry(
+        orgId,
+        grantId,
+        row.id,
+        {
+          activityId: aId,
+          hoursPerOccurrence: e.hoursPerOccurrence,
+          completedCountOverride: e.completedCountOverride ?? null,
+          sortOrder,
+        },
+        'seed:pilot',
+      );
+    }
+    if (sc.supersedesDecisionReason) {
+      const retired = await prisma.lineDecision.updateMany({
+        where: {
+          orgId,
+          grantId,
+          kind: 'exclude',
+          reason: sc.supersedesDecisionReason,
+          supersededAt: null,
+        },
+        data: { supersededAt: new Date() },
+      });
+      if (retired.count > 0)
+        notes.push(
+          `${ctx}: schedule "${sc.personLabel}" superseded ${retired.count} "${sc.supersedesDecisionReason}" decision(s)`,
+        );
+    }
+    schedules++;
+  }
+
   return {
     key: g.key,
     grantId,
@@ -470,6 +576,7 @@ async function seedGrantConfig(
     rules,
     decisions,
     revisions,
+    schedules,
   };
 }
 

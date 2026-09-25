@@ -118,12 +118,12 @@ async function reimportSalah() {
 async function stateSnapshot(grantId: string) {
   const run = await currentRun(orgId);
   const rows = await prisma.grantLineResult.findMany({
-    where: { computeRunId: run!.id, grantId },
+    where: { computeRunId: run!.id, grantId, source: 'transaction' },
     include: { line: { select: { transaction: { select: { externalId: true } } } } },
   });
   return new Map(
     rows.map((r) => [
-      r.line.transaction.externalId,
+      r.line!.transaction.externalId,
       `${r.state}|${r.budgetLineId ?? ''}|${r.reason ?? ''}`,
     ]),
   );

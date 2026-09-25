@@ -37,6 +37,11 @@ import {
   type BudgetLineInput,
 } from '@/services/grants';
 import { ValidationError } from '@/services/programs';
+import {
+  DestinationUnsetError,
+  GrantCodingUnsetError,
+  draftReclassForDecisionGroup,
+} from '@/services/correcting-entries';
 
 function money(formData: FormData, name: string, errors: Record<string, string>): number {
   try {
@@ -92,6 +97,8 @@ async function parseGrant(orgId: string, formData: FormData) {
     matchClassIds: list(formData, 'matchClassIds'),
     memberClassIds: list(formData, 'memberClassIds'),
     memberPartyIds: list(formData, 'memberPartyIds'),
+    qboClassName: strOrNull(formData, 'qboClassName'),
+    qboProjectName: strOrNull(formData, 'qboProjectName'),
     programs,
   };
   const parsed = grantInputSchema.safeParse(candidate);
@@ -404,17 +411,32 @@ export async function recordDecisionAction(grantId: string, formData: FormData):
   if (!note) errors['note'] = 'A note is required';
   if (Object.keys(errors).length > 0) redirectWithErrors(back, errors, formData);
   const orgId = await getOrgId();
+  let groupId: string;
   try {
-    await recordDecision(orgId, grantId, {
+    ({ groupId } = await recordDecision(orgId, grantId, {
       kind: kind as 'assign' | 'exclude' | 'at_risk',
       lineIds,
       targetBudgetLineId: kind === 'assign' ? str(formData, 'targetBudgetLineId') : null,
       reason: reason || null,
       note,
-    });
+    }));
   } catch (e) {
     if (e instanceof ValidationError) redirectWithErrors(back, e.fieldErrors, formData);
     throw e;
+  }
+  // "Draft correcting entry" (JPH-22): an exclusion may draft the D1-B reclass in the same
+  // action. The exclusion is already saved; a blocked draft only reports why.
+  if (kind === 'exclude' && bool(formData, 'draftEntry')) {
+    try {
+      const draft = await draftReclassForDecisionGroup(orgId, grantId, groupId);
+      redirect(`${back}?saved=1&drafted=${encodeURIComponent(draft.code)}`);
+    } catch (e) {
+      if (e instanceof DestinationUnsetError) redirect(`${back}?saved=1&blocked=1`);
+      if (e instanceof GrantCodingUnsetError) redirect(`${back}?saved=1&blocked=grant`);
+      if (e instanceof ValidationError)
+        redirect(`${back}?saved=1&draftError=${encodeURIComponent(Object.values(e.fieldErrors).join('; '))}`);
+      throw e;
+    }
   }
   redirect(`${back}?saved=1`);
 }

@@ -31,6 +31,8 @@ export async function routes(): Promise<string[]> {
     `/grants/${grant.id}/budget/import`,
     `/grants/${grant.id}/review`,
     `/grants/${grant.id}/review?show=all`,
+    `/grants/${grant.id}/effort`,
+    `/grants/${grant.id}/entries`,
     `/grants/${grant.id}/rules`,
     `/grants/${grant.id}/rules/new`,
     `/grants/${grant.id}/history`,

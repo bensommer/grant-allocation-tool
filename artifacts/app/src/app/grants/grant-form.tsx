@@ -17,6 +17,8 @@ export interface GrantFormData {
   matchPartyIds: string[];
   matchClassIds: string[];
   memberClassIds: string[];
+  qboClassName: string | null;
+  qboProjectName: string | null;
   memberPartyIds: string[];
   programs: Array<{ programId: string; plannedShareBps: number | null }>;
 }
@@ -267,6 +269,30 @@ export function GrantForm({
               note: c.kind === 'project' ? 'project' : undefined,
             }))}
             selected={pickList(state, 'memberPartyIds', grant?.memberPartyIds ?? [])}
+          />
+        </Field>
+        <Field
+          label="QuickBooks class"
+          name="qboClassName"
+          hint="Class full name the grant is coded to in QuickBooks (e.g. Programs:Trauma Grants). Used on the grant side of correcting entries when the class is not a ledger row."
+          error={state?.errors['qboClassName']}
+        >
+          <input
+            id="qboClassName"
+            name="qboClassName"
+            defaultValue={pick(state, 'qboClassName', grant?.qboClassName)}
+          />
+        </Field>
+        <Field
+          label="QuickBooks project / customer"
+          name="qboProjectName"
+          hint="Project (customer) name the grant is coded to in QuickBooks. Used on the grant side of correcting entries when the project is not a ledger row."
+          error={state?.errors['qboProjectName']}
+        >
+          <input
+            id="qboProjectName"
+            name="qboProjectName"
+            defaultValue={pick(state, 'qboProjectName', grant?.qboProjectName)}
           />
         </Field>
       </div>

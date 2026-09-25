@@ -64,7 +64,8 @@ export async function reviewQueue(orgId: string, grantId: string): Promise<Revie
   const [results, decisions] = await Promise.all([
     run
       ? prisma.grantLineResult.findMany({
-          where: { computeRunId: run.id, grantId },
+          // Effort charges (source = effort) have no transaction line and are not reviewed here.
+          where: { computeRunId: run.id, grantId, source: 'transaction' },
           include: {
             line: {
               include: {
@@ -105,7 +106,13 @@ export async function reviewQueue(orgId: string, grantId: string): Promise<Revie
     : [];
   const ruleName = new Map(rules.map((r) => [r.id, r.name ?? r.id]));
 
-  const lines: ReviewLine[] = results
+  // The `source: transaction` filter above guarantees a line; narrow the type once.
+  const rows = results.flatMap((r) =>
+    r.line && r.transactionLineId
+      ? [{ ...r, line: r.line, transactionLineId: r.transactionLineId }]
+      : [],
+  );
+  const lines: ReviewLine[] = rows
     .map((r) => ({
       id: r.transactionLineId,
       txnDate: r.line.transaction.txnDate,
@@ -153,9 +160,12 @@ export async function reviewQueue(orgId: string, grantId: string): Promise<Revie
     }))
     .sort((a, b) => a.reason.localeCompare(b.reason));
 
-  const drafts: GrantLineDraft[] = results.map((r) => ({
+  const drafts: GrantLineDraft[] = rows.map((r) => ({
     grantId: r.grantId,
+    source: 'transaction',
     transactionLineId: r.transactionLineId,
+    effortEntryId: null,
+    effortScheduleId: null,
     state: r.state,
     budgetLineId: r.budgetLineId,
     activityId: r.activityId,
@@ -167,7 +177,7 @@ export async function reviewQueue(orgId: string, grantId: string): Promise<Revie
     amountCents: r.amountCents,
   }));
   const infoOf = new Map(
-    results.map((r) => [
+    rows.map((r) => [
       r.transactionLineId,
       {
         accountId: r.line.accountId,

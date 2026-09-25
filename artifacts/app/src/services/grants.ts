@@ -25,6 +25,9 @@ export const grantInputSchema = z
     /** Live-QuickBooks membership rules (JPH-20): classes / projects whose lines belong to this grant. */
     memberClassIds: z.array(z.string()).default([]),
     memberPartyIds: z.array(z.string()).default([]),
+    /** How the grant is coded in QuickBooks (JPH-22): grant side of correcting entries. */
+    qboClassName: z.string().trim().max(200).nullable().default(null),
+    qboProjectName: z.string().trim().max(200).nullable().default(null),
     programs: z.array(
       z.object({
         programId: z.string(),

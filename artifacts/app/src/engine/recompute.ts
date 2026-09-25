@@ -19,6 +19,8 @@ import { prisma } from '@/lib/db';
 import { toJson } from '@/lib/audit';
 import { reconciliationChecks } from '@/services/reconciliation';
 import { lineFingerprint } from '@/services/line-decisions';
+import { detectPostedEntries, loadPostedLines } from '@/services/correcting-entries';
+import { loadStageSchedules } from '@/services/effort';
 import { parseMatchers } from '@/domain/matchers';
 import {
   assertAllocationBalanced,
@@ -191,7 +193,8 @@ export async function loadGrantStageConfig(
   lines: EngineLine[],
 ): Promise<GrantStageConfig> {
   const lineIds = new Set(lines.map((l) => l.id));
-  const [grants, memberships, rules, budgetLines, decisions] = await Promise.all([
+  const [grants, memberships, rules, budgetLines, decisions, schedules, postedLines] =
+    await Promise.all([
     prisma.grant.findMany({
       where: { orgId, status: { not: 'archived' } },
       select: { id: true },
@@ -218,6 +221,8 @@ export async function loadGrantStageConfig(
         reason: true,
       },
     }),
+    loadStageSchedules(orgId),
+    loadPostedLines(orgId),
   ]);
   const fingerprints = [...new Set(decisions.map((d) => d.fingerprint))];
   const externalIds = [...new Set(fingerprints.map((f) => f.slice(0, f.lastIndexOf('#'))))];
@@ -274,6 +279,8 @@ export async function loadGrantStageConfig(
         },
       ];
     }),
+    schedules,
+    postedLines: postedLines.filter((p) => lineIds.has(p.lineId)),
   };
 }
 
@@ -284,6 +291,8 @@ export async function recompute(
   const started = Date.now();
   const compute = opts.compute ?? allocate;
   const grantStage = opts.grantStage ?? assignGrantLines;
+  // Correcting entries posted in QuickBooks since the last import/recompute (JPH-22).
+  await detectPostedEntries(prisma, orgId);
   const [config, { lines, batchIds }] = await Promise.all([
     loadEngineConfig(orgId),
     loadEngineLines(orgId),

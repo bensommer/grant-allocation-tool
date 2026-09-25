@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation';
-import type { ZodError } from 'zod';
+import { zodErrors } from '@/lib/zod-errors';
+
+export { zodErrors };
 
 /**
  * No-JS-safe form state. Server actions validate; on failure they redirect
@@ -40,15 +42,6 @@ export function redirectWithErrors(
   }
   const sep = path.includes('?') ? '&' : '?';
   redirect(`${path}${sep}f=${encodeFormState({ errors, values })}`);
-}
-
-export function zodErrors(err: ZodError): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const issue of err.issues) {
-    const key = issue.path.map(String).join('.') || '_';
-    if (!(key in out)) out[key] = issue.message;
-  }
-  return out;
 }
 
 export function str(formData: FormData, name: string): string {

@@ -13,6 +13,7 @@ Server-rendered Next.js app (artifacts/app) for nonprofit finance teams: grant �
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
+- `pnpm test` truncates `DATABASE_URL` and leaves the last test org behind. Restore the demo data before using the preview or running e2e: truncate (same table list as `tests/db/helpers.ts` `resetDatabase`), then in `artifacts/app`: `pnpm run import:csv -- --dir fixtures/demo && pnpm run seed:demo && pnpm run recompute`. After schema changes restart the `artifacts/app: web` workflow (stale Prisma client → 500s).
 
 ## Stack
 
@@ -25,7 +26,8 @@ Server-rendered Next.js app (artifacts/app) for nonprofit finance teams: grant �
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- Restricted-grants pilot (JPH-19 phases): schema `artifacts/app/prisma/schema.prisma`; grant stage `src/engine/grant-stage.ts`; effort math `src/domain/effort.ts` (decimal.js, schedule-total rounding); correcting entries `src/domain/correcting-entry.ts` (balance check) + `src/services/correcting-entries.ts` (drafts, codes, void, posted detection aggregated over one-row-per-line report imports; grant side coded from `Grant.qboClassName` / `qboProjectName` or membership ids); effort services `src/services/effort.ts`; exports `src/reports/correcting-entry.ts` (Intuit JE CSV template, URL cited) and routes under `src/app/grants/[id]/entries/[code]/`; pages `src/app/grants/[id]/{effort,entries}`; pilot seed `fixtures/pilot/seed.json` + `src/seed/pilot.ts`; tests `tests/db/jph21-pilot.test.ts`, `tests/db/jph22-effort.test.ts`, `e2e/pilot.spec.ts`.
+- Decisions and open questions per phase: `QUESTIONS.md` (root). Pseudonyms only (`fixtures/private/` is git-ignored; `src/privacy/no-private-data.test.ts` scans every tracked file).
 
 ## Architecture decisions
 

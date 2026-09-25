@@ -16,7 +16,7 @@ import { categoryKeyPattern } from '@/domain/categories';
 import { isEmptyMatchers, lineMatches, matchersSchema, type Matchers } from '@/domain/matchers';
 import { assignGrantLines, type GrantLineDraft, type GrantStageRule } from '@/engine/core';
 import { loadEngineLines, loadGrantStageConfig } from '@/engine/recompute';
-import { zodErrors } from '@/lib/forms';
+import { zodErrors } from '@/lib/zod-errors';
 import { assertMatcherRefs } from './refs';
 import { ValidationError } from './programs';
 
@@ -227,7 +227,7 @@ export async function previewGrantRule(
   return {
     count: won.length,
     totalCents: won.reduce((a, d) => a + d.amountCents, 0),
-    lineIds: won.map((d) => d.transactionLineId),
+    lineIds: won.flatMap((d) => (d.transactionLineId ? [d.transactionLineId] : [])),
     shadowed,
   };
 }

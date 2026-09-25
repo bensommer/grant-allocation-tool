@@ -15,3 +15,10 @@ Helpers defined in an earlier CodeExecution call (e.g. a GitHub push helper) som
 ## Env changes need a dev-server restart
 Next dev server does not pick up newly added secrets/env vars (or a Prisma schema change) until the
 workflow is restarted; a feature reading process.env looked "disabled" until then.
+
+## Dev DB after `pnpm test`, and e2e memory
+- DB test files truncate the dev DB and leave a test org behind; `import:csv`/`seed:demo` layer onto
+  whatever org exists. Truncate before restoring demo data or e2e cleanup hits FK errors.
+- The Next dev server can be OOM-killed when Playwright first compiles a heavy route (PDF); warm new
+  routes with curl before a full e2e run.
+- Playwright specs run in plain Node: nothing they import from `src/` may reach `next/navigation`.

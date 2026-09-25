@@ -180,3 +180,110 @@ No Tier 1, Appendix 2/3 or ticket figure was changed. AC1–AC9 are asserted as 
 `artifacts/app/tests/db/jph21-pilot.test.ts`; AC10 (existing golden and QuickBooks report
 suites) is `tests/db/golden.test.ts` and `tests/db/qbo-report.test.ts`, unchanged. Rendered
 figures are asserted on `data-cents` attributes in `artifacts/app/e2e/pilot.spec.ts`.
+
+---
+
+## JPH-21 → JPH-22 — Effort charges, booked-vs-charged, correcting entries
+
+### Decisions taken (revisit if wrong)
+
+1. **Schedule matchers must cover more than "payroll accounts + the coordinator's pseudonym".**
+   The pilot's booked coordinator cost of 5,519.56 is Kira's payroll (5,376.16) **plus** the two
+   "Conference Leah" payroll lines (143.40). A matcher built only from the ticket's wording misses
+   the 143.40 and reads variance 0.13 instead of 143.53. The seeded Opioid schedule therefore
+   matches Salaries + Payroll Tax Expense lines whose description contains "Kira", "adjustment to
+   Opioid Grant" or "Conference Leah" — the same line set the Phase 2 "pending effort charge
+   (phase 3)" placeholder excluded. The matchers are editable on the Effort page.
+2. **Effort rounding rule.** Charge per activity = hours × count × rate × (1 + bps/10000) in
+   `decimal.js`; the schedule total is rounded half-up to cents once, then distributed to activities
+   with largest-remainder (ties → lowest activity sort order). That is why Sober Socials reads
+   446.38 rather than the naive per-line 446.39, and why the five lines sum exactly to 5,376.03.
+   Hourly rate is the explicit rate or salary ÷ 2080, displayed to 4 dp (36.0577) but used unrounded.
+3. **Budget tree keeps `spentCents` transaction-only.** The ticket asks the tree's spent to include
+   effort charges so page totals agree. Phase 2 AC4 asserts the non-direct cells' spent is 0, so
+   instead every line/cell carries `effortCents` and `chargedCents` (= spent + effort); page totals,
+   the Effort page and the JPH-22 tests use `chargedCents`. Totals agree (16,286.10); the split is
+   just reported explicitly.
+4. **True-up account.** The true-up moves the variance on the matched payroll account carrying the
+   most booked cents (Salaries for the pilot: 5,122.16 vs 397.40 on Payroll Tax Expense). Splitting
+   the variance pro rata across payroll accounts would produce two lines the client did not ask
+   for; if they want a different account, change `bookedAccounts[0]` in
+   `services/correcting-entries.ts` — the balance check is independent of the choice.
+5. **Grant-side class / project on drafts.** The grant side of a draft is coded from the grant's
+   membership class / project when one is stored, otherwise from two new grant fields,
+   `qboClassName` / `qboProjectName` (the class full name / project the books use; editable on the
+   grant form). The pilot seed fills them from the seed scope ("Trauma Grants" for Salah,
+   "2025-2026 Opioid Grant" for Opioid) because neither export carries the grant's own class /
+   project as a row. Drafting is refused with a clear message while a grant has neither, so a
+   draft whose grant-side lines would post nowhere is never created. Each draft line freezes the
+   exported Class / Name at draft time (`className` / `partyName`).
+6. **Booked and variance.** Booked = transaction lines excluded as "replaced by effort charge"
+   (i.e. the schedule's matchers) + this grant's posted true-up journal lines; lines that belong to
+   a posted correcting entry are excluded with reason "posted correcting entry {code}" and never
+   count as booked payroll. Variance = booked − charged. After the pilot true-up is posted the
+   grant-side credit (−143.53) makes booked 5,376.03 and variance 0.00.
+7. **Grant-stage precedence.** Explicit line decisions → posted-correcting-entry lines → schedule
+   matchers → grant rules. So a decision on a matched payroll line still wins, and a schedule wins
+   over rules, as the ticket asks. The "grant line states" invariant checks transaction-sourced
+   results only; effort results (`source = effort`, no transaction line) are counted separately.
+8. **Posted detection.** A report export delivers a posted journal as one row per line, and the
+   importer stores each row as its own transaction. Detection therefore aggregates: every member
+   Journal Entry line of the grant whose transaction memo or own description carries the draft
+   code is collected, and the draft is posted when those lines sum exactly to the draft's
+   grant-side amount (accounts are not compared — the code plus the total is the match). A
+   mismatch — including a code posted twice — leaves the draft `drafted` for a human.
+   `postedTransactionId` records the first such transaction; the grant stage excludes every
+   code-carrying line (reason "posted correcting entry {code}"), not only that transaction's.
+   Detection runs after every import and at the start of every recompute and is idempotent.
+   Voided drafts are never matched.
+9. **Draft codes and lifecycle.** `GAT-0001`, `GAT-0002`, … per org, allocated inside the save
+   transaction. Drafts are drafted → posted or drafted → void (note required, timestamp kept);
+   nothing is deleted. Re-drafting the same exclusion group is rejected while a non-void draft
+   already covers it, and a second true-up for a schedule is rejected while one is still
+   `drafted` (posting both would over-correct the grant); void first. The review-queue checkbox
+   "Draft correcting entry" is on by default and only applies to `exclude`; when the default
+   destination (or the grant's QuickBooks coding) is unset the exclusion is still saved and the
+   page says why no draft was made.
+10. **QuickBooks CSV template.** Columns follow Intuit's "Import journal entries into QuickBooks
+    Online" article (URL cited in `src/reports/correcting-entry.ts`, checked 2026-09-25): Journal
+    No., Journal Date, Account Name, Journal/Description, Debits, Credits, Name, Class, Location;
+    dates MM/DD/YYYY, one row per line. Nothing is sent to QuickBooks.
+11. **Phase 2 pilot test helper touched, no expected value changed.** `stateSnapshot` in
+    `tests/db/jph21-pilot.test.ts` now filters to `source = 'transaction'` because effort results
+    have no transaction line; every assertion and figure in that file is unchanged.
+12. **Default destination** lives in the Org settings JSON (`defaultDestination: { classId,
+    partyId }`) via the settings service and is edited on `/settings`. Either a class, a project /
+    customer, or both may be set; drafting requires at least one.
+13. `zodErrors` moved to `src/lib/zod-errors.ts` (re-exported from `lib/forms`) so
+    services used by Playwright specs no longer pull `next/navigation` into a plain Node process.
+14. **Posting tests round-trip through the CSV.** The generated posted fixtures read the
+    grant-side rows back from the export CSV (Class / Name identify them) and append them to the
+    report export as journal rows, one per line, so the export's coding is what gets tested. A
+    two-account reclass test covers the one-row-per-line aggregation.
+15. **An active schedule must have a restrictive payroll matcher** (an account, an account range,
+    or description text). Empty matchers match every line, so an active blank schedule would
+    exclude the grant's whole expense side as "replaced by effort charge". Inactive schedules may be
+    saved without matchers; activating one requires them.
+16. **Class full names win over ledger leaf names.** A ledger `TrackingClass` row only knows its
+    leaf segment ("Trauma Grants"), while QuickBooks matches journal imports on the full name
+    ("Programs:Trauma Grants"). `qboClassName` / `qboProjectName`, when set, are what the CSV
+    carries; the membership row's name is the fallback.
+17. **Draft codes match as whole tokens.** `GAT-0001` in a memo or description does not match
+    `GAT-00010` or `XGAT-0001`; the same check is used by posted detection and by posted-line
+    loading in the grant stage.
+
+### Follow-ups (out of phase)
+
+- Ask the client whether the "Conference Leah" payroll lines (143.40) belong to the coordinator
+  effort schedule (as the workbook's 5,519.56 implies) or should be a separate Conference charge.
+- Confirm the true-up account choice (Salaries) and whether the payroll-tax share should move too.
+- Dating effort occurrences by period and per-period true-ups are Phase 4 (JPH-23).
+- After `pnpm test`, the dev database holds the last test org; the demo restore recipe in
+  `replit.md` now starts with a truncate.
+
+### Nothing disputed
+
+JPH-19 §6 F–G and JPH-22 agree on every figure. AC1–AC9 are asserted as integer cents in
+`artifacts/app/tests/db/jph22-effort.test.ts`; rendered figures on `data-cents` attributes in
+`artifacts/app/e2e/pilot.spec.ts`. Posted fixtures are generated in memory inside the tests from
+the tracked exports, never hand-written.

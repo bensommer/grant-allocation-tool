@@ -1,9 +1,9 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { redirectWithErrors, str } from '@/lib/forms';
+import { redirectWithErrors, str, strOrNull } from '@/lib/forms';
 import { getOrgId } from '@/lib/org';
-import { savePacingSettings } from '@/services/settings';
+import { saveDefaultDestination, savePacingSettings } from '@/services/settings';
 
 export async function saveSettingsAction(formData: FormData) {
   const under = str(formData, 'underPercent');
@@ -19,4 +19,20 @@ export async function saveSettingsAction(formData: FormData) {
   if (Object.keys(errors).length) redirectWithErrors('/settings', errors, formData);
   await savePacingSettings(await getOrgId(), Number(under), Number(over));
   redirect('/settings?saved=1');
+}
+
+/** Default destination (class and/or project/customer) for correcting entries (JPH-22). */
+export async function saveDestinationAction(formData: FormData) {
+  const classId = strOrNull(formData, 'defaultDestinationClassId');
+  const partyId = strOrNull(formData, 'defaultDestinationPartyId');
+  try {
+    await saveDefaultDestination(await getOrgId(), { classId, partyId });
+  } catch (e) {
+    redirectWithErrors(
+      '/settings',
+      { destination: e instanceof Error ? e.message : 'Could not save the destination' },
+      formData,
+    );
+  }
+  redirect('/settings?saved=1#destination');
 }

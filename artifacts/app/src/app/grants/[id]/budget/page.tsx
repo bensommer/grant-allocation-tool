@@ -160,7 +160,14 @@ export default async function BudgetPage({
         ) : (
           <NumTd cents={bl.currentCents} />
         )}
-        <NumTd cents={bl.spentCents} data-testid="spent" />
+        <td className="num" data-testid="spent" data-cents={bl.spentCents}>
+          <Money cents={bl.spentCents} />
+          {bl.effortCents !== 0 ? (
+            <span className="muted block text-xs" data-effort-cents={bl.effortCents}>
+              + effort {formatCents(bl.effortCents)}
+            </span>
+          ) : null}
+        </td>
         <td>
           {isCategory ? null : (
             <select
@@ -419,6 +426,16 @@ export default async function BudgetPage({
               </th>
               <th className="num" data-cents={tree.totals.spentCents}>
                 {formatCents(tree.totals.spentCents)}
+                {tree.totals.effortCents !== 0 ? (
+                  <span
+                    className="muted block text-xs font-normal"
+                    data-effort-cents={tree.totals.effortCents}
+                    data-charged-cents={tree.totals.chargedCents}
+                  >
+                    + effort {formatCents(tree.totals.effortCents)} = charged{' '}
+                    {formatCents(tree.totals.chargedCents)}
+                  </span>
+                ) : null}
               </th>
               <th colSpan={3} className="font-normal">
                 Award {formatCents(grant.awardAmountCents)}
@@ -609,6 +626,7 @@ export default async function BudgetPage({
                 {tree.activities.map((a) => {
                   const cells = categoryKeys.map((k) => cellAt.get(`${a.id}|${k}`) ?? null);
                   const spent = cells.reduce((s, c) => s + (c?.spentCents ?? 0), 0);
+                  const effort = cells.reduce((s, c) => s + (c?.effortCents ?? 0), 0);
                   const budget = cells.reduce((s, c) => s + (c?.currentCents ?? 0), 0);
                   return (
                     <tr key={a.id} data-activity={a.name}>
@@ -631,6 +649,11 @@ export default async function BudgetPage({
                               <span className="block">
                                 spent <Money cents={c.spentCents} />
                               </span>
+                              {c.effortCents !== 0 ? (
+                                <span className="block" data-effort-cents={c.effortCents}>
+                                  effort <Money cents={c.effortCents} />
+                                </span>
+                              ) : null}
                             </>
                           ) : (
                             <span className="muted">·</span>
@@ -644,6 +667,11 @@ export default async function BudgetPage({
                         <span className="block">
                           spent <Money cents={spent} />
                         </span>
+                        {effort !== 0 ? (
+                          <span className="block" data-effort-cents={effort}>
+                            effort <Money cents={effort} />
+                          </span>
+                        ) : null}
                       </td>
                     </tr>
                   );

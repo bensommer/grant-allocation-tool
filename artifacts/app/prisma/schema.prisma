@@ -108,8 +108,9 @@ model Account {
   parentExternalId String?
   active           Boolean      @default(true)
 
-  importBatch ImportBatch       @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
-  lines       TransactionLine[]
+  importBatch          ImportBatch           @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
+  lines                TransactionLine[]
+  correctingEntryLines CorrectingEntryLine[]
 
   @@unique([orgId, sourceSystem, externalId])
   @@index([orgId, type])
@@ -339,21 +340,30 @@ model Grant {
   /// (customer parties) are members of this grant even without a report import.
   memberClassIds   String[]        @default([])
   memberPartyIds   String[]        @default([])
+  /// How the grant is coded in QuickBooks (JPH-22): the class full name and/or
+  /// project (customer) name that the grant side of a correcting entry must
+  /// carry so the posted journal lands on the grant. Used when the grant's
+  /// lines come from a scoped report export and the class / project is not a
+  /// row in the ledger tables (no member ids to resolve).
+  qboClassName     String?
+  qboProjectName   String?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
-  programs       GrantProgram[]
-  budgetLines    GrantBudgetLine[]
-  allocatedLines AllocatedLine[]
-  narratives     Narrative[]
-  memberships    GrantMembership[]
-  scopedImports  ImportBatch[]
-  reportUploads  QboReportUpload[]
-  activities     GrantActivity[]
-  grantRules     CrosswalkRule[]
-  revisions      BudgetRevision[]
-  decisions      LineDecision[]
-  lineResults    GrantLineResult[]
+  programs          GrantProgram[]
+  budgetLines       GrantBudgetLine[]
+  allocatedLines    AllocatedLine[]
+  narratives        Narrative[]
+  memberships       GrantMembership[]
+  scopedImports     ImportBatch[]
+  reportUploads     QboReportUpload[]
+  activities        GrantActivity[]
+  grantRules        CrosswalkRule[]
+  revisions         BudgetRevision[]
+  decisions         LineDecision[]
+  lineResults       GrantLineResult[]
+  effortSchedules   EffortSchedule[]
+  correctingEntries CorrectingEntryDraft[]
 
   @@index([orgId, status])
 }
@@ -470,10 +480,11 @@ model GrantActivity {
   completedCount Int      @default(0)
   sortOrder      Int      @default(0)
 
-  grant       Grant             @relation(fields: [grantId], references: [id], onDelete: Cascade)
-  budgetLines GrantBudgetLine[]
-  rules       CrosswalkRule[]
-  lineResults GrantLineResult[]
+  grant         Grant             @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  budgetLines   GrantBudgetLine[]
+  rules         CrosswalkRule[]
+  lineResults   GrantLineResult[]
+  effortEntries EffortEntry[]
 
   @@index([orgId, grantId])
 }
@@ -540,15 +551,26 @@ enum GrantLineState {
   needs_review
 }
 
+enum GrantLineSource {
+  transaction
+  effort
+}
+
 /// Per-run state of every grant member line (JPH-21). Invariant, per grant
-/// and run: every member line has exactly one row, and Σ assigned + Σ excluded
-/// + Σ needs_review = Σ membership, to the cent (src/domain/invariants.ts).
+/// and run, over `source = transaction` rows: every member line has exactly one
+/// row, and Σ assigned + Σ excluded + Σ needs_review = Σ membership, to the cent
+/// (src/domain/invariants.ts). `source = effort` rows (JPH-22) are effort
+/// charges computed from an EffortSchedule; they have no transaction line and
+/// sit outside the invariant but inside budget-cell spend.
 model GrantLineResult {
-  id                String         @id @default(cuid())
+  id                String          @id @default(cuid())
   orgId             String
   computeRunId      String
   grantId           String
-  transactionLineId String
+  source            GrantLineSource @default(transaction)
+  transactionLineId String?
+  effortEntryId     String?
+  effortScheduleId  String?
   state             GrantLineState
   budgetLineId      String?
   activityId        String?
@@ -556,18 +578,136 @@ model GrantLineResult {
   categoryRuleId    String?
   decisionId        String?
   reason            String?
-  atRisk            Boolean        @default(false)
+  atRisk            Boolean         @default(false)
   amountCents       Int
 
-  run        ComputeRun       @relation(fields: [computeRunId], references: [id], onDelete: Cascade)
-  grant      Grant            @relation(fields: [grantId], references: [id], onDelete: Cascade)
-  line       TransactionLine  @relation(fields: [transactionLineId], references: [id], onDelete: Restrict)
-  budgetLine GrantBudgetLine? @relation(fields: [budgetLineId], references: [id], onDelete: Restrict)
-  activity   GrantActivity?   @relation(fields: [activityId], references: [id], onDelete: Restrict)
+  run         ComputeRun       @relation(fields: [computeRunId], references: [id], onDelete: Cascade)
+  grant       Grant            @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  line        TransactionLine? @relation(fields: [transactionLineId], references: [id], onDelete: Restrict)
+  budgetLine  GrantBudgetLine? @relation(fields: [budgetLineId], references: [id], onDelete: Restrict)
+  activity    GrantActivity?   @relation(fields: [activityId], references: [id], onDelete: Restrict)
+  effortEntry EffortEntry?     @relation(fields: [effortEntryId], references: [id], onDelete: Restrict)
 
   @@index([computeRunId, grantId, state])
   @@index([computeRunId, grantId, transactionLineId])
   @@index([computeRunId, budgetLineId])
+  @@index([computeRunId, effortScheduleId])
+}
+
+/// Staff time charged by effort (JPH-22, JPH-19 §6 F). One schedule per person
+/// per grant: hourly rate = explicit `hourlyRate` or `salaryCents` ÷ 2080,
+/// burdened by `burdenBps`. `actualPayrollMatchers` (src/domain/matchers.ts
+/// shape) select the booked payroll lines the effort charge replaces.
+model EffortSchedule {
+  id                    String    @id @default(cuid())
+  orgId                 String
+  grantId               String
+  personLabel           String
+  personPartyId         String?
+  salaryCents           Int?
+  hourlyRate            Decimal?  @db.Decimal(12, 4)
+  burdenBps             Int       @default(0)
+  targetCategoryKey     String
+  actualPayrollMatchers Json      @default("{}")
+  active                Boolean   @default(true)
+  /// Booked − charged variance the org chose to carry instead of truing up.
+  carriedVarianceCents  Int?
+  carriedVarianceNote   String?
+  carriedAt             DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  grant   Grant                  @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  entries EffortEntry[]
+  drafts  CorrectingEntryDraft[]
+
+  @@index([orgId, grantId, active])
+}
+
+/// Hours per completed occurrence of one activity under a schedule. Count =
+/// `completedCountOverride` when set, else GrantActivity.completedCount.
+model EffortEntry {
+  id                     String  @id @default(cuid())
+  orgId                  String
+  scheduleId             String
+  activityId             String
+  hoursPerOccurrence     Decimal @db.Decimal(8, 2)
+  completedCountOverride Int?
+  sortOrder              Int     @default(0)
+
+  schedule    EffortSchedule    @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  activity    GrantActivity     @relation(fields: [activityId], references: [id], onDelete: Restrict)
+  lineResults GrantLineResult[]
+
+  @@unique([scheduleId, activityId])
+}
+
+enum CorrectingEntryKind {
+  reclass
+  true_up
+}
+
+enum CorrectingEntryStatus {
+  drafted
+  posted
+  void
+}
+
+/// A correcting journal entry drafted here and posted by a human in QuickBooks
+/// (JPH-22, JPH-19 §6 G). Read-only toward QuickBooks: the draft is exported
+/// (CSV/PDF) and marked `posted` when a re-import contains a journal entry that
+/// carries the code and matches the grant-side total. Void, never delete.
+model CorrectingEntryDraft {
+  id                    String                @id @default(cuid())
+  orgId                 String
+  grantId               String
+  code                  String
+  kind                  CorrectingEntryKind
+  status                CorrectingEntryStatus @default(drafted)
+  sourceDecisionGroupId String?
+  sourceScheduleId      String?
+  postedTransactionId   String?
+  date                  DateTime              @db.Date
+  memo                  String
+  actor                 String
+  createdAt             DateTime              @default(now())
+  postedAt              DateTime?
+  voidedAt              DateTime?
+  voidNote              String?
+
+  grant    Grant                 @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  schedule EffortSchedule?       @relation(fields: [sourceScheduleId], references: [id], onDelete: SetNull)
+  lines    CorrectingEntryLine[]
+
+  @@unique([orgId, code])
+  @@index([orgId, grantId, status])
+}
+
+/// One journal line of a draft. Σ debitCents = Σ creditCents per draft is
+/// enforced in src/domain/correcting-entry.ts. `grantSide` marks the lines that
+/// land on the grant's class/project (the ones a re-import will show).
+model CorrectingEntryLine {
+  id          String  @id @default(cuid())
+  orgId       String
+  draftId     String
+  lineNumber  Int
+  accountId   String
+  classId     String?
+  partyId     String?
+  /// Class / Name exactly as exported for QuickBooks, frozen at draft time
+  /// (resolved from the ids above or from the grant's qboClassName /
+  /// qboProjectName when the class / project is not a ledger row).
+  className   String?
+  partyName   String?
+  grantSide   Boolean @default(false)
+  debitCents  Int     @default(0)
+  creditCents Int     @default(0)
+  description String
+
+  draft   CorrectingEntryDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  account Account              @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@unique([draftId, lineNumber])
 }
 
 /// Matchers are stored as JSON with the shape validated by src/domain/matchers.ts:

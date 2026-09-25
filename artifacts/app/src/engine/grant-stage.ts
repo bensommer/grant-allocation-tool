@@ -7,18 +7,30 @@
  *      `exclude` / `reversal_pair` → excluded; `assign` → assigned to its
  *      target line (or cell). `at_risk` only flags the line and never changes
  *      the state.
- *   2. Grant rules — line-dimension rules ordered by priority (lowest first,
+ *   2. Posted correcting entries (JPH-22) — a line of a journal entry that
+ *      posted one of this grant's drafts is excluded, "posted correcting entry
+ *      {code}". Checked before the schedule matchers so a true-up never counts
+ *      as booked payroll.
+ *   3. Effort schedules (JPH-22) — a line matching an active schedule's
+ *      `actualPayrollMatchers` is excluded, "replaced by effort charge".
+ *   4. Grant rules — line-dimension rules ordered by priority (lowest first,
  *      then id); the first match assigns the line to the rule's target.
- *   3. Activity × category — when the grant has activity- or category-dimension
+ *   5. Activity × category — when the grant has activity- or category-dimension
  *      rules, resolve each side the same way and look up the cell
  *      (activityId, categoryKey). Missing pieces give a review reason:
  *      "no activity match", "no category match", "no budget cell".
- *   4. Otherwise → needs_review with reason "no rule match".
+ *   6. Otherwise → needs_review with reason "no rule match".
+ *
+ * Effort charges (JPH-22): every active schedule also emits one
+ * `source: effort` draft per entry — the activity's charge (src/domain/effort.ts)
+ * assigned to the cell (activity × schedule target category). These rows have
+ * no transaction line and are outside the member-line invariant.
  *
  * Only expense-account member lines take part; grant income (the award
  * deposits) is a receipt, not spend. Grant rules never look at the grant's
  * date window: membership already scopes the lines.
  */
+import { computeEffortCharges, type EffortEntryInput } from '@/domain/effort';
 import { lineMatches, type Matchers } from '@/domain/matchers';
 import type { EngineLine } from './core';
 
@@ -58,6 +70,25 @@ export interface GrantStageDecision {
   seq: number;
 }
 
+/** An active effort schedule with its entries and the activities' completed counts (JPH-22). */
+export interface GrantStageSchedule {
+  id: string;
+  grantId: string;
+  salaryCents: number | null;
+  hourlyRate: string | null;
+  burdenBps: number;
+  targetCategoryKey: string;
+  matchers: Matchers;
+  entries: EffortEntryInput[];
+}
+
+/** A member line that belongs to a journal entry which posted a draft (JPH-22). */
+export interface GrantStagePostedLine {
+  grantId: string;
+  lineId: string;
+  code: string;
+}
+
 export interface GrantStageConfig {
   grantIds: string[];
   /** Active memberships: grantId → member line ids. */
@@ -65,11 +96,29 @@ export interface GrantStageConfig {
   rules: GrantStageRule[];
   budgetLines: GrantStageBudgetLine[];
   decisions: GrantStageDecision[];
+  schedules: GrantStageSchedule[];
+  postedLines: GrantStagePostedLine[];
+}
+
+export type GrantLineSource = 'transaction' | 'effort';
+
+/** A draft backed by a member line (`source: transaction`). */
+export type TransactionLineDraft = GrantLineDraft & {
+  source: 'transaction';
+  transactionLineId: string;
+};
+export function isTransactionDraft(d: GrantLineDraft): d is TransactionLineDraft {
+  return d.source === 'transaction' && d.transactionLineId !== null;
 }
 
 export interface GrantLineDraft {
   grantId: string;
-  transactionLineId: string;
+  source: GrantLineSource;
+  /** null only for `source: effort`. */
+  transactionLineId: string | null;
+  effortEntryId: string | null;
+  /** Set on effort charges and on lines excluded by a schedule's matchers. */
+  effortScheduleId: string | null;
   state: GrantLineState;
   budgetLineId: string | null;
   activityId: string | null;
@@ -88,6 +137,13 @@ export const REVIEW_REASONS = {
   noCell: 'no budget cell',
   badDecisionTarget: 'decision target missing',
 } as const;
+
+/** Exclusion reason for booked payroll a schedule replaces (JPH-22). */
+export const EFFORT_REPLACED_REASON = 'replaced by effort charge';
+/** Exclusion reason for the lines of a journal entry that posted a draft (JPH-22). */
+export function postedEntryReason(code: string): string {
+  return `posted correcting entry ${code}`;
+}
 
 function byPriority<T extends { priority: number; id: string }>(rules: T[]): T[] {
   return [...rules].sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
@@ -119,13 +175,22 @@ export function assignGrantLines(lines: EngineLine[], config: GrantStageConfig):
       list.push(d);
       decisionsByLine.set(d.lineId, list);
     }
+    const postedByLine = new Map<string, string>();
+    for (const p of config.postedLines)
+      if (p.grantId === grantId && !postedByLine.has(p.lineId)) postedByLine.set(p.lineId, p.code);
+    const schedules = config.schedules
+      .filter((s) => s.grantId === grantId)
+      .sort((a, b) => a.id.localeCompare(b.id));
 
     for (const lineId of memberIds) {
       const line = lineById.get(lineId);
       if (!line || line.accountKind !== 'expense') continue;
       const draft: GrantLineDraft = {
         grantId,
+        source: 'transaction',
         transactionLineId: lineId,
+        effortEntryId: null,
+        effortScheduleId: null,
         state: 'needs_review',
         budgetLineId: null,
         activityId: null,
@@ -179,6 +244,21 @@ export function assignGrantLines(lines: EngineLine[], config: GrantStageConfig):
         txnType: line.txnType ?? null,
         amountCents: line.amountCents,
       };
+      const postedCode = postedByLine.get(lineId);
+      if (postedCode !== undefined) {
+        draft.state = 'excluded';
+        draft.reason = postedEntryReason(postedCode);
+        out.push(draft);
+        continue;
+      }
+      const schedule = schedules.find((s) => lineMatches(matchable, s.matchers));
+      if (schedule) {
+        draft.state = 'excluded';
+        draft.reason = EFFORT_REPLACED_REASON;
+        draft.effortScheduleId = schedule.id;
+        out.push(draft);
+        continue;
+      }
       const lineRule = lineRules.find(
         (r) => r.targetBudgetLineId !== null && lineMatches(matchable, r.matchers),
       );
@@ -224,6 +304,30 @@ export function assignGrantLines(lines: EngineLine[], config: GrantStageConfig):
         }
       }
       out.push(draft);
+    }
+
+    // --- effort charges (JPH-22) ---------------------------------------------
+    for (const schedule of schedules) {
+      const { charges } = computeEffortCharges(schedule, schedule.entries);
+      for (const c of charges) {
+        const cell = cells.get(`${c.activityId}|${schedule.targetCategoryKey}`);
+        out.push({
+          grantId,
+          source: 'effort',
+          transactionLineId: null,
+          effortEntryId: c.entryId,
+          effortScheduleId: schedule.id,
+          state: cell ? 'assigned' : 'needs_review',
+          budgetLineId: cell?.id ?? null,
+          activityId: c.activityId,
+          ruleId: null,
+          categoryRuleId: null,
+          decisionId: null,
+          reason: cell ? null : REVIEW_REASONS.noCell,
+          atRisk: false,
+          amountCents: c.chargeCents,
+        });
+      }
     }
   }
   return out;
@@ -282,7 +386,8 @@ export function proposeReversalPairs(
 ): ReversalPairProposal[] {
   const proposals: ReversalPairProposal[] = [];
   const eligible = drafts.filter(
-    (d) =>
+    (d): d is TransactionLineDraft =>
+      isTransactionDraft(d) &&
       d.decisionId === null &&
       d.amountCents !== 0 &&
       (d.state === 'needs_review' || d.state === 'assigned'),
@@ -294,10 +399,10 @@ export function proposeReversalPairs(
     partyId: null,
     txnDate: null,
   };
-  const info = (d: GrantLineDraft) => infoOf(d.transactionLineId) ?? none;
-  const key = (d: GrantLineDraft) =>
+  const info = (d: TransactionLineDraft) => infoOf(d.transactionLineId) ?? none;
+  const key = (d: TransactionLineDraft) =>
     `${d.grantId}|${info(d).accountId ?? ''}|${d.state}|${d.budgetLineId ?? ''}`;
-  const buckets = new Map<string, GrantLineDraft[]>();
+  const buckets = new Map<string, TransactionLineDraft[]>();
   for (const d of eligible) {
     const list = buckets.get(key(d)) ?? [];
     list.push(d);
@@ -310,7 +415,7 @@ export function proposeReversalPairs(
     for (const pass of ['cited', 'any'] as const) {
       for (const pos of sorted) {
         if (pos.amountCents <= 0 || used.has(pos.transactionLineId)) continue;
-        let best: GrantLineDraft | null = null;
+        let best: TransactionLineDraft | null = null;
         let bestScore = Infinity;
         for (const n of sorted) {
           if (used.has(n.transactionLineId) || n.amountCents !== -pos.amountCents) continue;

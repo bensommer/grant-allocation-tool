@@ -1,4 +1,5 @@
 import { Fragment } from 'react';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/page-header';
 import { FormBanner } from '@/components/form';
@@ -8,6 +9,7 @@ import { getOrgId } from '@/lib/org';
 import { decodeFormState, pick } from '@/lib/forms';
 import { budgetTree } from '@/services/grant-budget';
 import { reviewQueue, type ReviewLine } from '@/services/review';
+import { DESTINATION_UNSET_MESSAGE, GRANT_CODING_MISSING_MESSAGE } from '@/services/correcting-entries';
 import {
   clearAtRiskAction,
   confirmReversalPairAction,
@@ -44,10 +46,17 @@ export default async function ReviewPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ f?: string; saved?: string; show?: string }>;
+  searchParams: Promise<{
+    f?: string;
+    saved?: string;
+    show?: string;
+    drafted?: string;
+    blocked?: string;
+    draftError?: string;
+  }>;
 }) {
   const { id } = await params;
-  const { f, saved, show } = await searchParams;
+  const { f, saved, show, drafted, blocked, draftError } = await searchParams;
   const orgId = await getOrgId();
   const grant = await prisma.grant.findFirst({ where: { id, orgId } });
   if (!grant) notFound();
@@ -74,6 +83,27 @@ export default async function ReviewPage({
       />
       <GrantTabs id={id} active="review" />
       <FormBanner state={state} saved={!!saved} />
+      {drafted ? (
+        <div data-testid="draft-created">
+          <Banner tone="ok">
+            Correcting entry <code>{drafted}</code> drafted —{' '}
+            <Link href={`/grants/${id}/entries`}>open entries</Link>.
+          </Banner>
+        </div>
+      ) : null}
+      {blocked || draftError ? (
+        <div data-testid="draft-blocked">
+          <Banner tone="warn">
+            Exclusion saved, but no correcting entry was drafted:{' '}
+            {blocked === 'grant' ? GRANT_CODING_MISSING_MESSAGE : blocked ? DESTINATION_UNSET_MESSAGE : draftError}{' '}
+            {blocked === 'grant' ? (
+              <Link href={`/grants/${id}/edit`}>Edit grant</Link>
+            ) : blocked ? (
+              <Link href="/settings#destination">Open settings</Link>
+            ) : null}
+          </Banner>
+        </div>
+      ) : null}
       {queue.runId === null ? (
         <Banner tone="info">No compute run yet — run a recompute to populate the queue.</Banner>
       ) : null}
@@ -283,6 +313,14 @@ export default async function ReviewPage({
             {state?.errors['reason'] ? (
               <p className="field-error">{state.errors['reason']}</p>
             ) : null}
+            <label className="mt-2 flex items-center gap-2 text-sm font-normal">
+              <input
+                type="checkbox"
+                name="draftEntry"
+                defaultChecked={state ? pick(state, 'draftEntry', '') === 'on' : true}
+              />
+              Draft correcting entry (when excluding)
+            </label>
           </div>
           <div className="md:col-span-2">
             <label htmlFor="note">Note (required)</label>

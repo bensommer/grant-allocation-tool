@@ -53,6 +53,8 @@ export class GrantStateImbalanceError extends Error {
  * Invariant (JPH-21): for every grant in a ComputeRun, each expense member
  * line has exactly one GrantLineResult, and Σ assigned + Σ excluded +
  * Σ needs_review equals Σ of those member lines' amounts, to the cent.
+ * Only `source = transaction` rows take part: effort charges (JPH-22) are
+ * computed amounts with no member line behind them.
  * Throws GrantStateImbalanceError otherwise.
  */
 export async function assertGrantStatesBalanced(computeRunId: string): Promise<{ grants: number }> {
@@ -61,7 +63,7 @@ export async function assertGrantStatesBalanced(computeRunId: string): Promise<{
   >`
     SELECT "grantId", "transactionLineId", COUNT(*) AS n
     FROM "GrantLineResult"
-    WHERE "computeRunId" = ${computeRunId}
+    WHERE "computeRunId" = ${computeRunId} AND "source" = 'transaction'
     GROUP BY "grantId", "transactionLineId"
     HAVING COUNT(*) > 1
   `;
@@ -95,7 +97,9 @@ export async function assertGrantStatesBalanced(computeRunId: string): Promise<{
       ) d GROUP BY "grantId"
     ), r AS (
       SELECT "grantId", COUNT(*) AS c, SUM("amountCents") AS s
-      FROM "GrantLineResult" WHERE "computeRunId" = ${computeRunId} GROUP BY "grantId"
+      FROM "GrantLineResult"
+      WHERE "computeRunId" = ${computeRunId} AND "source" = 'transaction'
+      GROUP BY "grantId"
     )
     SELECT COALESCE(m."grantId", r."grantId") AS "grantId",
            COALESCE(m.c, 0) AS "memberCount", m.s AS "memberCents",
@@ -120,7 +124,7 @@ export async function assertGrantStatesBalanced(computeRunId: string): Promise<{
        WHERE gm."transactionLineId" = tl.id AND gm."grantId" = r."grantId"
          AND gm."supersededAt" IS NULL AND t."deletedAt" IS NULL
          AND a.type IN ('Expense', 'COGS', 'OtherExpense'))
-    WHERE r."computeRunId" = ${computeRunId}
+    WHERE r."computeRunId" = ${computeRunId} AND r."source" = 'transaction'
       AND (tl.id IS NULL OR tl."amountCents" <> r."amountCents")
     LIMIT 50
   `;

@@ -14,6 +14,7 @@ import {
 } from '@/datasource/types';
 import { collectErrors } from '@/datasource/csv/adapter';
 import { formatCents } from '@/domain/money';
+import { detectPostedEntries } from '@/services/correcting-entries';
 import {
   addImportScopeMemberships,
   supersedeMemberships,
@@ -664,6 +665,8 @@ export async function runImport(
         }
         // Grants with member classes / projects pick up any new lines.
         await syncRuleMemberships(tx, orgId);
+        // A re-import may carry a journal entry that posted a correcting-entry draft (JPH-22).
+        await detectPostedEntries(tx, orgId);
 
         const changedAnything = (
           ['accounts', 'classes', 'locations', 'parties', 'transactions'] as const
