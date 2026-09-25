@@ -72,6 +72,8 @@ async function parseGrant(orgId: string, formData: FormData) {
     revenueAccountId: strOrNull(formData, 'revenueAccountId'),
     matchPartyIds: list(formData, 'matchPartyIds'),
     matchClassIds: list(formData, 'matchClassIds'),
+    memberClassIds: list(formData, 'memberClassIds'),
+    memberPartyIds: list(formData, 'memberPartyIds'),
     programs,
   };
   const parsed = grantInputSchema.safeParse(candidate);

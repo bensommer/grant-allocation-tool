@@ -5,7 +5,7 @@ import { resetOrgCache } from '@/lib/org';
 export async function resetDatabase(): Promise<void> {
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
-      "Narrative","PeriodLock","AllocatedLine","ComputeRun","AllocationDriverValue",
+      "Narrative","PeriodLock","GrantMembership","QboReportUpload","AllocatedLine","ComputeRun","AllocationDriverValue",
       "AllocationTarget","AllocationRule","CrosswalkRule","GrantBudgetLine","GrantProgram",
       "Grant","Program","AuditEvent","SavedView","SourceRowVersion","TransactionLine",
       "Transaction","Party","TrackingLocation","TrackingClass","Account","ImportBatch","Org"

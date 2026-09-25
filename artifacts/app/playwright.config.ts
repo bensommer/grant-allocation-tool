@@ -26,19 +26,34 @@ export default defineConfig({
       },
   // Visual baselines are captured against freshly restored demo data, so they run alone and first;
   // the functional projects (which create records and recompute) depend on that project.
+  // The QuickBooks report spec imports pilot lines into the demo org, which would skew the
+  // fixture-cent assertions of specs running alongside it; it runs after them, one project at a
+  // time, and removes everything it wrote.
   // Pass --no-deps to run a functional project on its own.
   projects: [
     { name: 'visual', testMatch: /visual\.spec\.ts/, use: { browserName: 'chromium' } },
     {
       name: 'chromium',
-      testIgnore: /visual\.spec\.ts/,
+      testIgnore: [/visual\.spec\.ts/, /qbo-report\.spec\.ts/],
       dependencies: ['visual'],
       use: { browserName: 'chromium' },
     },
     {
       name: 'chromium-nojs',
-      testIgnore: /visual\.spec\.ts/,
+      testIgnore: [/visual\.spec\.ts/, /qbo-report\.spec\.ts/],
       dependencies: ['visual'],
+      use: { browserName: 'chromium', javaScriptEnabled: false },
+    },
+    {
+      name: 'qbo-report',
+      testMatch: /qbo-report\.spec\.ts/,
+      dependencies: ['chromium', 'chromium-nojs'],
+      use: { browserName: 'chromium' },
+    },
+    {
+      name: 'qbo-report-nojs',
+      testMatch: /qbo-report\.spec\.ts/,
+      dependencies: ['qbo-report'],
       use: { browserName: 'chromium', javaScriptEnabled: false },
     },
   ],

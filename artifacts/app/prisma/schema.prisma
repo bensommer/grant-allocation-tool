@@ -36,6 +36,8 @@ model Org {
 enum SourceSystem {
   csv
   qbo
+  /// QuickBooks "Transaction Detail by Account" report export (xlsx/csv), JPH-20.
+  qbo_report
 }
 
 enum ImportStatus {
@@ -57,7 +59,18 @@ model ImportBatch {
   counts       Json         @default("{}")
   errors       Json         @default("[]")
   fileHashes   Json         @default("{}")
+  /// Report imports (qbo_report) are scoped to one grant and the report's date range;
+  /// "removed" detection only looks inside this scope (JPH-20).
+  scopeGrantId  String?
+  scopeDateFrom DateTime?   @db.Date
+  scopeDateTo   DateTime?   @db.Date
+  /// Per "Total for …"/TOTAL row: { row, label, expectedCents, actualCents, passed } (JPH-20).
+  checksums     Json        @default("[]")
+  /// Report header (company name, report title, date-range text, file/sheet name).
+  reportMeta    Json        @default("{}")
 
+  scopeGrant   Grant?             @relation(fields: [scopeGrantId], references: [id], onDelete: Restrict)
+  memberships  GrantMembership[]
   accounts     Account[]
   classes      TrackingClass[]
   locations    TrackingLocation[]
@@ -195,6 +208,9 @@ model Transaction {
   partyId                  String?
   paymentAccountExternalId String?
   totalCents               Int
+  /// Report imports: externalId minus the amount, used to pair an amount edit
+  /// with its previous row (JPH-20).
+  matchKey                 String?
 
   importBatch ImportBatch       @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
   party       Party?            @relation(fields: [partyId], references: [id], onDelete: Restrict)
@@ -202,6 +218,7 @@ model Transaction {
 
   @@unique([orgId, sourceSystem, externalId])
   @@index([orgId, txnDate])
+  @@index([orgId, sourceSystem, matchKey])
 }
 
 enum PostingType {
@@ -233,6 +250,7 @@ model TransactionLine {
   location    TrackingLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
   party       Party?            @relation(fields: [partyId], references: [id], onDelete: Restrict)
   allocated   AllocatedLine[]
+  memberships GrantMembership[]
 
   @@unique([transactionId, lineNumber])
   @@index([orgId, accountId])
@@ -315,6 +333,10 @@ model Grant {
   revenueAccountId String?
   matchPartyIds    String[]        @default([])
   matchClassIds    String[]        @default([])
+  /// Live-QuickBooks mode (JPH-20): lines tagged with these classes / projects
+  /// (customer parties) are members of this grant even without a report import.
+  memberClassIds   String[]        @default([])
+  memberPartyIds   String[]        @default([])
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -322,8 +344,58 @@ model Grant {
   budgetLines    GrantBudgetLine[]
   allocatedLines AllocatedLine[]
   narratives     Narrative[]
+  memberships    GrantMembership[]
+  scopedImports  ImportBatch[]
+  reportUploads  QboReportUpload[]
 
   @@index([orgId, status])
+}
+
+enum GrantMembershipVia {
+  import_scope
+  class_match
+  project_match
+}
+
+/// Which source lines belong to which grant (JPH-20). A line joins a grant by
+/// being in a report import scoped to that grant, or by matching the grant's
+/// member classes / projects. Rows are never hard-deleted: a membership that
+/// no longer holds (line removed from the export, class unticked) is superseded.
+model GrantMembership {
+  id                String             @id @default(cuid())
+  orgId             String
+  grantId           String
+  transactionLineId String
+  via               GrantMembershipVia
+  importBatchId     String?
+  createdAt         DateTime           @default(now())
+  supersededAt      DateTime?
+
+  grant       Grant           @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  line        TransactionLine @relation(fields: [transactionLineId], references: [id], onDelete: Cascade)
+  importBatch ImportBatch?    @relation(fields: [importBatchId], references: [id], onDelete: Restrict)
+
+  @@index([orgId, grantId, supersededAt])
+  @@index([transactionLineId])
+}
+
+/// Staged report file between the upload step and the confirm-account-mapping
+/// step of the /import QBO report flow (JPH-20). Consumed rows are kept for audit.
+model QboReportUpload {
+  id         String    @id @default(cuid())
+  orgId      String
+  grantId    String
+  fileName   String
+  sheetName  String?
+  sha256     String
+  content    Bytes
+  createdAt  DateTime  @default(now())
+  consumedAt DateTime?
+  batchId    String?
+
+  grant Grant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
 }
 
 model GrantProgram {

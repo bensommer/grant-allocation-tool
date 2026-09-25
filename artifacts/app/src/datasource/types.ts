@@ -89,6 +89,12 @@ export type SourceTransactionLine = z.infer<typeof sourceTransactionLineSchema>;
 
 export const sourceTransactionSchema = z.object({
   externalId: z.string().min(1),
+  /**
+   * Optional secondary key without the amount. When a scoped re-import finds
+   * one vanished row and one new row sharing a matchKey, the ImportService
+   * records a change (amount edited in QuickBooks) instead of removed + new.
+   */
+  matchKey: z.string().min(1).nullable().optional(),
   txnType: txnTypeSchema,
   /** UTC midnight */
   txnDate: z.date(),
@@ -105,8 +111,12 @@ export interface DateRange {
   to: Date;
 }
 
+export type SourceKind = 'csv' | 'qbo' | 'qbo_report';
+
 export interface DataSource {
-  kind: 'csv' | 'qbo';
+  kind: SourceKind;
+  /** Optional: file name used in error rows (defaults to transactions.csv). */
+  fileName?: string;
   describe(): Promise<SourceDescriptor>;
   fetchAccounts(): AsyncIterable<SourceAccount>;
   fetchClasses(): AsyncIterable<SourceClass>;
@@ -115,6 +125,11 @@ export interface DataSource {
   fetchTransactions(range: DateRange): AsyncIterable<SourceTransaction>;
   /** Optional: adapters that read files report content hashes for the batch record. */
   fileHashes?(): Promise<Record<string, string>>;
+  /**
+   * Optional: report-style sources verify every "Total for …" row against the
+   * lines under it. Any failed checksum aborts the batch before anything is written.
+   */
+  checksums?(): ChecksumResult[];
   /** Optional source-reported expense balances at a reporting period end. */
   fetchTrialBalance?(): Promise<SourceTrialBalance[]>;
   /** Incremental CDC hook; QBO implementation is deferred to JPH-14. */
@@ -125,6 +140,17 @@ export interface DataSource {
    * ImportService treats the file set as the full truth for the range.
    */
   changedSince?(cursor: string): AsyncIterable<SourceChange>;
+}
+
+/** One "Total for X" / TOTAL row of a report export compared with the lines it covers. */
+export interface ChecksumResult {
+  /** 1-based physical row of the total line in the export. */
+  row: number;
+  /** Text of the total row, e.g. "Total for Program Supplies". */
+  label: string;
+  expectedCents: number;
+  actualCents: number;
+  passed: boolean;
 }
 
 export interface SourceTrialBalance {

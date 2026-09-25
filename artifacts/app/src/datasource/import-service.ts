@@ -13,6 +13,12 @@ import {
   type SourceTransaction,
 } from '@/datasource/types';
 import { collectErrors } from '@/datasource/csv/adapter';
+import { formatCents } from '@/domain/money';
+import {
+  addImportScopeMemberships,
+  supersedeMemberships,
+  syncRuleMemberships,
+} from '@/services/grant-membership';
 
 export type EntityName = 'accounts' | 'classes' | 'locations' | 'parties' | 'transactions';
 export interface BucketCounts {
@@ -96,10 +102,22 @@ export function naturalSign(
   return debitNormal === isDebit ? 1 : -1;
 }
 
+/**
+ * Report imports (JPH-20) are scoped to one grant and the report's date range.
+ * Only transactions that are currently members of that grant and dated inside
+ * the range can be marked removed; everything else in the mirror is untouched.
+ */
+export interface ImportScope {
+  grantId: string;
+  dateFrom: Date;
+  dateTo: Date;
+}
+
 export interface ImportServiceOptions {
   prisma?: PrismaClient;
   /** When true (default for CSV), rows absent from the source are soft-deleted. */
   fullRange?: boolean;
+  scope?: ImportScope;
 }
 
 /**
@@ -119,8 +137,12 @@ export async function runImport(
   opts: ImportServiceOptions = {},
 ): Promise<ImportResult> {
   const prisma = opts.prisma ?? defaultPrisma;
-  const fullRange = opts.fullRange ?? source.kind === 'csv';
+  const scope = opts.scope ?? null;
+  const fullRange = scope ? false : (opts.fullRange ?? source.kind === 'csv');
   const { sink, errors } = collectErrors();
+  const errorFile = source.fileName ?? 'transactions.csv';
+  const checksums = source.checksums ? source.checksums() : [];
+  const reportMeta = (source as { reportMeta?: Record<string, unknown> }).reportMeta ?? {};
   // Adapters constructed by callers may already hold their own sink; we also
   // accept adapter-level errors surfaced through `errors` property duck-typing.
   const adapterErrors = (source as { errors?: ImportError[] }).errors;
@@ -133,8 +155,34 @@ export async function runImport(
       rangeTo: range.to,
       fullRange,
       fileHashes: source.fileHashes ? await source.fileHashes() : {},
+      scopeGrantId: scope?.grantId ?? null,
+      scopeDateFrom: scope?.dateFrom ?? null,
+      scopeDateTo: scope?.dateTo ?? null,
+      checksums: toJson(checksums),
+      reportMeta: toJson(reportMeta),
     },
   });
+  if (scope) {
+    const grant = await prisma.grant.findFirst({ where: { id: scope.grantId, orgId } });
+    if (!grant)
+      sink.push({
+        file: errorFile,
+        row: null,
+        column: null,
+        code: 'unknown_grant',
+        message: `Grant ${scope.grantId} does not exist in this organization`,
+      });
+  }
+  for (const c of checksums) {
+    if (c.passed) continue;
+    sink.push({
+      file: errorFile,
+      row: c.row,
+      column: 'Amount',
+      code: 'checksum_mismatch',
+      message: `${c.label} (row ${c.row}): the report says ${formatCents(c.expectedCents)} but the lines under it add up to ${formatCents(c.actualCents)}`,
+    });
+  }
 
   const descriptor = await source.describe();
   const accounts: SourceAccount[] = [];
@@ -192,7 +240,7 @@ export async function runImport(
   };
   const unknownRef = (column: string, id: string, txn: string) =>
     sink.push({
-      file: 'transactions.csv',
+      file: errorFile,
       row: null,
       column,
       code: 'unknown_reference',
@@ -393,10 +441,71 @@ export async function runImport(
             orgId,
             sourceSystem: sys,
           },
-          select: { id: true, externalId: true, contentHash: true, deletedAt: true, txnDate: true },
+          select: {
+            id: true,
+            externalId: true,
+            contentHash: true,
+            deletedAt: true,
+            txnDate: true,
+            matchKey: true,
+          },
         });
         const txnByExt = new Map(currentTxns.map((t) => [t.externalId, t]));
-        const seenTxn = new Set<string>();
+        const seenTxn = new Set<string>(transactions.map((t) => t.externalId));
+
+        // Scoped imports: only transactions this grant's own earlier reports
+        // brought in (active import_scope membership) inside the date range are
+        // candidates for "removed". Class/project rule memberships do not count:
+        // they may point at lines another grant's report owns.
+        let removable: Set<string> | null = null;
+        if (scope) {
+          const rows = await tx.transaction.findMany({
+            where: {
+              orgId,
+              sourceSystem: sys,
+              deletedAt: null,
+              txnDate: { gte: scope.dateFrom, lte: scope.dateTo },
+              lines: {
+                some: {
+                  memberships: {
+                    some: { grantId: scope.grantId, via: 'import_scope', supersededAt: null },
+                  },
+                },
+              },
+            },
+            select: { externalId: true },
+          });
+          removable = new Set(rows.map((r) => r.externalId));
+        }
+        const isRemovable = (cur: (typeof currentTxns)[number]) =>
+          !seenTxn.has(cur.externalId) &&
+          !cur.deletedAt &&
+          (fullRange || (removable?.has(cur.externalId) ?? false));
+
+        // Pair a vanished row with a new row sharing a matchKey (amount edited
+        // at the source) so the mirror records one change, not removed + new.
+        const paired = new Map<string, (typeof currentTxns)[number]>();
+        {
+          const vanished = new Map<string, Array<(typeof currentTxns)[number]>>();
+          for (const cur of currentTxns)
+            if (cur.matchKey && isRemovable(cur))
+              (
+                vanished.get(cur.matchKey) ?? vanished.set(cur.matchKey, []).get(cur.matchKey)!
+              ).push(cur);
+          const arrived = new Map<string, SourceTransaction[]>();
+          for (const t of transactions)
+            if (t.matchKey && !txnByExt.has(t.externalId))
+              (arrived.get(t.matchKey) ?? arrived.set(t.matchKey, []).get(t.matchKey)!).push(t);
+          for (const [key, news] of arrived) {
+            const olds = vanished.get(key);
+            if (olds && olds.length === 1 && news.length === 1) {
+              paired.set(news[0]!.externalId, olds[0]!);
+              seenTxn.add(olds[0]!.externalId);
+            }
+          }
+        }
+        const importedTxnIds: string[] = [];
+        const removedLineIds: string[] = [];
         const locks = await tx.periodLock.findMany({ where: { orgId } });
         const affectedLocks = new Set<string>();
         const lockNewIds: Record<string, string[]> = {};
@@ -409,9 +518,8 @@ export async function runImport(
         };
 
         for (const t of transactions) {
-          seenTxn.add(t.externalId);
           const hash = contentHash(t);
-          const cur = txnByExt.get(t.externalId);
+          const cur = txnByExt.get(t.externalId) ?? paired.get(t.externalId);
           const lineData: Prisma.TransactionLineCreateManyInput[] = t.lines.map((l) => {
             const type = accountTypes.get(l.accountExternalId)!;
             return {
@@ -441,6 +549,7 @@ export async function runImport(
             partyId: t.partyExternalId ? partyIds.get(t.partyExternalId)! : null,
             paymentAccountExternalId: t.paymentAccountExternalId,
             totalCents,
+            matchKey: t.matchKey ?? null,
           };
           if (!cur) {
             flagLocks(t.txnDate, t.externalId);
@@ -457,6 +566,7 @@ export async function runImport(
             await tx.transactionLine.createMany({
               data: lineData.map((l) => ({ ...l, transactionId: created.id })),
             });
+            importedTxnIds.push(created.id);
             counts.transactions.new++;
           } else if (cur.contentHash !== hash || cur.deletedAt) {
             flagLocks(cur.txnDate);
@@ -500,36 +610,60 @@ export async function runImport(
                 where: { id: leftover.id },
                 data: { deletedAt: new Date() },
               });
+              removedLineIds.push(leftover.id);
             }
             await tx.transaction.update({
               where: { id: cur.id },
               data: {
                 ...header,
+                externalId: t.externalId,
                 contentHash: hash,
                 deletedAt: null,
                 importBatchId: batch.id,
                 importedAt: new Date(),
               },
             });
+            importedTxnIds.push(cur.id);
             counts.transactions.changed++;
           } else {
+            importedTxnIds.push(cur.id);
             counts.transactions.unchanged++;
           }
           counts.lines += t.lines.length;
         }
         for (const cur of currentTxns) {
-          if (!seenTxn.has(cur.externalId) && !cur.deletedAt) {
-            if (!fullRange) continue;
+          if (isRemovable(cur)) {
             flagLocks(cur.txnDate);
             const before = await tx.transaction.findUnique({
               where: { id: cur.id },
               include: { lines: true },
             });
+            for (const l of before?.lines ?? []) removedLineIds.push(l.id);
+            counts.transactions.deleted++;
+            // A transaction another grant's report still holds is shared; this
+            // grant only drops its membership and the mirror row stays live.
+            const heldElsewhere =
+              scope &&
+              (await tx.grantMembership.count({
+                where: {
+                  line: { transactionId: cur.id },
+                  grantId: { not: scope.grantId },
+                  via: 'import_scope',
+                  supersededAt: null,
+                },
+              })) > 0;
+            if (heldElsewhere) continue;
             await version('transactions', cur.externalId, before, cur.contentHash);
             await tx.transaction.update({ where: { id: cur.id }, data: { deletedAt: new Date() } });
-            counts.transactions.deleted++;
           }
         }
+
+        if (scope) {
+          await addImportScopeMemberships(tx, orgId, scope.grantId, batch.id, importedTxnIds);
+          await supersedeMemberships(tx, scope.grantId, removedLineIds);
+        }
+        // Grants with member classes / projects pick up any new lines.
+        await syncRuleMemberships(tx, orgId);
 
         const changedAnything = (
           ['accounts', 'classes', 'locations', 'parties', 'transactions'] as const

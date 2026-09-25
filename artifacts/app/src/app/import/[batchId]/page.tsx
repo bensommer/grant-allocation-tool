@@ -7,12 +7,16 @@ import {
   Card,
   DataTable,
   DateText,
+  KeyFigure,
+  Money,
   PageHeader,
+  Period,
   StatusPill,
 } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import type { ImportCounts } from '@/datasource/import-service';
-import type { ImportError } from '@/datasource/types';
+import type { ChecksumResult, ImportError } from '@/datasource/types';
+import { scopeSummary } from '@/services/grant-membership';
 
 export const dynamic = 'force-dynamic';
 const PAGE_SIZE = 50;
@@ -26,10 +30,26 @@ export default async function BatchPage({
 }) {
   const { batchId } = await params;
   const { page: pageRaw } = await searchParams;
+  const orgId = await getOrgId();
   const batch = await prisma.importBatch.findFirst({
-    where: { id: batchId, orgId: await getOrgId() },
+    where: { id: batchId, orgId },
+    include: { scopeGrant: { select: { id: true, name: true } } },
   });
   if (!batch) notFound();
+  const checksums = (batch.checksums as unknown as ChecksumResult[] | null) ?? [];
+  const reportMeta = (batch.reportMeta as Record<string, string | null> | null) ?? {};
+  const scope =
+    batch.scopeGrant && batch.scopeDateFrom && batch.scopeDateTo
+      ? { grant: batch.scopeGrant, dateFrom: batch.scopeDateFrom, dateTo: batch.scopeDateTo }
+      : null;
+  const scopeTotals =
+    scope && batch.status === 'succeeded'
+      ? await scopeSummary(prisma, orgId, {
+          grantId: scope.grant.id,
+          dateFrom: scope.dateFrom,
+          dateTo: scope.dateTo,
+        })
+      : null;
 
   const counts = batch.counts as Partial<ImportCounts>;
   const lockIds = ((batch.counts as { lockIds?: string[] }).lockIds ?? []).filter(Boolean);
@@ -91,6 +111,85 @@ export default async function BatchPage({
           ))}
         </div>
       )}
+
+      {scope ? (
+        <Card title="Grant scope" className="mb-6">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-testid="grant-scope">
+            <KeyFigure
+              label="Grant"
+              value={<Link href={`/grants/${scope.grant.id}`}>{scope.grant.name}</Link>}
+              hint={reportMeta.title ?? undefined}
+            />
+            <KeyFigure
+              label="Report range"
+              value={<Period from={scope.dateFrom} to={scope.dateTo} />}
+              hint={reportMeta.companyName ?? undefined}
+            />
+            <KeyFigure
+              label="Member lines in range"
+              value={scopeTotals ? scopeTotals.memberLines : '—'}
+              hint={
+                scopeTotals && scopeTotals.classes.length > 0
+                  ? `Classes: ${scopeTotals.classes.join(', ')}`
+                  : undefined
+              }
+            />
+            <KeyFigure
+              label="Income / expense"
+              value={
+                scopeTotals ? (
+                  <>
+                    <Money cents={scopeTotals.incomeCents} zero="zero" className="scope-income" />
+                    {' / '}
+                    <Money cents={scopeTotals.expenseCents} zero="zero" className="scope-expense" />
+                  </>
+                ) : (
+                  '—'
+                )
+              }
+            />
+          </div>
+          <p className="muted mt-3 text-xs">
+            Only this grant&apos;s lines dated inside the report range were reconciled; other grants
+            and the rest of the ledger were not touched.
+          </p>
+        </Card>
+      ) : null}
+
+      {checksums.length > 0 ? (
+        <Card title="Checksums" className="mb-6">
+          <DataTable caption="Report totals versus the lines under them">
+            <thead>
+              <tr>
+                <th>Total row</th>
+                <th className="num">Row</th>
+                <th className="num">Report says</th>
+                <th className="num">Lines add up to</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {checksums.map((c) => (
+                <tr key={c.row} data-testid="checksum-row" data-passed={c.passed}>
+                  <td>{c.label}</td>
+                  <td className="num">{c.row}</td>
+                  <td className="num">
+                    <Money cents={c.expectedCents} zero="zero" />
+                  </td>
+                  <td className="num">
+                    <Money cents={c.actualCents} zero="zero" />
+                  </td>
+                  <td>
+                    <StatusPill tone={c.passed ? 'ok' : 'bad'}>
+                      {c.passed ? 'Matches' : 'Mismatch'}
+                    </StatusPill>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
+        </Card>
+      ) : null}
 
       <div className="card mb-6">
         <h2 className="mb-3">Counts per entity</h2>

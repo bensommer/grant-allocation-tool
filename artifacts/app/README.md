@@ -27,21 +27,23 @@ pnpm run dev                            # http://localhost:3000
 
 ## Scripts
 
-| Script                                                | What it does                                                           |
-| ----------------------------------------------------- | ---------------------------------------------------------------------- |
-| `pnpm run dev`                                        | Next.js dev server on `$PORT`                                          |
-| `pnpm run build` / `start`                            | Production build / serve                                               |
-| `pnpm run typecheck`                                  | `prisma generate` + `tsc --noEmit` (strict)                            |
-| `pnpm run lint`                                       | ESLint (next/core-web-vitals + typescript)                             |
-| `pnpm run format`                                     | Prettier check                                                         |
-| `pnpm run db:migrate`                                 | `prisma migrate deploy`                                                |
-| `pnpm run db:migrate:dev`                             | `prisma migrate dev` (creates a new migration)                         |
-| `pnpm run test`                                       | Vitest unit + domain tests (golden dataset included)                   |
-| `pnpm run e2e`                                        | Playwright e2e (projects: `chromium`, `chromium-nojs`)                 |
-| `pnpm run import:csv -- --dir <folder>`               | Import a CSV bundle from the CLI (`--from`/`--to` for a partial range) |
-| `pnpm run seed:demo`                                  | Load the demo overlay (programs, grants, budget lines, rules)          |
-| `pnpm run recompute`                                  | Run the allocation pipeline once (same as "Recompute now" on `/runs`)  |
-| `pnpm run fixtures:generate -- --seed 42 --months 12` | Deterministic larger dataset into `fixtures/generated`                 |
+| Script                                                                   | What it does                                                                    |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `pnpm run dev`                                                           | Next.js dev server on `$PORT`                                                   |
+| `pnpm run build` / `start`                                               | Production build / serve                                                        |
+| `pnpm run typecheck`                                                     | `prisma generate` + `tsc --noEmit` (strict)                                     |
+| `pnpm run lint`                                                          | ESLint (next/core-web-vitals + typescript)                                      |
+| `pnpm run format`                                                        | Prettier check                                                                  |
+| `pnpm run db:migrate`                                                    | `prisma migrate deploy`                                                         |
+| `pnpm run db:migrate:dev`                                                | `prisma migrate dev` (creates a new migration)                                  |
+| `pnpm run test`                                                          | Vitest unit + domain tests (golden dataset included)                            |
+| `pnpm run e2e`                                                           | Playwright e2e (`visual`, then `chromium` + `chromium-nojs`, then `qbo-report`) |
+| `pnpm run import:csv -- --dir <folder>`                                  | Import a CSV bundle from the CLI (`--from`/`--to` for a partial range)          |
+| `pnpm run seed:demo`                                                     | Load the demo overlay (programs, grants, budget lines, rules)                   |
+| `pnpm run recompute`                                                     | Run the allocation pipeline once (same as "Recompute now" on `/runs`)           |
+| `pnpm run fixtures:generate -- --seed 42 --months 12`                    | Deterministic larger dataset into `fixtures/generated`                          |
+| `pnpm run import:qbo-report -- --file <export> --grant <id or name>`     | Import a QuickBooks "Transaction Detail by Account" export for one grant        |
+| `pnpm run fixtures:anonymize -- --workbook <xlsx> --tab "Sheet=out.csv"` | Rebuild the pseudonymized pilot fixtures from the private workbook              |
 
 `pnpm run test` truncates every table in `DATABASE_URL`; set `TEST_DATABASE_URL` to use a
 separate database (tcsh: `setenv TEST_DATABASE_URL postgresql://...`).
@@ -121,6 +123,28 @@ pnpm run seed:demo
 `fixtures/demo/EXPECTED.md` lists the golden totals asserted by `tests/db/golden.test.ts`;
 `fixtures/broken/` reproduces the five documented import errors. The QuickBooks Online adapter
 (`src/datasource/qbo/adapter.ts`) is a stub pending the live-connector story.
+
+## QuickBooks report import for one grant (JPH-20)
+
+Until a live QuickBooks connection exists, a bookkeeper runs **Transaction Detail by Account** in
+QuickBooks filtered to one grant's class or customer with a fixed date range, exports it, and
+uploads the `.xlsx` or `.csv` on `/import` under "Import a QuickBooks report for one grant".
+The parser (`src/datasource/qbo-report/parser.ts`) finds the header row by text, walks the nested
+account sections, and verifies every "Total for …" row and the final TOTAL against the lines it
+read; the confirm page shows those checksums, and the import button is disabled if any fail.
+Nothing is written until the confirm step. Lines are keyed by content plus an occurrence index, so
+duplicate rows are kept and an amount correction pairs with its previous version through
+`Transaction.matchKey`. Removal detection is scoped to the grant and the report's date range.
+
+Every imported line becomes a `GrantMembership` row (`import_scope`). Grants can also name member
+classes and customers/projects; `syncRuleMemberships` maintains `class_match` / `project_match`
+rows on grant save and after each import. Rows are superseded, never deleted.
+
+`fixtures/pilot/` holds pseudonymized exports of the pilot workbook, regenerated with
+`pnpm fixtures:anonymize` from the git-ignored `fixtures/private/` (workbook, pseudonym map,
+denylist). When the denylist is present, `src/privacy/no-private-data.test.ts` fails if any tracked
+file contains a real name. `tests/db/qbo-report.test.ts` asserts the ticket's totals in integer
+cents. Open decisions are logged in the repository-root `QUESTIONS.md`.
 
 ## Crosstab reports (JPH-11)
 

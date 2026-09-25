@@ -13,6 +13,7 @@ import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import type { ImportCounts } from '@/datasource/import-service';
 import { uploadCsvBundle } from './actions';
+import { uploadQboReport } from './qbo-report/actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,11 +24,19 @@ export default async function ImportPage({
 }) {
   const { error } = await searchParams;
   const orgId = await getOrgId();
-  const batches = await prisma.importBatch.findMany({
-    where: { orgId },
-    orderBy: { startedAt: 'desc' },
-    take: 10,
-  });
+  const [batches, grants] = await Promise.all([
+    prisma.importBatch.findMany({
+      where: { orgId },
+      orderBy: { startedAt: 'desc' },
+      take: 10,
+      include: { scopeGrant: { select: { name: true } } },
+    }),
+    prisma.grant.findMany({
+      where: { orgId, status: { in: ['draft', 'active'] } },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, funder: true },
+    }),
+  ]);
 
   return (
     <>
@@ -64,6 +73,51 @@ export default async function ImportPage({
         </form>
       </Card>
 
+      <Card title="Import a QuickBooks report for one grant">
+        <form action={uploadQboReport} className="mb-6" encType="multipart/form-data">
+          <div className="grid-form">
+            <div>
+              <label htmlFor="report">Transaction Detail by Account export (.xlsx or .csv)</label>
+              <input
+                id="report"
+                name="report"
+                type="file"
+                accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="grantId">Grant</label>
+              <select id="grantId" name="grantId" required defaultValue="">
+                <option value="" disabled>
+                  Choose a grant…
+                </option>
+                {grants.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name} — {g.funder}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="sheet">Worksheet (optional, .xlsx only)</label>
+              <input id="sheet" name="sheet" type="text" placeholder="First sheet if blank" />
+            </div>
+          </div>
+          <p className="muted mt-2 text-xs">
+            Run the report in QuickBooks filtered to the grant&apos;s class or customer with a fixed
+            date range, export it, and upload it here. You will see what was read and whether every
+            total checks out before anything is written.
+          </p>
+          <Button disabled={grants.length === 0}>Review report</Button>
+          {grants.length === 0 ? (
+            <p className="muted mt-2 text-xs">
+              Create a grant first — a report import always belongs to one grant.
+            </p>
+          ) : null}
+        </form>
+      </Card>
+
       <Card title="Recent imports">
         {batches.length === 0 ? (
           <p className="muted">
@@ -92,7 +146,10 @@ export default async function ImportPage({
                     <td>
                       <DateText date={b.startedAt} time />
                     </td>
-                    <td>{b.sourceSystem}</td>
+                    <td>
+                      {b.sourceSystem}
+                      {b.scopeGrant ? <span className="muted"> · {b.scopeGrant.name}</span> : null}
+                    </td>
                     <td>
                       <StatusPill
                         tone={

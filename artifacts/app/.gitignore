@@ -3,3 +3,4 @@ src/generated/
 playwright-report/
 test-results/
 .env
+fixtures/private/

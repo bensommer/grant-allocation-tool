@@ -16,6 +16,8 @@ export interface GrantFormData {
   status: keyof typeof GRANT_STATUS_LABEL;
   matchPartyIds: string[];
   matchClassIds: string[];
+  memberClassIds: string[];
+  memberPartyIds: string[];
   programs: Array<{ programId: string; plannedShareBps: number | null }>;
 }
 
@@ -25,6 +27,7 @@ export function GrantForm({
   saved,
   grant,
   customers,
+  memberParties,
   classes,
   programs,
   submitLabel,
@@ -34,6 +37,7 @@ export function GrantForm({
   saved?: boolean;
   grant: GrantFormData | null;
   customers: Array<{ id: string; displayName: string }>;
+  memberParties: Array<{ id: string; displayName: string; kind: string }>;
   classes: Array<{ id: string; name: string }>;
   programs: Array<{ id: string; code: string; name: string }>;
   submitLabel: string;
@@ -237,6 +241,32 @@ export function GrantForm({
             name="matchClassIds"
             options={classes.map((c) => ({ value: c.id, label: c.name }))}
             selected={pickList(state, 'matchClassIds', grant?.matchClassIds ?? [])}
+          />
+        </Field>
+        <Field
+          label="Grant membership — classes"
+          name="memberClassIds"
+          hint="Live-QuickBooks mode: every line tagged with these classes belongs to this grant."
+        >
+          <CheckboxList
+            name="memberClassIds"
+            options={classes.map((c) => ({ value: c.id, label: c.name }))}
+            selected={pickList(state, 'memberClassIds', grant?.memberClassIds ?? [])}
+          />
+        </Field>
+        <Field
+          label="Grant membership — customers / projects"
+          name="memberPartyIds"
+          hint="Lines tagged with these customers or projects belong to this grant."
+        >
+          <CheckboxList
+            name="memberPartyIds"
+            options={memberParties.map((c) => ({
+              value: c.id,
+              label: c.displayName,
+              note: c.kind === 'project' ? 'project' : undefined,
+            }))}
+            selected={pickList(state, 'memberPartyIds', grant?.memberPartyIds ?? [])}
           />
         </Field>
       </div>

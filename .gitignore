@@ -51,3 +51,6 @@ Thumbs.db
 # local
 .conversation/
 .cache/
+
+# Agent scratch outputs (may hold ticket text with private names)
+.agents/outputs/

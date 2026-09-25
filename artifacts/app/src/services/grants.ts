@@ -5,6 +5,7 @@ import { markCurrentRunStale } from '@/lib/stale';
 import { MAX_CENTS } from '@/domain/money';
 import { ValidationError } from '@/services/programs';
 import { assertOrgRefs } from '@/services/refs';
+import { syncRuleMemberships } from '@/services/grant-membership';
 
 export const grantInputSchema = z
   .object({
@@ -20,6 +21,9 @@ export const grantInputSchema = z
     revenueAccountId: z.string().nullable(),
     matchPartyIds: z.array(z.string()),
     matchClassIds: z.array(z.string()),
+    /** Live-QuickBooks membership rules (JPH-20): classes / projects whose lines belong to this grant. */
+    memberClassIds: z.array(z.string()).default([]),
+    memberPartyIds: z.array(z.string()).default([]),
     programs: z.array(
       z.object({
         programId: z.string(),
@@ -31,9 +35,10 @@ export const grantInputSchema = z
     message: 'End date must be on or after start date',
     path: ['endDate'],
   });
-export type GrantInput = z.infer<typeof grantInputSchema>;
+export type GrantInput = z.input<typeof grantInputSchema>;
+type ParsedGrantInput = z.output<typeof grantInputSchema>;
 
-async function assertGrantRefs(orgId: string, input: GrantInput) {
+async function assertGrantRefs(orgId: string, input: ParsedGrantInput) {
   await assertOrgRefs(prisma, orgId, 'programs', {
     programIds: input.programs.map((p) => p.programId),
   });
@@ -42,12 +47,15 @@ async function assertGrantRefs(orgId: string, input: GrantInput) {
   });
   await assertOrgRefs(prisma, orgId, 'matchPartyIds', { partyIds: input.matchPartyIds });
   await assertOrgRefs(prisma, orgId, 'matchClassIds', { classIds: input.matchClassIds });
+  await assertOrgRefs(prisma, orgId, 'memberPartyIds', { partyIds: input.memberPartyIds });
+  await assertOrgRefs(prisma, orgId, 'memberClassIds', { classIds: input.memberClassIds });
   await assertOrgRefs(prisma, orgId, 'revenueAccountId', {
     accountIds: input.revenueAccountId ? [input.revenueAccountId] : [],
   });
 }
 
-export async function createGrant(orgId: string, input: GrantInput) {
+export async function createGrant(orgId: string, rawInput: GrantInput) {
+  const input = grantInputSchema.parse(rawInput);
   const { programs, ...data } = input;
   await assertGrantRefs(orgId, input);
   return prisma.$transaction(async (tx) => {
@@ -56,12 +64,14 @@ export async function createGrant(orgId: string, input: GrantInput) {
       include: { programs: true },
     });
     await recordAudit(tx, { orgId, entity: 'Grant', entityId: g.id, action: 'create', after: g });
+    await syncRuleMemberships(tx, orgId, g.id);
     await markCurrentRunStale(tx, orgId);
     return g;
   });
 }
 
-export async function updateGrant(orgId: string, id: string, input: GrantInput) {
+export async function updateGrant(orgId: string, id: string, rawInput: GrantInput) {
+  const input = grantInputSchema.parse(rawInput);
   const before = await prisma.grant.findFirst({
     where: { id, orgId },
     include: { programs: true },
@@ -84,6 +94,7 @@ export async function updateGrant(orgId: string, id: string, input: GrantInput) 
       before,
       after,
     });
+    await syncRuleMemberships(tx, orgId, id);
     await markCurrentRunStale(tx, orgId);
     return after;
   });
@@ -99,9 +110,10 @@ export async function deleteOrArchiveGrant(
     include: { programs: true, budgetLines: true },
   });
   if (!before) throw new ValidationError({ _: 'Grant not found' });
-  const referenced = await prisma.allocatedLine.count({
-    where: { OR: [{ grantId: id }, { grantBudgetLine: { grantId: id } }] },
-  });
+  const referenced =
+    (await prisma.allocatedLine.count({
+      where: { OR: [{ grantId: id }, { grantBudgetLine: { grantId: id } }] },
+    })) + (await prisma.importBatch.count({ where: { scopeGrantId: id } }));
   if (referenced > 0) {
     await prisma.$transaction(async (tx) => {
       const after = await tx.grant.update({ where: { id }, data: { status: 'archived' } });

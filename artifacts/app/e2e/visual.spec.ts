@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { routes } from './routes';
 import { execFileSync } from 'node:child_process';
 import { prisma } from '../src/lib/db';
+import { removeQboReportData } from './qbo-cleanup';
 
 const pages = [
   'dashboard',
@@ -24,6 +25,8 @@ test('twelve key pages at desktop and mobile', async ({ page }) => {
     where: { orgId: org.id, name: { startsWith: 'E2E Grant ' } },
     select: { id: true },
   });
+  // The report-import spec writes a scoped import into the demo org; take it back out first.
+  await removeQboReportData(org.id);
   for (const grant of leftovers) {
     await prisma.allocatedLine.deleteMany({ where: { orgId: org.id, grantId: grant.id } });
     await prisma.grant.delete({ where: { id: grant.id } });
