@@ -1,5 +1,6 @@
 import { parseDateInput } from '@/domain/dates';
 import { prisma } from '@/lib/db';
+import { booksThrough } from '@/services/grant-figures';
 import { defaultRollforwardRange } from '@/services/grant-periods';
 
 export const RANGE_PRESETS = ['fy', 'last-closed', 'grant-to-date', 'custom'] as const;
@@ -19,23 +20,29 @@ export interface ResolvedRange {
   error: string | null;
   /** Why a preset fell back to the fiscal year (no closed period, no grants). */
   fallback: string | null;
+  /** `to` is the books-through date (the last imported transaction), not a date the user chose. */
+  booksThrough: boolean;
 }
 
 /**
  * Resolve ?range (preset) or ?from&to (custom). Presets: the org's fiscal year to
- * date (default), the most recently locked period, or the earliest active grant's
- * start through today. All GET, so the URL is the report.
+ * books-through (default), the most recently locked period, or the earliest active
+ * grant's start through books-through. "Books through" is the last imported
+ * transaction date — the same as-of the other pages default to (JPH-30) — falling
+ * back to today when nothing has been imported. All GET, so the URL is the report.
  */
 export async function resolveRange(
   orgId: string,
   q: { range?: string; from?: string; to?: string },
-  today = new Date(),
 ): Promise<ResolvedRange> {
-  const org = await prisma.org.findFirstOrThrow({
-    where: { id: orgId },
-    select: { fiscalYearStartMonth: true },
-  });
-  const fy = defaultRollforwardRange(org.fiscalYearStartMonth, today);
+  const [org, books] = await Promise.all([
+    prisma.org.findFirstOrThrow({
+      where: { id: orgId },
+      select: { fiscalYearStartMonth: true },
+    }),
+    booksThrough(orgId),
+  ]);
+  const fy = defaultRollforwardRange(org.fiscalYearStartMonth, books);
   const preset: RangePreset = (RANGE_PRESETS as readonly string[]).includes(q.range ?? '')
     ? (q.range as RangePreset)
     : q.from || q.to
@@ -72,5 +79,5 @@ export async function resolveRange(
     else fallback = 'No active grants; showing the fiscal year to date.';
   }
   if (from > to) error = 'From must not be after To.';
-  return { from, to, preset, error, fallback };
+  return { from, to, preset, error, fallback, booksThrough: to.getTime() === books.getTime() };
 }

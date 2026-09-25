@@ -15,19 +15,12 @@ import {
 import { Field } from '@/components/form';
 import { PacingCallout } from '@/components/pacing-callout';
 import { parseDateInput, toISODate } from '@/domain/dates';
-import { pacing } from '@/domain/pacing';
 import type { PlannedEntry } from '@/domain/periods';
 import { getOrgId } from '@/lib/org';
 import { defaultReportDate } from '@/services/bva';
 import { budgetTree } from '@/services/grant-budget';
-import {
-  forecast,
-  grantHeader,
-  headerMetrics,
-  workingView,
-  type WorkingRow,
-} from '@/services/grant-workspace';
-import { getPacingSettings } from '@/services/settings';
+import { grantFiguresFor } from '@/services/grant-figures';
+import { forecast, grantHeader, workingView, type WorkingRow } from '@/services/grant-workspace';
 import { GrantTabs } from '../tabs';
 
 export const dynamic = 'force-dynamic';
@@ -49,22 +42,13 @@ export default async function WorkingViewPage({
   const orgId = await getOrgId();
   const grant = await grantHeader(orgId, id);
   if (!grant) notFound();
-  const [{ date }, tree, thresholds] = await Promise.all([
-    defaultReportDate(orgId, sp.asOf),
-    budgetTree(orgId, id),
-    getPacingSettings(orgId),
+  const { date } = await defaultReportDate(orgId, sp.asOf);
+  const [tree, figures] = await Promise.all([
+    budgetTree(orgId, id, date),
+    grantFiguresFor(orgId, id, date),
   ]);
+  if (!figures) notFound();
   const view = workingView(tree, grant, date);
-  const metrics = await headerMetrics(orgId, grant, date);
-  const pace = pacing(
-    grant.awardAmountCents,
-    metrics.spentCents,
-    grant.startDate,
-    grant.endDate,
-    date,
-    thresholds.underPercent,
-    thresholds.overPercent,
-  );
 
   // Forecast strip: a stateless GET form so the URL carries the plan.
   let fcTo: Date = grant.endDate;
@@ -97,7 +81,7 @@ export default async function WorkingViewPage({
   const target = tree.all.find((l) => l.code === lineCode && l.kind !== 'funder_category');
   const fc = forecast(
     target ? target.chargedCents : tree.totals.chargedCents,
-    target ? target.currentCents : tree.totals.funderCents,
+    target ? target.currentCents : tree.totals.budgetCents,
     fcTo,
     entries,
   );
@@ -115,9 +99,16 @@ export default async function WorkingViewPage({
       />
       <GrantTabs id={id} active="working" />
       <Card title="Pacing">
-        <PacingCallout metrics={metrics} pace={pace} />
+        <PacingCallout figures={figures.figures} />
       </Card>
-      <Card title="Working view" action={<span className="muted text-sm">Report date <DateText date={date} /></span>}>
+      <Card
+        title="Working view"
+        action={
+          <span className="muted text-sm">
+            Report date <DateText date={date} />
+          </span>
+        }
+      >
         <DataTable stickyFirstColumn>
           <thead>
             <tr>
@@ -137,8 +128,8 @@ export default async function WorkingViewPage({
             ))}
             <TotalRow>
               <Th scope="row">Total</Th>
-              <NumTd cents={tree.totals.funderCents} dollar />
-              <NumTd cents={tree.totals.chargedCents} dollar />
+              <NumTd cents={tree.totals.budgetCents} dollar data-testid="total-budget" />
+              <NumTd cents={tree.totals.chargedCents} dollar data-testid="total-charged" />
               <NumTd cents={view.totalRemainingCents} dollar data-testid="total-remaining" />
               <PerMonth cents={view.totalPerMonthCents} testId="total-per-month" />
             </TotalRow>
@@ -151,7 +142,11 @@ export default async function WorkingViewPage({
       </Card>
 
       <Card title="Forecast strip">
-        <form method="get" className="grid gap-3 md:grid-cols-[1fr_auto]" data-testid="forecast-form">
+        <form
+          method="get"
+          className="grid gap-3 md:grid-cols-[1fr_auto]"
+          data-testid="forecast-form"
+        >
           {sp.asOf && <input type="hidden" name="asOf" value={sp.asOf} />}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Line" name="line">
@@ -307,4 +302,3 @@ function CategoryBlock({
     </>
   );
 }
-

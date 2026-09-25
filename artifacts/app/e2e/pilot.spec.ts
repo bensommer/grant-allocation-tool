@@ -204,24 +204,46 @@ test('Opioid effort page renders the coordinator schedule, per-activity charges,
   await expect(schedule).toHaveCount(1);
   await expect(schedule.getByTestId('hourly-rate')).toHaveAttribute('data-rate', '36.0577');
   await expect(schedule.getByTestId('burden')).toHaveAttribute('data-bps', '765');
-  await expect(schedule.getByTestId('schedule-terms').locator('[data-cents="7500000"]')).toHaveCount(1);
+  await expect(
+    schedule.getByTestId('schedule-terms').locator('[data-cents="7500000"]'),
+  ).toHaveCount(1);
   for (const [activity, cents] of Object.entries(OPIOID_EFFORT)) {
     await expect(
-      schedule.locator(`tr[data-activity="${activity.replaceAll('"', '\\"')}"] [data-testid="charge"][data-cents="${cents}"]`),
+      schedule.locator(
+        `tr[data-activity="${activity.replaceAll('"', '\\"')}"] [data-testid="charge"][data-cents="${cents}"]`,
+      ),
       activity,
     ).toHaveCount(1);
   }
   await expect(schedule.getByTestId('schedule-total')).toHaveAttribute('data-cents', '537603');
   const totals = page.getByTestId('effort-totals');
-  await expect(totals.getByTestId('total-charged').locator('[data-cents]')).toHaveAttribute('data-cents', '1628610');
-  await expect(totals.getByTestId('remaining').locator('[data-cents]')).toHaveAttribute('data-cents', '371390');
+  await expect(totals.getByTestId('total-charged').locator('[data-cents]')).toHaveAttribute(
+    'data-cents',
+    '1628610',
+  );
+  await expect(totals.getByTestId('remaining').locator('[data-cents]')).toHaveAttribute(
+    'data-cents',
+    '371390',
+  );
   const panel = page.getByTestId('booked-vs-charged');
-  await expect(panel.getByTestId('booked').locator('[data-cents]')).toHaveAttribute('data-cents', '551956');
-  await expect(panel.getByTestId('charged').locator('[data-cents]')).toHaveAttribute('data-cents', '537603');
-  await expect(panel.getByTestId('variance').locator('[data-cents]')).toHaveAttribute('data-cents', '14353');
+  await expect(panel.getByTestId('booked').locator('[data-cents]')).toHaveAttribute(
+    'data-cents',
+    '551956',
+  );
+  await expect(panel.getByTestId('charged').locator('[data-cents]')).toHaveAttribute(
+    'data-cents',
+    '537603',
+  );
+  await expect(panel.getByTestId('variance').locator('[data-cents]')).toHaveAttribute(
+    'data-cents',
+    '14353',
+  );
 
   // Carry variance requires a note and shows the carried amount with it.
-  await page.getByTestId('carry-variance').getByLabel('Note (required)').fill('Carried per funder call');
+  await page
+    .getByTestId('carry-variance')
+    .getByLabel('Note (required)')
+    .fill('Carried per funder call');
   await page.getByTestId('carry-variance').getByRole('button', { name: 'Carry variance' }).click();
   await page.waitForURL(/\/effort\?saved=1/);
   const carried = page.getByTestId('carried-variance');
@@ -296,6 +318,11 @@ test('JPH-23 AC6: Salah overview shows coded 22,708.81 with 1,188.41 waiting (no
   page,
 }) => {
   await page.goto(`/grants/${salahId}`);
+  // JPH-30 AC6: the header says how QuickBooks tracks the grant.
+  await expect(page.getByTestId('tracking-badge')).toHaveAttribute('data-mode', 'membership');
+  await expect(page.getByTestId('tracking-badge')).toContainText(
+    'Tracked by QuickBooks class: Trauma Grants',
+  );
   const tie = page.getByTestId('tie-out');
   await expect(tie).toHaveAttribute('data-green', '0');
   await expect(tie).toHaveAttribute('data-status', 'open');
@@ -308,10 +335,16 @@ test('JPH-23 AC6: Salah overview shows coded 22,708.81 with 1,188.41 waiting (no
   await expect(page.getByTestId('review-tab-count')).toContainText('7');
   await expect(page.getByTestId('metric-award')).toHaveAttribute('data-cents', '5000000');
   await expect(page.getByTestId('metric-received')).toHaveAttribute('data-cents', '5000000');
-  await expect(page.getByTestId('metric-balance')).toHaveAttribute('data-cents', String(5000000 - 2152040));
+  await expect(page.getByTestId('metric-balance')).toHaveAttribute(
+    'data-cents',
+    String(5000000 - 2152040),
+  );
 
   // Design decision: a proposed reversal pair is not green until a reviewer confirms it.
   await page.goto(`/grants/${opioidId}`);
+  await expect(page.getByTestId('tracking-badge')).toContainText(
+    'Tracked by QuickBooks project: 2025-2026 Opioid Grant',
+  );
   await expect(page.getByTestId('tie-out')).toHaveAttribute('data-green', '0');
   await expect(page.getByTestId('tie-out')).toHaveAttribute('data-status', 'pairs');
   await expect(page.getByTestId('tie-out-status')).toContainText('1 pair to confirm (nets $0.00)');
@@ -354,11 +387,24 @@ test('JPH-23 AC5: Opioid activity grid renders per-occurrence and over-budget ce
   const me = cell("Mother's Exhaustion (virtual)", 'FOODSUPP');
   await expect(me).toHaveAttribute('data-over', '1');
   await expect(me.locator('.cell-remaining')).toHaveAttribute('data-cents', '-15289');
-  await expect(cell('Teen Monthly', 'SUPPORT').locator('.cell-remaining')).toHaveAttribute('data-cents', '-49609');
-  await expect(cell('Sober Socials', 'SUPPORT').locator('.cell-remaining')).toHaveAttribute('data-cents', '-44');
-  await expect(cell("Daytime Mother's", 'COORD').locator('.cell-remaining')).toHaveAttribute('data-cents', '-79893');
-  await expect(cell('Conference', 'COORD').locator('.cell-remaining')).toHaveAttribute('data-cents', '-24777');
-  const total = (code: string) => page.locator(`td[data-testid="column-remaining"][data-code="${code}"]`);
+  await expect(cell('Teen Monthly', 'SUPPORT').locator('.cell-remaining')).toHaveAttribute(
+    'data-cents',
+    '-49609',
+  );
+  await expect(cell('Sober Socials', 'SUPPORT').locator('.cell-remaining')).toHaveAttribute(
+    'data-cents',
+    '-44',
+  );
+  await expect(cell("Daytime Mother's", 'COORD').locator('.cell-remaining')).toHaveAttribute(
+    'data-cents',
+    '-79893',
+  );
+  await expect(cell('Conference', 'COORD').locator('.cell-remaining')).toHaveAttribute(
+    'data-cents',
+    '-24777',
+  );
+  const total = (code: string) =>
+    page.locator(`td[data-testid="column-remaining"][data-code="${code}"]`);
   await expect(total('SUPPORT')).toHaveAttribute('data-cents', '-34653');
   await expect(total('COORD')).toHaveAttribute('data-cents', '87697');
 });
@@ -373,7 +419,8 @@ test('JPH-23 AC1/AC2: Opioid periods page shows the reported FY2025 snapshot and
   await expect(snap.getByTestId('snapshot-staff')).toHaveAttribute('data-cents', '83300');
   await expect(snap.getByTestId('snapshot-overhead')).toHaveAttribute('data-cents', '300000');
   await expect(snap.getByTestId('snapshot-received')).toHaveAttribute('data-cents', '2000000');
-  const drift = (cls: string) => page.locator(`tr[data-testid="drift-row"][data-class="${cls}"]`, { hasText: 'FY2025' });
+  const drift = (cls: string) =>
+    page.locator(`tr[data-testid="drift-row"][data-class="${cls}"]`, { hasText: 'FY2025' });
   await expect(drift('direct').getByTestId('drift-books')).toHaveAttribute('data-cents', '193234');
   await expect(drift('direct').getByTestId('drift-diff')).toHaveAttribute('data-cents', '-18766');
   await expect(drift('overhead').getByTestId('drift-diff')).toHaveAttribute('data-cents', '0');
@@ -385,7 +432,9 @@ test('JPH-23 AC3/AC4: rollforward 1/1–9/22/2026 renders each fund, ties its ch
 }) => {
   await page.goto(`/grants/rollforward?${RF}`);
   const heads = page.locator('thead th');
-  const opioidCol = (await heads.allTextContents()).findIndex((t) => t.startsWith(OPIOID_NAME_PREFIX));
+  const opioidCol = (await heads.allTextContents()).findIndex((t) =>
+    t.startsWith(OPIOID_NAME_PREFIX),
+  );
   const salahCol = (await heads.allTextContents()).findIndex((t) => t === SALAH_NAME);
   expect(opioidCol).toBeGreaterThan(0);
   expect(salahCol).toBeGreaterThan(0);
@@ -402,7 +451,10 @@ test('JPH-23 AC3/AC4: rollforward 1/1–9/22/2026 renders each fund, ties its ch
   await expect(await rfCell(page, 'received', sa)).toHaveAttribute('data-cents', '5000000');
   await expect(await rfCell(page, 'direct', sa)).toHaveAttribute('data-cents', '2152040');
   await expect(await rfCell(page, 'ending', sa)).toHaveAttribute('data-cents', '2847960');
-  await expect(page.getByTestId('rf-check-total').locator('[data-cents]')).toHaveAttribute('data-cents', '0');
+  await expect(page.getByTestId('rf-check-total').locator('[data-cents]')).toHaveAttribute(
+    'data-cents',
+    '0',
+  );
   const note = page.locator('[data-testid="rf-note"]', { hasText: 'not yet released' });
   await expect(note).toContainText('7 lines');
   await expect(note.getByRole('link')).toHaveAttribute('href', `/grants/${salahId}/review`);
@@ -432,10 +484,18 @@ test('JPH-23 §6 J: Salah working view shows 5.3 months left at 9/22/2026 and fo
   await expect(page.getByTestId('months-left')).toHaveAttribute('data-months', '5.3');
   await expect(page.getByTestId('total-remaining')).toHaveAttribute('data-cents', '2847960');
   // 2 entries × 3 hours × 36.06 = 216.36 on the whole grant.
-  await page.goto(`/grants/${salahId}/working?asOf=2026-09-22&to=2026-12-31&count0=2&hours0=3&rate0=36.06`);
+  await page.goto(
+    `/grants/${salahId}/working?asOf=2026-09-22&to=2026-12-31&count0=2&hours0=3&rate0=36.06`,
+  );
   await expect(page.getByTestId('planned-total')).toHaveAttribute('data-cents', '21636');
-  await expect(page.getByTestId('projected')).toHaveAttribute('data-cents', String(2152040 + 21636));
-  await expect(page.getByTestId('remaining-after')).toHaveAttribute('data-cents', String(2847960 - 21636));
+  await expect(page.getByTestId('projected')).toHaveAttribute(
+    'data-cents',
+    String(2152040 + 21636),
+  );
+  await expect(page.getByTestId('remaining-after')).toHaveAttribute(
+    'data-cents',
+    String(2847960 - 21636),
+  );
 });
 
 test('JPH-23 §6 H: recording a reported period without JS writes a reported snapshot that the periods page lists', async ({
@@ -459,9 +519,17 @@ test('JPH-23 §6 H: recording a reported period without JS writes a reported sna
   await expect(snap.getByTestId('snapshot-received')).toHaveAttribute('data-cents', '5000000');
   // The rollforward now starts April from the reported period: beginning 48,765.44.
   await page.goto('/grants/rollforward?from=2026-04-01&to=2026-09-22');
-  const salahCol = (await page.locator('thead th').allTextContents()).findIndex((t) => t === SALAH_NAME);
-  await expect(await rfCell(page, 'beginning', salahCol - 1)).toHaveAttribute('data-cents', '4876544');
-  await expect(page.getByTestId('rf-check-total').locator('[data-cents]')).toHaveAttribute('data-cents', '0');
+  const salahCol = (await page.locator('thead th').allTextContents()).findIndex(
+    (t) => t === SALAH_NAME,
+  );
+  await expect(await rfCell(page, 'beginning', salahCol - 1)).toHaveAttribute(
+    'data-cents',
+    '4876544',
+  );
+  await expect(page.getByTestId('rf-check-total').locator('[data-cents]')).toHaveAttribute(
+    'data-cents',
+    '0',
+  );
   // Validation: a bad amount comes back with the field error, nothing written.
   await page.goto(`/grants/${salahId}/periods/reported`);
   const bad = page.getByTestId('reported-period-form');
@@ -489,7 +557,9 @@ test('Excluding the 7 pre-September Leah lines with "Draft correcting entry" dra
   await form.getByLabel('Decision').selectOption('exclude');
   await form.getByLabel('Reason (required to exclude)').fill('not allowable');
   await expect(form.getByLabel('Draft correcting entry (when excluding)')).toBeChecked();
-  await form.getByLabel('Note (required)').fill('D1-B: pre-September payroll is outside the award period');
+  await form
+    .getByLabel('Note (required)')
+    .fill('D1-B: pre-September payroll is outside the award period');
   await form.getByRole('button', { name: 'Record decision' }).click();
   await page.waitForURL(/\/review\?saved=1&drafted=GAT-\d{4}/);
   await expect(page.getByTestId('draft-created')).toBeVisible();
@@ -526,8 +596,14 @@ test('JPH-23 AC6/AC7 after D1-B: Salah tie-out is green, the funder view and rol
   await page.goto(`/grants/${salahId}/funder`);
   await expect(page.getByTestId('funder-charged')).toHaveAttribute('data-cents', '2152040');
   await page.goto(`/grants/rollforward?${RF}`);
-  const salahCol = (await page.locator('thead th').allTextContents()).findIndex((t) => t === SALAH_NAME);
+  const salahCol = (await page.locator('thead th').allTextContents()).findIndex(
+    (t) => t === SALAH_NAME,
+  );
   await expect(await rfCell(page, 'direct', salahCol - 1)).toHaveAttribute('data-cents', '2152040');
-  await expect(page.locator('[data-testid="rf-note"]', { hasText: 'not yet released' })).toHaveCount(0);
-  await expect(page.locator('[data-testid="rf-note"]', { hasText: 'Excluded by decision' })).toHaveCount(1);
+  await expect(
+    page.locator('[data-testid="rf-note"]', { hasText: 'not yet released' }),
+  ).toHaveCount(0);
+  await expect(
+    page.locator('[data-testid="rf-note"]', { hasText: 'Excluded by decision' }),
+  ).toHaveCount(1);
 });

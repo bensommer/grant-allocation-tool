@@ -16,13 +16,10 @@ import {
   TotalRow,
 } from '@/components/ui';
 import { PacingCallout } from '@/components/pacing-callout';
-import { pacing } from '@/domain/pacing';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { bvaData, defaultReportDate } from '@/services/bva';
-import { budgetTree } from '@/services/grant-budget';
-import { headerMetrics, tieOut } from '@/services/grant-workspace';
-import { getPacingSettings } from '@/services/settings';
+import { tieOut } from '@/services/grant-workspace';
 import { GrantTabs } from './tabs';
 import { TieOutPanel } from './tie-out-panel';
 
@@ -45,54 +42,11 @@ export default async function GrantPage({
   ]);
   const grant = grants[0];
   if (!grant) notFound();
-  const tree = await budgetTree(orgId, id);
-  const [metrics, tie, thresholds] = await Promise.all([
-    headerMetrics(orgId, grant, date),
-    tieOut(orgId, id, tree),
-    getPacingSettings(orgId),
-  ]);
-  // Pace from the same spend the header shows (assigned lines + effort), not the BvA rows.
-  const pace = pacing(
-    grant.awardAmountCents,
-    metrics.spentCents,
-    grant.startDate,
-    grant.endDate,
-    date,
-    thresholds.underPercent,
-    thresholds.overPercent,
-  );
+  // The tie-out reconciles member lines; a crosswalk-tracked grant has none.
+  const tie = grant.mode === 'membership' ? await tieOut(orgId, id) : null;
+  const { figures } = grant;
   const programNames = new Map(programs.map((p) => [p.id, p.name]));
-  const receipts = await prisma.transactionLine.findMany({
-    where: {
-      orgId,
-      deletedAt: null,
-      account: { type: { in: ['Income', 'OtherIncome'] } },
-      transaction: {
-        orgId,
-        deletedAt: null,
-        txnDate: { gte: grant.startDate, lte: date < grant.endDate ? date : grant.endDate },
-      },
-    },
-    select: {
-      id: true,
-      amountCents: true,
-      accountId: true,
-      classId: true,
-      partyId: true,
-      account: { select: { type: true } },
-      transaction: { select: { txnDate: true, partyId: true } },
-    },
-  });
-  const { matchesReceived } = await import('@/domain/received');
-  const matched = receipts.filter((r) =>
-    matchesReceived(grant, {
-      accountId: r.accountId,
-      accountType: r.account.type,
-      classId: r.classId,
-      transactionPartyId: r.transaction.partyId,
-      linePartyId: r.partyId,
-    }),
-  );
+  const matched = figures.receiptLines;
   return (
     <>
       <PageHeader
@@ -114,7 +68,9 @@ export default async function GrantPage({
         <Card>
           <KeyFigure
             label="Restricted balance"
-            value={<Money cents={metrics.restrictedBalanceCents} dollar data-testid="metric-balance" />}
+            value={
+              <Money cents={figures.restrictedBalanceCents} dollar data-testid="metric-balance" />
+            }
             hint="Received − spent"
             lead
           />
@@ -124,17 +80,16 @@ export default async function GrantPage({
             label="Spent vs. budget"
             value={
               <>
-                <Money cents={metrics.spentCents} dollar data-testid="metric-spent" />
+                <Money cents={figures.spentCents} dollar data-testid="metric-spent" />
                 <span className="muted text-base font-normal">
                   {' '}
-                  of <Money cents={metrics.awardCents} dollar data-testid="metric-award" />
+                  of <Money cents={figures.awardCents} dollar data-testid="metric-award" />
                 </span>
               </>
             }
             hint={
               <PacingCallout
-                metrics={metrics}
-                pace={pace}
+                figures={figures}
                 overBudgetLines={grant.rows.filter((r) => r.overBudget).map((r) => r.name)}
               />
             }
@@ -146,7 +101,7 @@ export default async function GrantPage({
         <Card>
           <KeyFigure
             label="Received"
-            value={<Money cents={metrics.receivedCents} dollar data-testid="metric-received" />}
+            value={<Money cents={figures.receivedCents} dollar data-testid="metric-received" />}
             hint="Grant income lines through the report date"
             quiet
           />
@@ -154,7 +109,9 @@ export default async function GrantPage({
         <Card>
           <KeyFigure
             label="Remaining award"
-            value={<Money cents={metrics.awardCents - metrics.spentCents} dollar />}
+            value={
+              <Money cents={figures.remainingAwardCents} dollar data-testid="metric-remaining" />
+            }
             hint="Award − spent"
             quiet
           />
@@ -163,10 +120,10 @@ export default async function GrantPage({
           <KeyFigure
             label="Projected at grant end"
             value={
-              metrics.projectedAtEndCents === null ? (
+              figures.projectedAtEndCents === null ? (
                 <span className="muted">—</span>
               ) : (
-                <Money cents={metrics.projectedAtEndCents} dollar />
+                <Money cents={figures.projectedAtEndCents} dollar />
               )
             }
             hint="Straight line from the spend rate to date"
@@ -176,14 +133,26 @@ export default async function GrantPage({
         <Card>
           <KeyFigure
             label="Spent"
-            value={<Money cents={metrics.spentCents} dollar />}
-            hint="Assigned lines + effort charges, current run"
+            value={<Money cents={figures.spentCents} dollar />}
+            hint={
+              grant.mode === 'membership'
+                ? 'Assigned member lines + effort charges through the report date'
+                : 'Crosswalk pieces inside the grant period through the report date'
+            }
             quiet
           />
         </Card>
       </div>
       <Card title="Tie-out">
-        <TieOutPanel id={id} tieOut={tie} />
+        {tie ? (
+          <TieOutPanel id={id} tieOut={tie} />
+        ) : (
+          <p className="muted text-sm" data-testid="tie-out-crosswalk">
+            Tracked by crosswalk rules — review queue does not apply. Spent{' '}
+            <Money cents={figures.spentCents} dollar data-testid="tie-charged" /> is the sum of the
+            budget lines below.
+          </p>
+        )}
       </Card>
       <Card
         title="Budget lines"
@@ -253,7 +222,7 @@ export default async function GrantPage({
               {matched.map((r) => (
                 <tr key={r.id}>
                   <Td>
-                    <DateText date={r.transaction.txnDate} />
+                    <DateText date={r.txnDate} />
                   </Td>
                   <NumTd cents={r.amountCents} />
                 </tr>

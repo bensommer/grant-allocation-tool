@@ -29,7 +29,7 @@ export async function GET(req: Request) {
           centsToDecimalString(g.received),
           centsToDecimalString(g.actual),
           centsToDecimalString(g.balance),
-          centsToDecimalString(g.awardAmountCents - g.actual),
+          centsToDecimalString(g.figures.remainingAwardCents),
           g.pace.flag,
           g.endDate.toISOString().slice(0, 10),
           Math.ceil((g.endDate.getTime() - date.getTime()) / 86_400_000),

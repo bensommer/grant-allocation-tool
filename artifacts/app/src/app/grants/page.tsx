@@ -87,17 +87,18 @@ export default async function GrantsPage({
                 </Td>
                 <NumTd cents={g.awardAmountCents} />
                 <NumTd>
-                  <Money cents={g.actual} />
+                  <Money cents={g.actual} data-testid="grant-spent" />
                   <ProgressBar
                     used={g.actual}
                     budget={g.awardAmountCents}
                     label={`${g.name} award used`}
                   />
                 </NumTd>
-                <NumTd cents={g.balance} />
+                <NumTd cents={g.balance} data-testid="grant-balance" />
                 <Td>
                   <GrantPaceStatus
                     pace={g.pace}
+                    paced={g.figures.paced}
                     overBudgetLines={g.rows.filter((r) => r.overBudget).map((r) => r.name)}
                   />
                 </Td>

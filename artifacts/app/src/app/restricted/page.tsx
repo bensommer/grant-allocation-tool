@@ -58,7 +58,7 @@ export default async function RestrictedPage({
             : key === 'balance'
               ? g.balance
               : key === 'remaining'
-                ? g.awardAmountCents - g.actual
+                ? g.figures.remainingAwardCents
                 : key === 'pacing'
                   ? g.pace.flag
                   : key === 'end'
@@ -149,15 +149,15 @@ export default async function RestrictedPage({
                 <span className="muted block text-sm">{g.funder}</span>
               </Td>
               <NumTd cents={g.awardAmountCents} />
-              <NumTd cents={g.received} />
-              <NumTd cents={g.actual} />
+              <NumTd cents={g.received} data-testid="restricted-received" />
+              <NumTd cents={g.actual} data-testid="restricted-spent" />
               <NumTd>
-                <Money cents={g.balance} />
+                <Money cents={g.balance} data-testid="restricted-balance" />
                 {g.balance < 0 && (
                   <span className="muted block text-sm">Spent ahead of receipts</span>
                 )}
               </NumTd>
-              <NumTd cents={g.awardAmountCents - g.actual} />
+              <NumTd cents={g.figures.remainingAwardCents} data-testid="restricted-remaining" />
               <Td>
                 <GrantPaceStatus
                   pace={g.pace}

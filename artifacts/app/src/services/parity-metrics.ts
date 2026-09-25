@@ -21,7 +21,13 @@ import {
   type PeriodDriftRow,
   type PeriodSnapshotView,
 } from '@/services/grant-periods';
-import { activityGrid, tieOut, workingView, type ActivityGrid, type TieOut } from '@/services/grant-workspace';
+import {
+  activityGrid,
+  tieOut,
+  workingView,
+  type ActivityGrid,
+  type TieOut,
+} from '@/services/grant-workspace';
 import type { MetricResolver } from '@/reports/parity';
 
 export class UnknownMetricError extends Error {}
@@ -52,7 +58,8 @@ export function createMetricResolver(
     if (!grantId) throw new UnknownMetricError(`${metric}: unknown grant "${key}"`);
     const tree = () => memo(trees, grantId, () => budgetTree(orgId, grantId));
     const pick = (obj: Record<string, number | null | undefined>, field: string | undefined) => {
-      if (!field || !(field in obj)) throw new UnknownMetricError(`${metric}: unknown field "${field}"`);
+      if (!field || !(field in obj))
+        throw new UnknownMetricError(`${metric}: unknown field "${field}"`);
       return obj[field] ?? null;
     };
     switch (kind) {
@@ -62,16 +69,20 @@ export function createMetricResolver(
         if (code === 'total')
           return pick(
             {
-              budget: t.totals.funderCents,
+              budget: t.totals.budgetCents,
               charged: t.totals.chargedCents,
-              remaining: t.totals.funderCents - t.totals.chargedCents,
+              remaining: t.totals.budgetCents - t.totals.chargedCents,
             },
             field,
           );
         const line = t.all.find((l) => l.code === code);
         if (!line) throw new UnknownMetricError(`${metric}: no budget line "${code}"`);
         return pick(
-          { budget: line.currentCents, charged: line.chargedCents, remaining: line.currentCents - line.chargedCents },
+          {
+            budget: line.currentCents,
+            charged: line.chargedCents,
+            remaining: line.currentCents - line.chargedCents,
+          },
           field,
         );
       }
@@ -82,18 +93,28 @@ export function createMetricResolver(
         if (col < 0) throw new UnknownMetricError(`${metric}: no grid column "${code}"`);
         if (activity === 'total') {
           const t = g.totals[col]!;
-          return pick({ budget: t.budgetCents, charged: t.chargedCents, remaining: t.remainingCents }, field);
+          return pick(
+            { budget: t.budgetCents, charged: t.chargedCents, remaining: t.remainingCents },
+            field,
+          );
         }
         const row = g.rows.find((r) => r.name === activity);
         if (!row) throw new UnknownMetricError(`${metric}: no activity "${activity}"`);
         const c = row.cells[col]!;
         return pick(
-          { budget: c.budgetCents, charged: c.chargedCents, remaining: c.remainingCents, perOccurrence: c.perOccurrenceCents },
+          {
+            budget: c.budgetCents,
+            charged: c.chargedCents,
+            remaining: c.remainingCents,
+            perOccurrence: c.perOccurrenceCents,
+          },
           field,
         );
       }
       case 'rollforward': {
-        const r = await memo(rolls, grantId, () => grantRollforward(orgId, grantId, range.from, range.to));
+        const r = await memo(rolls, grantId, () =>
+          grantRollforward(orgId, grantId, range.from, range.to),
+        );
         return pick(
           {
             beginning: r.beginningCents,
@@ -135,7 +156,10 @@ export function createMetricResolver(
         );
       }
       case 'working': {
-        const grant = await prisma.grant.findFirstOrThrow({ where: { id: grantId }, select: { endDate: true } });
+        const grant = await prisma.grant.findFirstOrThrow({
+          where: { id: grantId },
+          select: { endDate: true },
+        });
         const v = workingView(await tree(), grant, range.to);
         return pick({ months: Math.round(v.months * 100) }, rest[0]);
       }

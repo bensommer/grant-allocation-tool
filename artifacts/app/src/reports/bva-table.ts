@@ -58,7 +58,7 @@ export function restrictedTable(
         g.received,
         g.actual,
         g.balance,
-        g.awardAmountCents - g.actual,
+        g.figures.remainingAwardCents,
         g.pace.flag,
         g.endDate.toISOString().slice(0, 10),
         String(Math.ceil((g.endDate.getTime() - date.getTime()) / 86_400_000)),

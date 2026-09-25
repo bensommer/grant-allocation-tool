@@ -24,7 +24,12 @@ import {
   type ReleaseClass,
   type RollforwardColumn,
 } from '@/domain/periods';
-import { matchesReceived } from '@/domain/received';
+import {
+  bookedByClass as figuresBookedByClass,
+  effortByClass as figuresEffortByClass,
+  receivedIn,
+} from '@/domain/grant-figures';
+import { loadGrant, loadGrants, type LoadedGrant } from '@/services/grant-figures';
 import { ValidationError } from '@/services/programs';
 
 type Db = Prisma.TransactionClient | typeof prisma;
@@ -42,52 +47,54 @@ async function currentRunId(orgId: string): Promise<string | null> {
 }
 
 /**
- * Assigned transaction lines by release class, dated within [from, to]
- * (either bound optional). Effort charges are not included.
+ * The grant's spend pieces and income lines, loaded once through `through`
+ * (JPH-30). Every books figure below is arithmetic over this in `@/domain/grant-figures`,
+ * so the rollforward, the overview header and the BvA report cannot disagree.
+ */
+async function books(orgId: string, grantId: string, through: Date, loaded?: LoadedGrant) {
+  return loaded ?? (await loadGrant(orgId, grantId, through));
+}
+
+/**
+ * Dated spend by release class within [from, to] (either bound optional): assigned
+ * member lines for a membership-tracked grant, crosswalk pieces inside the grant
+ * period for a crosswalk-tracked one. Effort charges are not included.
  */
 export async function bookedByClass(
   orgId: string,
   grantId: string,
   range: { from?: Date; to?: Date },
+  loaded?: LoadedGrant,
 ): Promise<ByClass> {
-  const runId = await currentRunId(orgId);
-  const out = zeroByClass();
-  if (!runId) return out;
-  const rows = await prisma.grantLineResult.findMany({
-    where: {
-      computeRunId: runId,
-      grantId,
-      state: 'assigned',
-      source: 'transaction',
-      budgetLineId: { not: null },
-      line: { transaction: { txnDate: { gte: range.from, lte: range.to } } },
-    },
-    select: { amountCents: true, budgetLine: { select: { releaseClass: true } } },
-  });
-  for (const r of rows) out[r.budgetLine!.releaseClass] += r.amountCents;
-  return out;
+  const g = await books(orgId, grantId, range.to ?? FAR_FUTURE, loaded);
+  if (!g) return zeroByClass();
+  return figuresBookedByClass(g.mode, g.grant, g.lines, g.pieces, range);
 }
 
 /** Effort charges by release class in the current run (undated). */
-export async function effortByClass(orgId: string, grantId: string): Promise<ByClass> {
-  const runId = await currentRunId(orgId);
-  const out = zeroByClass();
-  if (!runId) return out;
-  const rows = await prisma.grantLineResult.findMany({
-    where: { computeRunId: runId, grantId, state: 'assigned', source: 'effort' },
-    select: { amountCents: true, budgetLine: { select: { releaseClass: true } } },
-  });
-  for (const r of rows) out[r.budgetLine?.releaseClass ?? 'staff'] += r.amountCents;
-  return out;
+export async function effortByClass(
+  orgId: string,
+  grantId: string,
+  loaded?: LoadedGrant,
+): Promise<ByClass> {
+  const g = await books(orgId, grantId, FAR_FUTURE, loaded);
+  if (!g) return zeroByClass();
+  return figuresEffortByClass(g.lines, g.pieces);
 }
 
 /** Released to date per class: dated lines through `to` plus all effort charges. */
-export async function releasedToDate(orgId: string, grantId: string, to: Date): Promise<ByClass> {
-  const [booked, effort] = await Promise.all([
-    bookedByClass(orgId, grantId, { to }),
-    effortByClass(orgId, grantId),
-  ]);
-  return addByClass(booked, effort);
+export async function releasedToDate(
+  orgId: string,
+  grantId: string,
+  to: Date,
+  loaded?: LoadedGrant,
+): Promise<ByClass> {
+  const g = await books(orgId, grantId, to, loaded);
+  if (!g) return zeroByClass();
+  return addByClass(
+    figuresBookedByClass(g.mode, g.grant, g.lines, g.pieces, { to }),
+    figuresEffortByClass(g.lines, g.pieces),
+  );
 }
 
 /**
@@ -98,43 +105,15 @@ export async function receivedBetween(
   orgId: string,
   grantId: string,
   range: { from?: Date; to?: Date },
+  loaded?: LoadedGrant,
 ): Promise<number> {
-  const grant = await prisma.grant.findFirst({
-    where: { id: grantId, orgId },
-    select: { matchPartyIds: true, matchClassIds: true, revenueAccountId: true },
-  });
-  if (!grant) return 0;
-  const rows = await prisma.transactionLine.findMany({
-    where: {
-      orgId,
-      deletedAt: null,
-      account: { type: { in: ['Income', 'OtherIncome'] } },
-      transaction: { deletedAt: null, txnDate: { gte: range.from, lte: range.to } },
-    },
-    select: {
-      amountCents: true,
-      accountId: true,
-      classId: true,
-      partyId: true,
-      account: { select: { type: true } },
-      transaction: { select: { partyId: true } },
-      memberships: { where: { grantId, supersededAt: null }, select: { id: true } },
-    },
-  });
-  let total = 0;
-  for (const r of rows) {
-    const member = r.memberships.length > 0;
-    const matched = matchesReceived(grant, {
-      accountId: r.accountId,
-      accountType: r.account.type,
-      classId: r.classId,
-      transactionPartyId: r.transaction.partyId,
-      linePartyId: r.partyId,
-    });
-    if (member || matched) total += r.amountCents;
-  }
-  return total;
+  const g = await books(orgId, grantId, range.to ?? FAR_FUTURE, loaded);
+  if (!g) return 0;
+  return receivedIn(g.mode, g.grant, g.receipts, range);
 }
+
+/** Upper bound for loads that need every dated row. */
+const FAR_FUTURE = new Date('9999-12-31T00:00:00.000Z');
 
 // --- snapshots -----------------------------------------------------------------
 
@@ -195,8 +174,10 @@ export async function priorActivity(
   grantId: string,
   from: Date,
   snapshots?: PeriodSnapshotView[],
+  loaded?: LoadedGrant,
 ): Promise<{ released: ByClass; receivedCents: number; periods: PeriodSnapshotView[] }> {
   const all = snapshots ?? (await grantPeriodSnapshots(orgId, grantId));
+  const g = await books(orgId, grantId, dayBefore(from), loaded);
   const periods = all.filter((s) => s.periodTo < from);
   let released = zeroByClass();
   let receivedCents = 0;
@@ -213,10 +194,11 @@ export async function priorActivity(
     if (!cursor || next > cursor) cursor = next;
   }
   if (!cursor || cursor < from) gaps.push({ from: cursor, to: dayBefore(from) });
-  for (const g of gaps) {
-    if (g.from && g.from > g.to) continue;
-    released = addByClass(released, await bookedByClass(orgId, grantId, g));
-    receivedCents += await receivedBetween(orgId, grantId, g);
+  for (const gap of gaps) {
+    if (gap.from && gap.from > gap.to) continue;
+    if (!g) continue;
+    released = addByClass(released, figuresBookedByClass(g.mode, g.grant, g.lines, g.pieces, gap));
+    receivedCents += receivedIn(g.mode, g.grant, g.receipts, gap);
   }
   return { released, receivedCents, periods };
 }
@@ -256,11 +238,13 @@ export async function grantRollforward(
   grantId: string,
   from: Date,
   to: Date,
+  preloaded?: LoadedGrant,
 ): Promise<Omit<RollforwardRow, 'name' | 'funder'>> {
+  const loaded = preloaded ?? (await loadGrant(orgId, grantId, to));
   const [prior, toDate, receivedToDate] = await Promise.all([
-    priorActivity(orgId, grantId, from),
-    releasedToDate(orgId, grantId, to),
-    receivedBetween(orgId, grantId, { to }),
+    priorActivity(orgId, grantId, from, undefined, loaded ?? undefined),
+    releasedToDate(orgId, grantId, to, loaded ?? undefined),
+    receivedBetween(orgId, grantId, { to }, loaded ?? undefined),
   ]);
   const beginningCents =
     prior.receivedCents - (prior.released.direct + prior.released.staff + prior.released.overhead);
@@ -276,18 +260,31 @@ export async function grantRollforward(
   };
 }
 
+/**
+ * Restricted-funds rollforward: one column per restricted grant active by `to`.
+ * Unrestricted gifts have no restricted balance to roll (JPH-30: the total ending
+ * ties to the restricted-funds page, not to every grant).
+ */
 export async function rollforward(orgId: string, from: Date, to: Date): Promise<Rollforward> {
-  const [grants, runId] = await Promise.all([
+  // One load for the org (spend pieces and income lines once), then a column per grant.
+  const [grants, runId, loaded] = await Promise.all([
     prisma.grant.findMany({
-      where: { orgId, status: { not: 'archived' }, startDate: { lte: to } },
+      where: {
+        orgId,
+        status: { not: 'archived' },
+        restrictionType: { not: 'unrestricted' },
+        startDate: { lte: to },
+      },
       orderBy: [{ startDate: 'asc' }, { name: 'asc' }],
       select: { id: true, name: true, funder: true },
     }),
     currentRunId(orgId),
+    loadGrants(orgId, { through: to }),
   ]);
+  const byId = new Map(loaded.map((l) => [l.grant.id, l]));
   const rows: RollforwardRow[] = [];
   for (const g of grants) {
-    const r = await grantRollforward(orgId, g.id, from, to);
+    const r = await grantRollforward(orgId, g.id, from, to, byId.get(g.id));
     rows.push({ ...r, name: g.name, funder: g.funder });
   }
   return { from, to, runId, rows, totals: rollforwardTotals(rows) };
@@ -512,7 +509,11 @@ export async function updateReportedPeriodNote(
  * period. Grants that already carry a snapshot for it — reported, or computed by an
  * earlier attempt — are left alone: a closed period is never recomputed.
  */
-export async function snapshotLockedPeriod(orgId: string, periodLockId: string, actor = 'local-user') {
+export async function snapshotLockedPeriod(
+  orgId: string,
+  periodLockId: string,
+  actor = 'local-user',
+) {
   const lock = await prisma.periodLock.findFirstOrThrow({ where: { id: periodLockId, orgId } });
   const grants = await prisma.grant.findMany({
     where: { orgId, status: { not: 'archived' }, startDate: { lte: lock.periodTo } },

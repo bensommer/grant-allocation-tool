@@ -19,18 +19,36 @@ export function funderViewTable(
   const used = (charged: number, budget: number) =>
     budget > 0 ? `${Math.round((charged / budget) * 100)}%` : '—';
   for (const c of tree.categories) {
-    rows.push([c.name, c.currentCents, c.chargedCents, c.currentCents - c.chargedCents, used(c.chargedCents, c.currentCents)]);
+    rows.push([
+      c.name,
+      c.currentCents,
+      c.chargedCents,
+      c.currentCents - c.chargedCents,
+      used(c.chargedCents, c.currentCents),
+    ]);
     rowKinds.push('group');
     for (const l of c.children) {
-      rows.push([`  ${l.name}`, l.currentCents, l.chargedCents, l.currentCents - l.chargedCents, used(l.chargedCents, l.currentCents)]);
+      rows.push([
+        `  ${l.name}`,
+        l.currentCents,
+        l.chargedCents,
+        l.currentCents - l.chargedCents,
+        used(l.chargedCents, l.currentCents),
+      ]);
       rowKinds.push('row');
     }
   }
   for (const l of tree.loose) {
-    rows.push([l.name, l.currentCents, l.chargedCents, l.currentCents - l.chargedCents, used(l.chargedCents, l.currentCents)]);
+    rows.push([
+      l.name,
+      l.currentCents,
+      l.chargedCents,
+      l.currentCents - l.chargedCents,
+      used(l.chargedCents, l.currentCents),
+    ]);
     rowKinds.push('row');
   }
-  const budget = tree.totals.funderCents;
+  const budget = tree.totals.budgetCents;
   const charged = tree.totals.chargedCents;
   return {
     title: `Funder view — ${grant.name}`,

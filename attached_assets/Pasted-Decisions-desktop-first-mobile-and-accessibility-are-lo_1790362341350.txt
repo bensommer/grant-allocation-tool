@@ -1,0 +1,26 @@
+Decisions (desktop-first; mobile and accessibility are low priority, don't over-invest):
+
+Horizontal-scroll tab strip on narrow screens. On desktop, visually group the tabs: Report (Overview, Funder, Working, Activity) | Work (Review, Rules, Effort, Entries) | Close (Periods). Review shows a count badge.
+Emphasize restricted balance and spent vs. budget. Show pace as a thin paired bar (time elapsed vs. spent) plus plain text: "Spent 45% · Time 55% · 10 pts behind pace". No color alarms unless outside the pacing thresholds.
+Activity tab: don't render when there are no activities. Periods tab: always show, with an empty state ("No closed periods. Add a reported period.").
+Mini ledger whose rows visibly sum. Exclusion reasons go in a <details> breakdown.
+Count + link to the queue, plus the first 3 lines inline.
+A pending pair is not green. Show neutral/amber: "1 pair to confirm (nets $0.00)". Green only when fully clean.
+Muted italic "Not computed" with a footnote marker explaining why. Never "—", 0, or red.
+Reported periods get a "Reported" badge + lock icon; values are read-only and only the note is editable. The drift column is neutral gray with a one-line explainer above: "Informational: books vs. what was reported. Not an error."
+Full page. It's a rare action.
+Single header "Food & supplies" with a footnote: "one funder budget line".
+Negatives in parentheses + red text, no fill. Over-budget rows get an "over" chip. Category total row styled distinctly, with a footnote: "net of rows over and under budget".
+Em dash, with title="none remaining".
+No-JS form with 3 blank rows. "Add row" submits and re-renders with one more. No client island. Empty state: "No planned spend. Add planned programs to project spend to grant end."
+Months left in a pacing callout in the header; remaining per month as a column in the working view.
+Sticky first column + horizontal scroll. Keep funds as columns (matches her layout).
+Always visible: muted "0.00 ✓" when it ties, red when non-zero.
+Footnote marker on the Salah cell + note under the table. No banner.
+Presets (FY to date, last closed period, grant-to-date) + custom from/to inputs, all as a GET form.
+On screen: app table conventions, but same row order as her tab. XLSX mirrors her layout exactly.
+Yes, link to it from the Restricted page and from each grant's Periods tab.
+Negatives in parentheses; thousands separators always. Zero: "—" in grids, "0.00" in rollforward, tie-out and check rows (audit schedules show zeros).
+Print layouts for rollforward and tie-out, in addition to the funder view and the entry-draft PDFs already specced.
+
+No need for screenshots now. Proceed. Include screenshots of these pages in your final report.

@@ -44,7 +44,7 @@ export default async function RollforwardPage({
 }) {
   const sp = await searchParams;
   const orgId = await getOrgId();
-  const { from, to, preset, error, fallback } = await resolveRange(orgId, sp);
+  const { from, to, preset, error, fallback, booksThrough } = await resolveRange(orgId, sp);
   const rf = error ? null : await rollforward(orgId, from, to);
   const notes = rf
     ? await Promise.all(
@@ -79,14 +79,20 @@ export default async function RollforwardPage({
           )
         }
       />
-      <nav className="mb-3 flex flex-wrap gap-2 text-sm" aria-label="Range" data-testid="rf-presets">
+      <nav
+        className="mb-3 flex flex-wrap gap-2 text-sm"
+        aria-label="Range"
+        data-testid="rf-presets"
+      >
         {RANGE_PRESETS.filter((p) => p !== 'custom').map((p) => (
           <Link
             key={p}
             href={`/grants/rollforward?range=${p}`}
             aria-current={preset === p ? 'page' : undefined}
             className={`rounded-full border px-3 py-1 hover:no-underline ${
-              preset === p ? 'border-harbor bg-harbor-soft font-semibold text-ink' : 'border-line text-ink-soft'
+              preset === p
+                ? 'border-harbor bg-harbor-soft font-semibold text-ink'
+                : 'border-line text-ink-soft'
             }`}
             data-preset={p}
           >
@@ -96,7 +102,9 @@ export default async function RollforwardPage({
         <span
           aria-current={preset === 'custom' ? 'page' : undefined}
           className={`rounded-full border px-3 py-1 ${
-            preset === 'custom' ? 'border-harbor bg-harbor-soft font-semibold text-ink' : 'border-line text-ink-soft'
+            preset === 'custom'
+              ? 'border-harbor bg-harbor-soft font-semibold text-ink'
+              : 'border-line text-ink-soft'
           }`}
         >
           {RANGE_PRESET_LABEL.custom}
@@ -117,8 +125,9 @@ export default async function RollforwardPage({
         <Card
           title="Rollforward"
           action={
-            <span className="muted text-sm">
+            <span className="muted text-sm" data-testid="rf-range">
               {RANGE_PRESET_LABEL[preset]} · {toISODate(from)} → {toISODate(to)}
+              {booksThrough ? ` · books through ${toISODate(to)}` : null}
             </span>
           }
         >
@@ -194,7 +203,8 @@ export default async function RollforwardPage({
                   {ns.map((note) => (
                     <Footnote key={note.mark} id={`rf-fn-${note.mark}`} mark={note.mark}>
                       <span data-testid="rf-note">
-                        <strong>{grant.name}:</strong> {note.text} <Link href={note.href}>Open →</Link>
+                        <strong>{grant.name}:</strong> {note.text}{' '}
+                        <Link href={note.href}>Open →</Link>
                       </span>
                     </Footnote>
                   ))}
@@ -202,7 +212,10 @@ export default async function RollforwardPage({
                     <p className="muted mt-1 text-xs">
                       <strong>{grant.name}:</strong> beginning balance from{' '}
                       {grant.priorPeriods
-                        .map((p) => `${p.name} (${p.source === 'reported' ? 'reported' : 'computed at lock'})`)
+                        .map(
+                          (p) =>
+                            `${p.name} (${p.source === 'reported' ? 'reported' : 'computed at lock'})`,
+                        )
                         .join(', ')}
                       . <Link href={`/grants/${grant.grantId}/periods`}>Periods →</Link>
                     </p>

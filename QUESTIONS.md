@@ -430,3 +430,70 @@ JPH-19 §6 H–L, §7 and JPH-23 agree on every figure. AC1–AC8 are asserted a
 `src/domain/periods.test.ts` and `src/reports/parity.test.ts`; rendered figures on `data-cents`
 attributes in `artifacts/app/e2e/pilot.spec.ts`. AC9: every earlier phase suite and the JPH-7
 golden suite still pass.
+
+## JPH-23 → JPH-30 — Phase 0: one set of grant figures
+
+### Decisions taken (revisit if wrong)
+
+1. **Received is not windowed the same way in both modes.** The ticket says "existing matcher
+   logic unchanged in both modes". In crosswalk mode received is still clipped to the grant
+   period (the JPH-7 golden 6,000,000 / 2,500,000 depend on it); in membership mode it stays
+   unclipped (member income lines, or the matcher, through as-of), which is what the pilot pages
+   computed before and what keeps Salah's 5,000,000 received. If the client wants one rule, the
+   crosswalk clip is the one to drop — say so and the JPH-7 numbers move.
+2. **BvA budget = current budget (original + revisions).** Before this phase the BvA page and
+   report compared spend to the *original* line budgets while the pilot pages used current. One
+   figure per line now: current. No demo or pilot expected value changed because the demo fixture
+   has no revisions and the pilot tests asserted current already.
+3. **Funder-view total budget when the grant has no funder categories** is the working-line
+   total (`totals.budgetCents`), not 0. Demo grants have no categories, so the old total row read
+   "$0.00 budget, 100% used". Pilot grants have categories, so their funder totals are unchanged;
+   the private parity report reads the same field.
+4. **Rollforward excludes unrestricted gifts.** The ticket's golden total ending (2,386,589) is
+   Culinary + Youth Meals only; the page is titled "Restricted grants rollforward" and the
+   Restricted Funds page already omits Rivera. `rollforward()` now filters
+   `restrictionType != 'unrestricted'`. Pilot grants are all restricted — their columns, endings
+   and check row are unchanged. The Rivera column (received 30,000, ending 30,000) that used to
+   appear is the only visible difference.
+5. **An unrestricted gift is "not paced".** AC2 says "Under pace: 100.0%" must appear nowhere on
+   the demo fixture, but Rivera (unrestricted, no spend) legitimately reads 100 % behind a
+   straight line. The domain already excluded unrestricted grants from the pacing *flag*; the
+   list chip / BvA status / overview card now say "Unrestricted · not paced" for them
+   (`figures.paced`). The pace object is still computed, so nothing else moves.
+6. **Effective tracking mode = column OR derived signals.** The migration backfilled
+   `Grant.trackingMode` once; a grant that later gains members/class/project ids/a scoped
+   QBO-report import is treated as membership on read even if the column still says crosswalk,
+   and the grant form writes the column on save. Pilot grants therefore show
+   "Tracked by QuickBooks class/project" without a second backfill.
+7. **Crosswalk-mode windows.** Spent = crosswalk pieces inside the grant period and ≤ as-of;
+   needs-review and effort are 0 by definition (no member lines). Membership-mode spent = dated
+   lines ≤ as-of plus *all* effort charges (effort carries no date), exactly as the pilot pages
+   computed before.
+
+8. **A staged report upload is not a membership signal.** The first backfill and the read-time
+   derivation counted every `QboReportUpload`, including reports uploaded and never confirmed.
+   Only uploads that produced an import batch count now, and a data-only follow-up migration
+   puts any grant flipped by a staged upload back on crosswalk when nothing else says
+   membership.
+
+### Follow-ups (out of phase)
+
+- **Membership-mode BvA detail.** For a membership grant the BvA page's actual now includes
+  undated effort charges and member lines outside the grant period (through as-of), but its
+  month columns cover the grant period only and its drill-down links open `/reports/lines`,
+  which still reads crosswalk AllocatedLines. The total is right; the supporting detail is
+  not yet membership-aware. Phase E (or a small follow-up) should point those links at the
+  member-line audit and show an "undated / out of period" reconciliation row.
+- Phase E regroups the pilot tabs; the crosswalk notice on Review/Rules/Effort/Entries/Periods
+  is a stop-gap and links to Edit grant, where the class/project/member fields already live.
+- The Rollforward "grant-to-date" preset also ends at books-through now; a custom `?to=` past
+  books-through still works and drops the "books through" tag from the subtitle.
+- Visual baselines for the grant overview and rollforward pages were regenerated (badge, tie-out
+  text for crosswalk grants, "books through" subtitle, no Rivera column).
+
+### Nothing disputed
+
+Demo golden numbers (JPH-7) and pilot golden numbers (JPH-21/22/23) are unchanged; no expected
+value was edited. AC7 lives in `src/domain/grant-figures.test.ts` + `tests/db/jph30-figures.test.ts`,
+AC8 in `src/domain/grant-figures.source.test.ts`, AC1–AC6 in `e2e/jph30-figures.spec.ts` and the
+badge asserts in `e2e/pilot.spec.ts`.

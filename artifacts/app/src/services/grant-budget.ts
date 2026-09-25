@@ -8,6 +8,7 @@ import { prisma } from '@/lib/db';
 import { recordAudit } from '@/lib/audit';
 import { markCurrentRunStale } from '@/lib/stale';
 import { MAX_CENTS } from '@/domain/money';
+import { booksThrough, grantFiguresFor } from '@/services/grant-figures';
 import { ValidationError } from '@/services/programs';
 
 export interface BudgetLineView {
@@ -51,7 +52,13 @@ export interface BudgetTree {
   }>;
   categoryKeys: string[];
   totals: {
+    /** Σ funder categories (current). Zero when the grant has no categories. */
     funderCents: number;
+    /**
+     * The grant's budget total for the report pages: the funder categories when
+     * the grant has them, otherwise the working lines (JPH-30).
+     */
+    budgetCents: number;
     workingOriginalCents: number;
     workingCurrentCents: number;
     spentCents: number;
@@ -72,34 +79,28 @@ export interface BudgetTree {
 }
 
 /**
- * Spent per budget line from the current run's assigned grant-stage results:
- * `spent` = transaction lines, `effort` = effort charges (JPH-22), kept apart
- * so the member-line figures stay comparable with the phase-2 baselines.
+ * Spent per budget line at `asOf` from the grant's figures (JPH-30): `spent` =
+ * dated lines (member lines or crosswalk pieces by tracking mode), `effort` =
+ * effort charges, kept apart so the member-line figures stay comparable with
+ * the phase-2 baselines. `asOf` defaults to the books-through date.
  */
 export async function spentByBudgetLine(
   orgId: string,
   grantId: string,
+  asOf?: Date,
 ): Promise<{ runId: string | null; spent: Map<string, number>; effort: Map<string, number> }> {
-  const run = await prisma.computeRun.findFirst({
-    where: { orgId, isCurrent: true },
-    select: { id: true },
-  });
-  if (!run) return { runId: null, spent: new Map(), effort: new Map() };
-  const rows = await prisma.grantLineResult.groupBy({
-    by: ['budgetLineId', 'source'],
-    _sum: { amountCents: true },
-    where: { computeRunId: run.id, grantId, state: 'assigned', budgetLineId: { not: null } },
-  });
+  const g = await grantFiguresFor(orgId, grantId, asOf ?? (await booksThrough(orgId)));
   const spent = new Map<string, number>();
   const effort = new Map<string, number>();
-  for (const r of rows) {
-    const target = r.source === 'effort' ? effort : spent;
-    target.set(r.budgetLineId!, (target.get(r.budgetLineId!) ?? 0) + (r._sum.amountCents ?? 0));
+  if (!g) return { runId: null, spent, effort };
+  for (const l of g.figures.spentByBudgetLine) {
+    spent.set(l.id, l.spentCents);
+    effort.set(l.id, l.effortCents);
   }
-  return { runId: run.id, spent, effort };
+  return { runId: g.runId, spent, effort };
 }
 
-export async function budgetTree(orgId: string, grantId: string): Promise<BudgetTree> {
+export async function budgetTree(orgId: string, grantId: string, asOf?: Date): Promise<BudgetTree> {
   const [lines, activities, revisions, { runId, spent, effort }] = await Promise.all([
     prisma.grantBudgetLine.findMany({
       where: { orgId, grantId },
@@ -117,7 +118,7 @@ export async function budgetTree(orgId: string, grantId: string): Promise<Budget
         counterpart: { select: { code: true } },
       },
     }),
-    spentByBudgetLine(orgId, grantId),
+    spentByBudgetLine(orgId, grantId, asOf),
   ]);
   const delta = new Map<string, number>();
   for (const r of revisions) {
@@ -171,6 +172,8 @@ export async function budgetTree(orgId: string, grantId: string): Promise<Budget
   const categoryKeys = [
     ...new Set(leaves.map((l) => l.categoryKey).filter((k): k is string => !!k)),
   ];
+  const funderCents = categories.reduce((a, c) => a + c.currentCents, 0);
+  const workingCurrentCents = leaves.reduce((a, l) => a + l.currentCents, 0);
   return {
     categories,
     loose,
@@ -178,9 +181,10 @@ export async function budgetTree(orgId: string, grantId: string): Promise<Budget
     activities,
     categoryKeys,
     totals: {
-      funderCents: categories.reduce((a, c) => a + c.currentCents, 0),
+      funderCents,
+      budgetCents: categories.length > 0 ? funderCents : workingCurrentCents,
       workingOriginalCents: leaves.reduce((a, l) => a + l.originalCents, 0),
-      workingCurrentCents: leaves.reduce((a, l) => a + l.currentCents, 0),
+      workingCurrentCents,
       spentCents: leaves.reduce((a, l) => a + l.spentCents, 0),
       effortCents: leaves.reduce((a, l) => a + l.effortCents, 0),
       chargedCents: leaves.reduce((a, l) => a + l.chargedCents, 0),
@@ -222,7 +226,9 @@ export async function addRevision(
   actor = 'local-user',
 ) {
   const ids = [input.budgetLineId, ...(input.counterpartLineId ? [input.counterpartLineId] : [])];
-  const lines = await prisma.grantBudgetLine.findMany({ where: { orgId, grantId, id: { in: ids } } });
+  const lines = await prisma.grantBudgetLine.findMany({
+    where: { orgId, grantId, id: { in: ids } },
+  });
   if (!lines.some((l) => l.id === input.budgetLineId))
     throw new ValidationError({ budgetLineId: 'Budget line not found' });
   if (input.counterpartLineId && !lines.some((l) => l.id === input.counterpartLineId))

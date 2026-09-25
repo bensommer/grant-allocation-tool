@@ -14,6 +14,6 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     orgId,
     new URL(req.url).searchParams.get('asOf') ?? undefined,
   );
-  const buf = await funderViewXlsx(grant, await budgetTree(orgId, id), date);
+  const buf = await funderViewXlsx(grant, await budgetTree(orgId, id, date), date);
   return xlsxResponse(buf, `funder-view-${label}.xlsx`);
 }

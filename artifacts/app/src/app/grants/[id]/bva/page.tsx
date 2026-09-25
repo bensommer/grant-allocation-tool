@@ -152,8 +152,8 @@ export default async function BvaPage({
           ))}
           <TotalRow>
             <Th scope="row">Total</Th>
-            <NumTd cents={grant.budget} dollar />
-            <NumTd cents={grant.actual} dollar />
+            <NumTd cents={grant.budget} dollar data-testid="bva-budget" />
+            <NumTd cents={grant.actual} dollar data-testid="bva-actual" />
             <NumTd cents={grant.remaining} dollar />
             <NumTd>
               <ProgressBar used={grant.actual} budget={grant.budget} label="Total budget used" />
@@ -188,14 +188,15 @@ export default async function BvaPage({
             value={
               <GrantPaceStatus
                 pace={grant.pace}
+                paced={grant.figures.paced}
                 overBudgetLines={grant.rows.filter((r) => r.overBudget).map((r) => r.name)}
               />
             }
           />
         </div>
         <p>
-          Received <Money cents={grant.received} dollar /> · Restricted balance{' '}
-          <Money cents={grant.balance} dollar />
+          Received <Money cents={grant.received} dollar data-testid="bva-received" /> · Restricted
+          balance <Money cents={grant.balance} dollar data-testid="bva-balance" />
         </p>
       </Card>
       <p className="muted mt-4 text-sm">

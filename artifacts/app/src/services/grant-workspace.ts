@@ -13,8 +13,9 @@ import {
   projectedAtEnd,
   type PlannedEntry,
 } from '@/domain/periods';
+import type { GrantFigures } from '@/domain/grant-figures';
 import { budgetTree, type BudgetLineView, type BudgetTree } from '@/services/grant-budget';
-import { receivedBetween, releasedToDate } from '@/services/grant-periods';
+import { grantFiguresFor } from '@/services/grant-figures';
 import { reviewQueue, type ReviewLine, type ReviewQueue } from '@/services/review';
 
 // --- header metrics ------------------------------------------------------------
@@ -22,9 +23,10 @@ import { reviewQueue, type ReviewLine, type ReviewQueue } from '@/services/revie
 export interface HeaderMetrics {
   awardCents: number;
   receivedCents: number;
-  /** assigned lines dated through `asOf` plus effort charges (undated) in the current run */
+  /** spend through `asOf` in the grant's tracking mode (see `@/domain/grant-figures`) */
   spentCents: number;
   restrictedBalanceCents: number;
+  remainingAwardCents: number;
   elapsedBps: number;
   spentBps: number;
   /** spent % − elapsed %, in whole points: negative = behind pace, positive = ahead. */
@@ -34,32 +36,31 @@ export interface HeaderMetrics {
   asOf: Date;
 }
 
+/** The overview header cards, read from the grant's figures at `asOf` (JPH-30). */
+export function headerMetricsOf(figures: GrantFigures): HeaderMetrics {
+  return {
+    awardCents: figures.awardCents,
+    receivedCents: figures.receivedCents,
+    spentCents: figures.spentCents,
+    restrictedBalanceCents: figures.restrictedBalanceCents,
+    remainingAwardCents: figures.remainingAwardCents,
+    elapsedBps: figures.elapsedBps,
+    spentBps: figures.spentBps,
+    pacePts: figures.pacePts,
+    monthsLeft: figures.monthsLeft,
+    projectedAtEndCents: figures.projectedAtEndCents,
+    asOf: figures.asOf,
+  };
+}
+
 export async function headerMetrics(
   orgId: string,
-  grant: { id: string; awardAmountCents: number; startDate: Date; endDate: Date },
+  grant: { id: string },
   asOf: Date,
 ): Promise<HeaderMetrics> {
-  // Receipts, spend, elapsed time and the projection all read through the same `asOf`.
-  const [released, receivedCents] = await Promise.all([
-    releasedToDate(orgId, grant.id, asOf),
-    receivedBetween(orgId, grant.id, { to: asOf }),
-  ]);
-  const spentCents = released.direct + released.staff + released.overhead;
-  const elapsed = elapsedBps(grant.startDate, grant.endDate, asOf);
-  const spent =
-    grant.awardAmountCents > 0 ? Math.round((spentCents / grant.awardAmountCents) * 10000) : 0;
-  return {
-    awardCents: grant.awardAmountCents,
-    receivedCents,
-    spentCents,
-    restrictedBalanceCents: receivedCents - spentCents,
-    elapsedBps: elapsed,
-    spentBps: spent,
-    pacePts: Math.round(spent / 100) - Math.round(elapsed / 100),
-    monthsLeft: monthsLeft(asOf, grant.endDate),
-    projectedAtEndCents: projectedAtEnd(spentCents, grant.startDate, grant.endDate, asOf),
-    asOf,
-  };
+  const g = await grantFiguresFor(orgId, grant.id, asOf);
+  if (!g) throw new Error('Grant not found');
+  return headerMetricsOf(g.figures);
 }
 
 // --- tie-out -------------------------------------------------------------------
@@ -157,7 +158,13 @@ export function tieOutFromQueue(queue: ReviewQueue, effortCents: number): TieOut
 /** Lines waiting for review in the current run — the badge on the Review tab. */
 export async function needsReviewCount(orgId: string, grantId: string): Promise<number> {
   return prisma.grantLineResult.count({
-    where: { orgId, grantId, state: 'needs_review', source: 'transaction', run: { isCurrent: true } },
+    where: {
+      orgId,
+      grantId,
+      state: 'needs_review',
+      source: 'transaction',
+      run: { isCurrent: true },
+    },
   });
 }
 
@@ -196,7 +203,12 @@ export interface ActivityGrid {
   columns: Array<{ id: string; code: string; name: string }>;
   rows: GridRow[];
   /** Arithmetic column sums: an over-budget cell stays on its own row and is never netted. */
-  totals: Array<{ categoryId: string; budgetCents: number; chargedCents: number; remainingCents: number }>;
+  totals: Array<{
+    categoryId: string;
+    budgetCents: number;
+    chargedCents: number;
+    remainingCents: number;
+  }>;
   unassignedCells: BudgetLineView[];
 }
 
@@ -215,7 +227,11 @@ export function activityGrid(tree: BudgetTree): ActivityGrid {
         chargedCents,
         remainingCents,
         overBudget: remainingCents < 0,
-        perOccurrenceCents: perRemainingOccurrence(remainingCents, a.plannedCount, a.completedCount),
+        perOccurrenceCents: perRemainingOccurrence(
+          remainingCents,
+          a.plannedCount,
+          a.completedCount,
+        ),
       };
     });
     return {
@@ -254,7 +270,12 @@ export interface WorkingRow {
 export interface WorkingView {
   months: number;
   asOf: Date;
-  categories: Array<{ category: BudgetLineView; rows: WorkingRow[]; remainingCents: number; perMonthCents: number | null }>;
+  categories: Array<{
+    category: BudgetLineView;
+    rows: WorkingRow[];
+    remainingCents: number;
+    perMonthCents: number | null;
+  }>;
   loose: WorkingRow[];
   totalRemainingCents: number;
   totalPerMonthCents: number | null;
@@ -269,10 +290,15 @@ export function workingView(tree: BudgetTree, grant: { endDate: Date }, asOf: Da
   const categories = tree.categories.map((category) => {
     const rows = category.children.map(row);
     const remainingCents = category.currentCents - category.chargedCents;
-    return { category, rows, remainingCents, perMonthCents: perMonthRemaining(remainingCents, months) };
+    return {
+      category,
+      rows,
+      remainingCents,
+      perMonthCents: perMonthRemaining(remainingCents, months),
+    };
   });
   const loose = tree.loose.map(row);
-  const totalRemainingCents = tree.totals.funderCents - tree.totals.chargedCents;
+  const totalRemainingCents = tree.totals.budgetCents - tree.totals.chargedCents;
   return {
     months,
     asOf,

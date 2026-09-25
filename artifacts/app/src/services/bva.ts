@@ -1,15 +1,7 @@
 import { prisma } from '@/lib/db';
-import { pacing, isOverBudget } from '@/domain/pacing';
-import { matchesReceived } from '@/domain/received';
-import { getPacingSettings } from './settings';
+import { allGrantFigures, lastImportedTransactionDate } from '@/services/grant-figures';
 
-export async function lastImportedTransactionDate(orgId: string): Promise<Date | null> {
-  const result = await prisma.transaction.aggregate({
-    where: { orgId, deletedAt: null },
-    _max: { txnDate: true },
-  });
-  return result._max.txnDate;
-}
+export { lastImportedTransactionDate };
 
 export async function defaultReportDate(orgId: string, raw?: string) {
   const coverage = await lastImportedTransactionDate(orgId);
@@ -23,115 +15,44 @@ export function reportDate(raw?: string, fallback?: Date) {
   return { label: date, date: new Date(`${date}T00:00:00.000Z`) };
 }
 
+/**
+ * Budget-vs-actual and restricted-balance rows for the report pages. Since JPH-30
+ * this is a view over `grantFigures`: a membership-tracked grant's rows carry the
+ * member-line spend, a crosswalk-tracked grant's rows the crosswalk pieces, and
+ * received / balance / pace are the same numbers the grant overview shows.
+ */
 export async function bvaData(orgId: string, asOf: Date, grantId?: string) {
-  const [run, grants, thresholds] = await Promise.all([
+  const [run, all] = await Promise.all([
     prisma.computeRun.findFirst({ where: { orgId, isCurrent: true } }),
-    prisma.grant.findMany({
-      where: { orgId, ...(grantId ? { id: grantId } : { status: { not: 'archived' as const } }) },
-      include: { budgetLines: { orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }] } },
-      orderBy: { name: 'asc' },
-    }),
-    getPacingSettings(orgId),
-  ]);
-  const [pieces, receipts] = await Promise.all([
-    run
-      ? prisma.allocatedLine.findMany({
-          where: {
-            orgId,
-            computeRunId: run.id,
-            status: 'ok',
-            grantBudgetLineId: { not: null },
-            ...(grantId ? { grantBudgetLine: { grantId } } : {}),
-            sourceLine: {
-              account: { type: { in: ['Expense', 'COGS', 'OtherExpense'] } },
-              transaction: { orgId, deletedAt: null, txnDate: { lte: asOf } },
-            },
-          },
-          select: {
-            grantBudgetLineId: true,
-            amountCents: true,
-            sourceLine: { select: { transaction: { select: { txnDate: true } } } },
-          },
-        })
-      : [],
-    prisma.transactionLine.findMany({
-      where: {
-        orgId,
-        deletedAt: null,
-        account: { type: { in: ['Income', 'OtherIncome'] } },
-        transaction: { orgId, deletedAt: null, txnDate: { lte: asOf } },
-      },
-      select: {
-        accountId: true,
-        classId: true,
-        partyId: true,
-        amountCents: true,
-        account: { select: { type: true } },
-        transaction: { select: { txnDate: true, partyId: true } },
-      },
-    }),
+    allGrantFigures(orgId, asOf, grantId),
   ]);
   return {
     run,
-    grants: grants.map((grant) => {
+    grants: all.map(({ grant, mode, figures }) => {
+      const byId = new Map(figures.spentByBudgetLine.map((l) => [l.id, l]));
       const rows = grant.budgetLines.map((line) => {
-        const applicable = pieces.filter(
-          (p) =>
-            p.grantBudgetLineId === line.id &&
-            p.sourceLine.transaction.txnDate >= grant.startDate &&
-            p.sourceLine.transaction.txnDate <= grant.endDate,
-        );
-        const actual = applicable.reduce((n, p) => n + p.amountCents, 0);
-        const monthly: Record<string, number> = {};
-        for (const p of applicable) {
-          const month = p.sourceLine.transaction.txnDate.toISOString().slice(0, 7);
-          monthly[month] = (monthly[month] ?? 0) + p.amountCents;
-        }
+        const f = byId.get(line.id)!;
         return {
           ...line,
-          actual,
-          remaining: line.budgetCents - actual,
-          overBudget: isOverBudget(actual, line.budgetCents),
-          monthly,
+          budgetCents: f.budgetCents,
+          actual: f.chargedCents,
+          remaining: f.remainingCents,
+          overBudget: f.overBudget,
+          monthly: f.monthly,
         };
       });
-      const actual = rows.reduce((n, r) => n + r.actual, 0);
-      const budget = rows.reduce((n, r) => n + r.budgetCents, 0);
-      const received = receipts
-        .filter(
-          (r) =>
-            r.transaction.txnDate >= grant.startDate &&
-            r.transaction.txnDate <= grant.endDate &&
-            matchesReceived(grant, {
-              accountId: r.accountId,
-              accountType: r.account.type,
-              classId: r.classId,
-              transactionPartyId: r.transaction.partyId,
-              linePartyId: r.partyId,
-            }),
-        )
-        .reduce((n, r) => n + r.amountCents, 0);
-      const pace = pacing(
-        grant.awardAmountCents,
-        actual,
-        grant.startDate,
-        grant.endDate,
-        asOf,
-        thresholds.underPercent,
-        thresholds.overPercent,
-      );
       return {
         ...grant,
+        mode,
+        figures,
         rows,
-        actual,
-        budget,
-        remaining: budget - actual,
-        received,
-        balance: received - actual,
-        pace,
-        flagged:
-          (grant.restrictionType !== 'unrestricted' && pace.flag !== 'on pace') ||
-          rows.some((r) => r.overBudget),
+        actual: figures.spentCents,
+        budget: figures.budgetCents,
+        remaining: figures.budgetCents - figures.spentCents,
+        received: figures.receivedCents,
+        balance: figures.restrictedBalanceCents,
+        pace: figures.pacing,
+        flagged: figures.flagged,
       };
     }),
   };

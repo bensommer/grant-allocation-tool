@@ -1,6 +1,8 @@
 import Link from 'next/link';
+import { Banner, StatusPill } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
+import { grantTracking } from '@/services/grant-figures';
 import { needsReviewCount } from '@/services/grant-workspace';
 
 export type GrantTab =
@@ -21,19 +23,34 @@ export type GrantTab =
 
 type Tab = { key: GrantTab; href: string; label: string; count?: number };
 
+/** Tabs whose content is the membership pipeline (member lines, rules, effort, entries, periods). */
+const MEMBER_LINE_TABS: ReadonlySet<GrantTab> = new Set([
+  'review',
+  'rules',
+  'effort',
+  'entries',
+  'periods',
+]);
+
 /**
  * Grant workspace navigation (JPH-23). The working tabs sit in three groups —
  * Report (what goes out), Work (what needs doing), Close (periods) — with a quieter
  * row for setup and reference pages. The activity grid only appears for grants that
  * have activities; the Review tab carries the count of lines waiting.
+ *
+ * The tracking badge (JPH-30) sits above the tabs on every grant page, and a
+ * crosswalk-tracked grant gets one explanatory notice on the member-line tabs
+ * instead of their empty queues.
  */
 export async function GrantTabs({ id, active }: { id: string; active: GrantTab }) {
   const orgId = await getOrgId();
-  const [activities, waiting] = await Promise.all([
+  const [activities, waiting, tracking] = await Promise.all([
     prisma.grantActivity.count({ where: { grantId: id } }),
     needsReviewCount(orgId, id),
+    grantTracking(orgId, id),
   ]);
   const base = `/grants/${id}`;
+  const crosswalkNotice = tracking?.mode === 'crosswalk' && MEMBER_LINE_TABS.has(active);
   const groups: Array<{ label: string; tabs: Tab[] }> = [
     {
       label: 'Report',
@@ -65,46 +82,64 @@ export async function GrantTabs({ id, active }: { id: string; active: GrantTab }
     { key: 'edit', href: `${base}/edit`, label: 'Edit' },
   ];
   return (
-    <nav className="no-print mb-4" aria-label="Grant workspace">
-      <div className="tab-groups">
-        {groups.map((g) => (
-          <div key={g.label} className="tab-group">
-            <span className="tab-group-label" aria-hidden="true">
-              {g.label}
-            </span>
-            <div className="tab-group-links">
-              {g.tabs.map((t) => (
-                <Link
-                  key={t.key}
-                  href={t.href}
-                  aria-current={t.key === active ? 'page' : undefined}
-                  className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm hover:no-underline ${t.key === active ? 'border-harbor font-semibold text-ink' : 'border-transparent text-ink-soft'}`}
-                >
-                  {t.label}
-                  {t.count ? (
-                    <span className="tab-count" data-testid="review-tab-count">
-                      {t.count}
-                      <span className="sr-only"> lines waiting for review</span>
-                    </span>
-                  ) : null}
-                </Link>
-              ))}
+    <>
+      {tracking && (
+        <p className="mb-3 text-sm" data-testid="tracking-badge" data-mode={tracking.mode}>
+          <StatusPill tone="muted" icon="◦">
+            {tracking.label}
+          </StatusPill>
+        </p>
+      )}
+      <nav className="no-print mb-4" aria-label="Grant workspace">
+        <div className="tab-groups">
+          {groups.map((g) => (
+            <div key={g.label} className="tab-group">
+              <span className="tab-group-label" aria-hidden="true">
+                {g.label}
+              </span>
+              <div className="tab-group-links">
+                {g.tabs.map((t) => (
+                  <Link
+                    key={t.key}
+                    href={t.href}
+                    aria-current={t.key === active ? 'page' : undefined}
+                    className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm hover:no-underline ${t.key === active ? 'border-harbor font-semibold text-ink' : 'border-transparent text-ink-soft'}`}
+                  >
+                    {t.label}
+                    {t.count ? (
+                      <span className="tab-count" data-testid="review-tab-count">
+                        {t.count}
+                        <span className="sr-only"> lines waiting for review</span>
+                      </span>
+                    ) : null}
+                  </Link>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-      <div className="mt-1 flex max-w-full gap-3 overflow-x-auto px-1 text-xs">
-        {secondary.map((t) => (
-          <Link
-            key={t.key}
-            href={t.href}
-            aria-current={t.key === active ? 'page' : undefined}
-            className={`shrink-0 whitespace-nowrap py-1 ${t.key === active ? 'font-semibold text-ink' : 'text-ink-soft'}`}
-          >
-            {t.label}
-          </Link>
-        ))}
-      </div>
-    </nav>
+          ))}
+        </div>
+        <div className="mt-1 flex max-w-full gap-3 overflow-x-auto px-1 text-xs">
+          {secondary.map((t) => (
+            <Link
+              key={t.key}
+              href={t.href}
+              aria-current={t.key === active ? 'page' : undefined}
+              className={`shrink-0 whitespace-nowrap py-1 ${t.key === active ? 'font-semibold text-ink' : 'text-ink-soft'}`}
+            >
+              {t.label}
+            </Link>
+          ))}
+        </div>
+      </nav>
+      {crosswalkNotice && (
+        <div data-testid="crosswalk-notice">
+          <Banner tone="info">
+            This grant is tracked by crosswalk rules, so it has no QuickBooks member lines. To use
+            the review queue, rules, effort and entries, set how QuickBooks tracks it on{' '}
+            <Link href={`${base}/edit`}>Edit grant</Link>.
+          </Banner>
+        </div>
+      )}
+    </>
   );
 }

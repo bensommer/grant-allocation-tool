@@ -1,28 +1,28 @@
 import { GrantPaceStatus } from '@/components/grant-pace-status';
 import { DateText, PairedBar } from '@/components/ui';
-import type { pacing } from '@/domain/pacing';
-import type { HeaderMetrics } from '@/services/grant-workspace';
+import type { GrantFigures } from '@/domain/grant-figures';
 
 /**
  * Pace at a glance: a thin paired bar (time elapsed vs. share of the award spent),
  * the same three numbers in words, and the months left. Colour only appears when the
- * grant is outside its pacing thresholds or a line is over budget.
+ * grant is outside its pacing thresholds or a line is over budget. Reads the grant's
+ * figures (JPH-30), so the pace here is the pace on the grants list.
  */
 export function PacingCallout({
-  metrics: m,
-  pace,
+  figures: m,
   overBudgetLines = [],
   compact = false,
 }: {
-  metrics: HeaderMetrics;
-  pace: ReturnType<typeof pacing>;
+  figures: GrantFigures;
   overBudgetLines?: string[];
   compact?: boolean;
 }) {
-  const alarmed = pace.flag !== 'on pace' || overBudgetLines.length > 0;
+  const pace = m.pacing;
+  const alarmed = (m.paced && pace.flag !== 'on pace') || overBudgetLines.length > 0;
   const pts = Math.abs(m.pacePts);
-  const paceText =
-    m.pacePts === 0
+  const paceText = !m.paced
+    ? 'unrestricted · not paced'
+    : m.pacePts === 0
       ? 'on pace'
       : `${pts} pt${pts === 1 ? '' : 's'} ${m.pacePts < 0 ? 'behind' : 'ahead of'} pace`;
   return (
@@ -50,7 +50,7 @@ export function PacingCallout({
         {alarmed && (
           <>
             {' '}
-            <GrantPaceStatus pace={pace} overBudgetLines={overBudgetLines} />
+            <GrantPaceStatus pace={pace} paced={m.paced} overBudgetLines={overBudgetLines} />
           </>
         )}
       </p>

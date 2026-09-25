@@ -136,7 +136,13 @@ export default async function DashboardPage({
         >
           <KeyFigure
             label="Received minus spent"
-            value={<Money cents={restricted.reduce((n, g) => n + g.balance, 0)} dollar />}
+            value={
+              <Money
+                cents={restricted.reduce((n, g) => n + g.balance, 0)}
+                dollar
+                data-testid="restricted-total"
+              />
+            }
             hint="A negative balance means spending is ahead of receipts."
           />
         </Card>

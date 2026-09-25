@@ -14,7 +14,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     orgId,
     new URL(req.url).searchParams.get('asOf') ?? undefined,
   );
-  const table = funderViewTable(grant, await budgetTree(orgId, id), date);
+  const table = funderViewTable(grant, await budgetTree(orgId, id, date), date);
   try {
     const buf = await pdfDocument({
       title: table.title,

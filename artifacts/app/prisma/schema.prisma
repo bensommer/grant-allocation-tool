@@ -314,6 +314,12 @@ enum RestrictionType {
   unrestricted
 }
 
+/// How a grant's spend is identified (JPH-30).
+enum TrackingMode {
+  crosswalk
+  membership
+}
+
 enum GrantStatus {
   draft
   active
@@ -347,6 +353,11 @@ model Grant {
   /// row in the ledger tables (no member ids to resolve).
   qboClassName     String?
   qboProjectName   String?
+  /// Which pipeline produces the grant's figures (JPH-30): `membership` when the
+  /// grant's lines come from QuickBooks class / project tags or a scoped report
+  /// export; `crosswalk` when the crosswalk rules allocate spend to its budget
+  /// lines. Backfilled from the membership signals; derived again on read.
+  trackingMode     TrackingMode    @default(crosswalk)
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 

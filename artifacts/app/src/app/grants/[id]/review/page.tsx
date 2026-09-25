@@ -8,8 +8,12 @@ import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { decodeFormState, pick } from '@/lib/forms';
 import { budgetTree } from '@/services/grant-budget';
+import { grantTracking } from '@/services/grant-figures';
 import { reviewQueue, type ReviewLine } from '@/services/review';
-import { DESTINATION_UNSET_MESSAGE, GRANT_CODING_MISSING_MESSAGE } from '@/services/correcting-entries';
+import {
+  DESTINATION_UNSET_MESSAGE,
+  GRANT_CODING_MISSING_MESSAGE,
+} from '@/services/correcting-entries';
 import {
   clearAtRiskAction,
   confirmReversalPairAction,
@@ -60,7 +64,13 @@ export default async function ReviewPage({
   const orgId = await getOrgId();
   const grant = await prisma.grant.findFirst({ where: { id, orgId } });
   if (!grant) notFound();
-  const [queue, tree] = await Promise.all([reviewQueue(orgId, id), budgetTree(orgId, id)]);
+  const [queue, tree, tracking] = await Promise.all([
+    reviewQueue(orgId, id),
+    budgetTree(orgId, id),
+    grantTracking(orgId, id),
+  ]);
+  // A crosswalk-tracked grant has no member lines; the notice above the page says so.
+  const crosswalk = tracking?.mode === 'crosswalk';
   const state = decodeFormState(f);
   const targets = tree.all.filter((l) => l.kind !== 'funder_category');
   const activityName = new Map(tree.activities.map((a) => [a.id, a.name]));
@@ -95,7 +105,11 @@ export default async function ReviewPage({
         <div data-testid="draft-blocked">
           <Banner tone="warn">
             Exclusion saved, but no correcting entry was drafted:{' '}
-            {blocked === 'grant' ? GRANT_CODING_MISSING_MESSAGE : blocked ? DESTINATION_UNSET_MESSAGE : draftError}{' '}
+            {blocked === 'grant'
+              ? GRANT_CODING_MISSING_MESSAGE
+              : blocked
+                ? DESTINATION_UNSET_MESSAGE
+                : draftError}{' '}
             {blocked === 'grant' ? (
               <Link href={`/grants/${id}/edit`}>Edit grant</Link>
             ) : blocked ? (
@@ -201,7 +215,7 @@ export default async function ReviewPage({
 
       <form action={recordDecisionAction.bind(null, id)} className="card mb-4" id="decision-form">
         <h2>Needs review</h2>
-        {queue.groups.length === 0 ? (
+        {queue.groups.length === 0 && !crosswalk ? (
           <p className="muted text-sm" data-testid="queue-empty">
             Nothing waiting — every member line is assigned or excluded.
           </p>

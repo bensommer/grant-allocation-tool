@@ -22,6 +22,7 @@ import {
 import { matchersSchema, parseMatchers, type Matchers } from '@/domain/matchers';
 import { EFFORT_REPLACED_REASON, type GrantStageSchedule } from '@/engine/grant-stage';
 import { ValidationError } from './programs';
+import { booksThrough, grantFiguresFor } from './grant-figures';
 import { assertMatcherRefs } from './refs';
 
 const decimalString = z
@@ -237,7 +238,11 @@ export async function carryVariance(
     const before = await tx.effortSchedule.findUniqueOrThrow({ where: { id: scheduleId } });
     const row = await tx.effortSchedule.update({
       where: { id: scheduleId },
-      data: { carriedVarianceCents: s.varianceCents, carriedVarianceNote: trimmed, carriedAt: new Date() },
+      data: {
+        carriedVarianceCents: s.varianceCents,
+        carriedVarianceNote: trimmed,
+        carriedAt: new Date(),
+      },
     });
     await recordAudit(tx, {
       orgId,
@@ -326,17 +331,27 @@ export interface EffortSummary {
   schedules: EffortScheduleView[];
   /** Σ effort charges in the current run for the grant. */
   effortChargedCents: number;
-  /** Σ assigned transaction lines in the current run. */
+  /** Σ dated spend through `asOf` (assigned lines or crosswalk pieces by tracking mode). */
   assignedLinesCents: number;
-  /** assigned lines + effort charges. */
+  /** assigned lines + effort charges — the grant's spent figure at `asOf`. */
   totalChargedCents: number;
   awardCents: number;
   remainingCents: number;
+  asOf: Date;
 }
 
-export async function effortSummary(orgId: string, grantId: string): Promise<EffortSummary> {
-  const [grant, run, schedules] = await Promise.all([
-    prisma.grant.findFirstOrThrow({ where: { id: grantId, orgId } }),
+/**
+ * The effort page: schedules with their booked payroll, and the header cards read
+ * from the grant's figures at `asOf` (books-through by default) so they match the
+ * overview (JPH-30).
+ */
+export async function effortSummary(
+  orgId: string,
+  grantId: string,
+  asOf?: Date,
+): Promise<EffortSummary> {
+  const [figures, run, schedules] = await Promise.all([
+    grantFiguresFor(orgId, grantId, asOf ?? (await booksThrough(orgId))),
     prisma.computeRun.findFirst({ where: { orgId, isCurrent: true }, select: { id: true } }),
     prisma.effortSchedule.findMany({
       where: { orgId, grantId },
@@ -361,12 +376,7 @@ export async function effortSummary(orgId: string, grantId: string): Promise<Eff
         },
       })
     : [];
-  const effortChargedCents = results
-    .filter((r) => r.source === 'effort')
-    .reduce((s, r) => s + r.amountCents, 0);
-  const assignedLinesCents = results
-    .filter((r) => r.source === 'transaction' && r.state === 'assigned')
-    .reduce((s, r) => s + r.amountCents, 0);
+  if (!figures) throw new Error('Grant not found');
   const runCharge = new Map(
     results.filter((r) => r.effortEntryId).map((r) => [r.effortEntryId!, r.amountCents]),
   );
@@ -440,18 +450,20 @@ export async function effortSummary(orgId: string, grantId: string): Promise<Eff
       carriedVarianceNote: s.carriedVarianceNote,
       carriedAt: s.carriedAt,
       bookedAccounts: [...accounts.values()].sort(
-        (a, b) => Math.abs(b.cents) - Math.abs(a.cents) || a.accountName.localeCompare(b.accountName),
+        (a, b) =>
+          Math.abs(b.cents) - Math.abs(a.cents) || a.accountName.localeCompare(b.accountName),
       ),
     };
   });
-  const totalChargedCents = assignedLinesCents + effortChargedCents;
+  const f = figures.figures;
   return {
     runId: run?.id ?? null,
     schedules: views,
-    effortChargedCents,
-    assignedLinesCents,
-    totalChargedCents,
-    awardCents: grant.awardAmountCents,
-    remainingCents: grant.awardAmountCents - totalChargedCents,
+    effortChargedCents: f.effortCents,
+    assignedLinesCents: f.spentCents - f.effortCents,
+    totalChargedCents: f.spentCents,
+    awardCents: f.awardCents,
+    remainingCents: f.remainingAwardCents,
+    asOf: f.asOf,
   };
 }

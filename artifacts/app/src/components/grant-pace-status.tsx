@@ -13,16 +13,35 @@ export function paceReason(pace: Pace, overBudgetLines: string[] = []) {
   return parts.join(' · ');
 }
 
+/**
+ * The one pacing string for a grant (list chip, overview card, BvA status). Pass
+ * `paced={figures.paced}`: an unrestricted gift is not measured against a
+ * straight line, so it never reads "behind" (JPH-30).
+ */
 export function GrantPaceStatus({
   pace,
   overBudgetLines = [],
+  paced = true,
 }: {
   pace: Pace;
   overBudgetLines?: string[];
+  paced?: boolean;
 }) {
+  if (!paced)
+    return (
+      <span data-testid="pace-status" data-flag="unpaced">
+        <StatusPill tone={overBudgetLines.length ? 'bad' : 'muted'}>
+          {overBudgetLines.length
+            ? overBudgetLines.map((name) => `Over-budget line: ${name}`).join(' · ')
+            : 'Unrestricted · not paced'}
+        </StatusPill>
+      </span>
+    );
   return (
-    <StatusPill tone={overBudgetLines.length ? 'bad' : pace.flag === 'on pace' ? 'ok' : 'warn'}>
-      {paceReason(pace, overBudgetLines)}
-    </StatusPill>
+    <span data-testid="pace-status" data-flag={pace.flag}>
+      <StatusPill tone={overBudgetLines.length ? 'bad' : pace.flag === 'on pace' ? 'ok' : 'warn'}>
+        {paceReason(pace, overBudgetLines)}
+      </StatusPill>
+    </span>
   );
 }

@@ -33,11 +33,9 @@ export default async function FunderViewPage({
   const orgId = await getOrgId();
   const grant = await grantHeader(orgId, id);
   if (!grant) notFound();
-  const [{ date, label }, tree] = await Promise.all([
-    defaultReportDate(orgId, asOf),
-    budgetTree(orgId, id),
-  ]);
-  const remaining = tree.totals.funderCents - tree.totals.chargedCents;
+  const { date, label } = await defaultReportDate(orgId, asOf);
+  const tree = await budgetTree(orgId, id, date);
+  const remaining = tree.totals.budgetCents - tree.totals.chargedCents;
   return (
     <>
       <PageHeader
@@ -81,27 +79,25 @@ export default async function FunderViewPage({
             {tree.categories.map((c) => (
               <CategoryRows key={c.id} category={c} />
             ))}
-            {tree.loose.length > 0 && (
-              <>
-                <tr>
-                  <Th scope="row" colSpan={5}>
-                    Lines without a funder category
-                  </Th>
-                </tr>
-                {tree.loose.map((l) => (
-                  <LineRow key={l.id} line={l} />
-                ))}
-              </>
+            {tree.loose.length > 0 && tree.categories.length > 0 && (
+              <tr>
+                <Th scope="row" colSpan={5}>
+                  Lines without a funder category
+                </Th>
+              </tr>
             )}
+            {tree.loose.map((l) => (
+              <LineRow key={l.id} line={l} />
+            ))}
             <TotalRow data-testid="funder-total">
               <Th scope="row">Total</Th>
-              <NumTd cents={tree.totals.funderCents} dollar />
+              <NumTd cents={tree.totals.budgetCents} dollar data-testid="funder-budget" />
               <NumTd cents={tree.totals.chargedCents} dollar data-testid="funder-charged" />
               <NumTd cents={remaining} dollar />
               <NumTd>
                 <ProgressBar
                   used={tree.totals.chargedCents}
-                  budget={tree.totals.funderCents}
+                  budget={tree.totals.budgetCents}
                   label="Total budget used"
                 />
               </NumTd>

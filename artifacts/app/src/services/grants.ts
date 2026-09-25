@@ -58,13 +58,24 @@ async function assertGrantRefs(orgId: string, input: ParsedGrantInput) {
   });
 }
 
+/**
+ * A grant given member classes / projects is tracked by membership from then on
+ * (JPH-30). The column never flips back here: member lines from a scoped report
+ * import also make a grant membership-tracked, and they are not in this form.
+ */
+function trackingModeFor(data: { memberClassIds: string[]; memberPartyIds: string[] }) {
+  return data.memberClassIds.length > 0 || data.memberPartyIds.length > 0
+    ? { trackingMode: 'membership' as const }
+    : {};
+}
+
 export async function createGrant(orgId: string, rawInput: GrantInput) {
   const input = grantInputSchema.parse(rawInput);
   const { programs, ...data } = input;
   await assertGrantRefs(orgId, input);
   return prisma.$transaction(async (tx) => {
     const g = await tx.grant.create({
-      data: { orgId, ...data, programs: { create: programs } },
+      data: { orgId, ...data, ...trackingModeFor(data), programs: { create: programs } },
       include: { programs: true },
     });
     await recordAudit(tx, { orgId, entity: 'Grant', entityId: g.id, action: 'create', after: g });
@@ -87,7 +98,7 @@ export async function updateGrant(orgId: string, id: string, rawInput: GrantInpu
     await tx.grantProgram.deleteMany({ where: { grantId: id } });
     const after = await tx.grant.update({
       where: { id },
-      data: { ...data, programs: { create: programs } },
+      data: { ...data, ...trackingModeFor(data), programs: { create: programs } },
       include: { programs: true },
     });
     await recordAudit(tx, {
