@@ -1,15 +1,11 @@
 import { notFound } from 'next/navigation';
 import { Banner, ButtonLink, DangerZone, PageHeader } from '@/components/ui';
+import { crosswalkBuilderOptions } from '@/components/rule-builder/options';
+import { RuleBuilderPage } from '@/components/rule-builder/server';
 import { prisma } from '@/lib/db';
-import { decodeFormState, pick } from '@/lib/forms';
+import { decodeFormState } from '@/lib/forms';
 import { getOrgId } from '@/lib/org';
-import { parseMatchers } from '@/domain/matchers';
-import { previewRule } from '@/engine/preview';
 import { updateCrosswalkAction } from '../actions';
-import { crosswalkOptions } from '../options';
-import { previewInputMatchers } from '../preview-values';
-import { dateRange } from '../range';
-import { RuleForm } from '../rule-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,31 +17,11 @@ export default async function CrosswalkRulePage({
   searchParams: Promise<{ f?: string; saved?: string; preview?: string; deactivated?: string }>;
 }) {
   const { id } = await params;
-  const { f, saved, preview: showPreview, deactivated } = await searchParams;
+  const { f, saved, preview, deactivated } = await searchParams;
   const orgId = await getOrgId();
   const rule = await prisma.crosswalkRule.findFirst({ where: { id, orgId } });
   if (!rule) notFound();
-  const state = decodeFormState(f);
-  const range = dateRange(
-    state ? pick(state, 'previewFrom', '') : undefined,
-    state ? pick(state, 'previewTo', '') : undefined,
-  );
-  const [options, preview] = await Promise.all([
-    crosswalkOptions(orgId),
-    showPreview && state && range.first && range.last
-      ? previewRule(
-          orgId,
-          {
-            kind: 'crosswalk',
-            matchers: parseMatchers(previewInputMatchers(state)),
-            grantBudgetLineId: pick(state, 'grantBudgetLineId', '') || null,
-            priority: Number(pick(state, 'priority', '100')) || 0,
-            ruleId: id,
-          },
-          { from: range.first, to: range.last },
-        )
-      : Promise.resolve(undefined),
-  ]);
+  const options = await crosswalkBuilderOptions(orgId);
   return (
     <>
       <PageHeader
@@ -61,13 +37,16 @@ export default async function CrosswalkRulePage({
           This rule is used by a compute run, so it was deactivated rather than deleted.
         </Banner>
       ) : null}
-      <RuleForm
-        action={updateCrosswalkAction.bind(null, id)}
-        state={state}
-        saved={!!saved}
+      <RuleBuilderPage
+        kind="crosswalk"
+        orgId={orgId}
         rule={rule}
+        state={decodeFormState(f)}
+        saved={!!saved}
+        showPreview={!!preview}
+        prefill={null}
         options={options}
-        preview={preview}
+        action={updateCrosswalkAction.bind(null, id)}
       />
       <DangerZone>
         <ButtonLink href={`/crosswalk/${id}/delete`} variant="danger">

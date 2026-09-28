@@ -497,3 +497,410 @@ Demo golden numbers (JPH-7) and pilot golden numbers (JPH-21/22/23) are unchange
 value was edited. AC7 lives in `src/domain/grant-figures.test.ts` + `tests/db/jph30-figures.test.ts`,
 AC8 in `src/domain/grant-figures.source.test.ts`, AC1–AC6 in `e2e/jph30-figures.spec.ts` and the
 badge asserts in `e2e/pilot.spec.ts`.
+
+## JPH-30 → JPH-25 — Phase A: audit fixes
+
+### Preflight
+
+- The full e2e run on main was green except one cross-project flake: `reports.spec.ts` "GET builder,
+  XLSX formulas and cached totals" in `chromium-nojs` read a grand total of 7,651,860 while the
+  `chromium` project (which runs concurrently and creates grants/recomputes) was mid-mutation. It
+  passes alone and on rerun; no expected value was touched. Consider serializing the two
+  functional projects (`fullyParallel: false` is already set; the projects still overlap).
+
+### Decisions taken (revisit if wrong)
+
+- A1 as-of cookie: server components cannot set cookies and the as-of forms are plain GETs, so the
+  `gat_asof` cookie is written by `src/proxy.ts` whenever a request carries a valid `?asOf=`.
+  A malformed `?asOf=` still errors (the user typed it); a malformed cookie is ignored.
+- A1 `resolveAsOf(searchParams, cookies, org)`: `org` is `{ fiscalYearStartMonth, booksThrough }`
+  so the domain function stays pure; `src/lib/period.ts` (`currentPeriod`, `currentRange`) loads
+  both and the cookie jar. Export route handlers keep reading `asOf`/`from`/`to` from their URL —
+  every export link on a page now carries the page's effective dates.
+- A1 `/allocation` is listed but has no as-of/from/to parameters and shows no dated figures
+  (it is the shared-cost-split rule list), so nothing to wire; no PeriodSubtitle added there.
+- A1 the as-of pages (dashboard, restricted, BvA, funder, working) show `[fiscal year start, asOf]`
+  in the PeriodSubtitle as the ticket specifies, even though their balances are cumulative to the
+  as-of date; the range names the fiscal year the as-of falls in.
+- A1 `/crosswalk/matrix` still defaults to the books-through quarter and `/crosswalk/lines` to
+  "all dates" — neither is in the A1 list and the matrix's quarter default is a deliberate
+  screen-size choice; flag if the binding rule should override it.
+- A1 Rollforward "Fiscal year to date" = `defaultRange(asOf)`; its `to` therefore follows
+  `?asOf=`/cookie instead of always books-through (the "books through" tag still shows when they
+  coincide). The existing JPH-30 AC4 test is unchanged and green.
+- A2/A3 Coverage total row sums program-category rows only (that is where "unmapped" can exist),
+  so Total expense / Mapped / Unmapped / Conflict tie across the row and Unmapped = the dashboard
+  card = the reconciliation check (216,000). A second, muted tfoot row "Non-grant (management &
+  general, fundraising)" carries the M&G/FR expense (1,382,450) with "n/a — non-grant" so the
+  page still accounts for every expense dollar.
+- A3 reuses `Program.functionalCategory` (already `program | management_general | fundraising`,
+  exposed on the program form); no new field.
+- A3 the reconciliation check counts distinct **transactions** behind the unmapped dollars, which
+  is 6 on the demo fixture, not the 25 in the ticket's example text ("25" was the old allocated-
+  amount count the check used to print). The check reads "Unmapped program expense · $2,160.00
+  across 6 transactions"; the AC4 test asserts the dollars and the sentence shape, not "25".
+  The check stores `cents` and `transactions` on the run so the dashboard renders a data-cents.
+- A2 Funder view and Working view Total rows were already numeric on the demo grant; they now
+  live in `<tfoot>` and render `$0.00` instead of "—" for an empty grant (the "—" the audit saw).
+- A4 The App Router gives the root layout no props from the page, so the "breadcrumbs prop" is a
+  pathname resolver (`src/lib/breadcrumbs.ts`) that the layout calls once: sidebar group › item ›
+  route tail, with entity names looked up by id. Trail depth: dashboard 2 ("Overview › Dashboard"),
+  list pages 1 ("Grants"), grant tabs 3, import batch 3, coverage 3. The header trail is hidden
+  below the `lg` breakpoint as before. `e2e/nav.spec.ts` header-context expectations were updated
+  to the full trail (copy the ticket changes on purpose, not a weakened assertion).
+- A5 Programs do not share the grant tab-strip pattern (the program page is a single form), so
+  only grants got the "Edit grant" header button. The edit page itself keeps the tab strip with
+  nothing highlighted and no button.
+- A6 "20 transactions" = new + changed + unchanged transactions in the batch; the changed/deleted
+  link condition uses the transactions bucket (changed + deleted), matching what the changes
+  page lists. The batch id moved under "Technical details" with the SHA-256 hashes.
+  `e2e/import.spec.ts` now asserts the new banner sentence (copy the ticket changes).
+- A7 "Unmapped detail" on coverage now lists program-category programs only (M&G/FR have no
+  unmapped expense under the one definition) and counts distinct transactions per account
+  (Youth Meals · Rent 6210 = $1,800.00 over 3 transactions, per the golden numbers).
+- A8 The History tab uses a new `HistoryDiff` (labels, currency, ids → names, "No field changes",
+  raw JSON under "Technical details"); the import "changed and deleted" page keeps the raw
+  field diff because its rows are QuickBooks transaction fields (Phase D/E territory).
+  `e2e/grants-programs.spec.ts` now asserts "Award amount: $10,000.00 → $12,000.00" instead of
+  the raw `awardAmountCents 1000000 → 1200000` (copy the ticket changes).
+- A9 Delete confirm works without JS: the icon opens a server-rendered confirm banner
+  (`?delete=<id>`) whose "Delete line" button posts the delete; no `window.confirm`.
+  `deleteBudgetLine` itself was already a hard delete before this ticket (guardrail says
+  supersede/soft-delete) — left as is, flagging it.
+- A9 "submit cents": the island writes integer cents into a hidden `budgetCents` per row on
+  submit; without JS the decimal text posts and the server parses it (`parseMoneyToCents`), so
+  the same action serves both. Only rows whose values differ from the stored line are written
+  (one audit event per changed line, none for untouched rows). The redirect carries
+  `?saved=<n changed rows>`.
+- A9 "Total row and chip stay live": besides re-rendering after save, the island updates the
+  working total and the "matches award / over|under award by" chip as budgets are typed.
+- A10 The `page` (page break) parameter still sections the on-screen report when a URL carries
+  it (the "Grant budget line × GL" preset and existing saved views do); the filter bar just no
+  longer offers it, and re-applying filters drops it. The PDF export is now a GET form with
+  the current parameters as hidden inputs plus the Page break select. `e2e/reports.spec.ts`
+  scopes its filter selectors to the filter bar because of those hidden inputs (no assertion
+  changed). Errors from "Save current view" still surface on /reports (the action redirects
+  there), which is where the saved-views list lives.
+- A11 Vocabulary applied via `src/copy/terms.ts`. Beyond the pages the ticket lists, the sweep
+  also touched: reconciliation check details ("allocated amounts" instead of "pieces"; these are
+  stored per run, so the dashboard/run pages show the new wording after a recompute), the run
+  "stats" check (was a raw JSON dump with a `pieces` key — now a labelled sentence), the
+  /runs config hash (now under a collapsed "Technical details" per row, Phase D still owns the
+  rest of that page), the transaction audit page (/lines/[id]) headings, the "cell" wording on
+  the budget/rules/review/activity/effort pages, and nav "Allocation Rules" → "Shared cost
+  splits" (nav.spec breadcrumb expectation updated to the new label). Left untouched: internal
+  ids/routes/params/testids (`bva`, `partyIds`, `cell-grid`, …) as the guardrail requires.
+- A11 "Stale" → "Needs update": the header pill already said "Recompute needed"; the run list,
+  run page and tie-out panel pills now say "needs update". `StaleRunBanner` copy already
+  avoided the word.
+- AC13 test matches the ticket's capitalised terms ("Parties", "Payees", "Revenue matcher",
+  "Lines → pieces") as written and the lowercase ones case-insensitively; the imported file name
+  `parties.csv` inside the collapsed Technical details is the reason (it is the real file name,
+  not copy). The check runs over visible text with tags/scripts stripped.
+- A11 "Funder view" card header no longer shows "run <hash>"; when there is no current run it
+  says "· no current run" (the header status already states when books/run were updated).
+- A11 `tests/db/reimport.test.ts` asserted the check detail string "1 allocation pieces"; the
+  expected copy was updated to "1 allocated amounts" (the count and status assertions are
+  unchanged — only the vocabulary the ticket renames).
+- A11 / verification: two existing e2e specs asserted renamed copy and were updated to the new
+  wording only (`e2e/runs.spec.ts` "Source line" → "Transaction (as imported"; the JPH-30 AC5
+  crosswalk notice "member lines" → "transactions of its own"). No figure or count changed.
+- Verification: the import batch "changes" page overflowed a 390px viewport once a batch with a
+  changed transaction existed (the AC8 fixture batch exposed it); its card now scrolls
+  horizontally like the other wide tables. The Phase A spec's grants are named "Z Phase A …",
+  start after the books-through date, and are removed through the app's delete/archive flow so
+  the other Playwright projects (which crawl the alphabetically first grant and assert the
+  dashboard's flagged list) are not disturbed.
+- Review follow-up (A3): the three "unmapped program expense" figures now share one predicate
+  and one period (`src/domain/unmapped.ts`): status `ok` (an allocation conflict or crosswalk
+  conflict is a conflict, never a gap), program-category program, no budget line, expense
+  account, transaction date inside [fiscal year start, as-of]. The stored reconciliation check
+  covers [fiscal year start, books through] and says so in its detail; the dashboard re-derives
+  the check row for whatever as-of it shows, so card, check and coverage total agree at any
+  as-of (AC4 now also asserts an earlier as-of through the cookie path). The dashboard's
+  expense cards and monthly chart read the stated period (fiscal year start – as-of) instead of
+  "everything up to as-of"; identical on the demo fixture, differs only for orgs with books
+  before the fiscal year start. The coverage "Conflict ($)" column now includes allocation
+  conflicts too so every row ties: total = mapped + unmapped + conflict.
+- Review follow-up (A9): the single-form save is one database transaction
+  (`saveBudgetLines`): a row that fails validation — including a code entered twice in the
+  batch, which is now checked up front — rolls back every earlier row and its audit events
+  (`tests/db/grants-programs.test.ts` "a batch save commits every edited line or none of them").
+
+## JPH-25 → JPH-26 — Phase B: one rule builder
+
+### Preflight
+
+- typecheck, lint, `pnpm test` (one pre-existing skip: the private-fixture parity test) and the
+  full e2e (107 passed, 9 project-gated skips) were green on main before any change. Phase 0
+  (`src/domain/grant-figures.ts`, `Grant.trackingMode`) and Phase A (`src/copy/terms.ts`,
+  `src/domain/period.ts`, Coverage "Create rule") are present.
+- AC1 / AC8 baselines were captured on pre-change main and committed as
+  `tests/fixtures/jph26-baseline.json` (list-page sentences for the 6 demo crosswalk rules and
+  the 20 pilot grant rules; AllocatedLine totals per budget line and GrantLineResult totals per
+  working line). The collector is `tests/db/jph26-baseline.ts`.
+
+### Golden numbers — pilot Dana Fairley discrepancy
+
+- The ticket says "Service Providers AND name Dana Fairley → 1 transaction · 27,500". The pilot
+  export (`fixtures/pilot/salah-export.csv`) has **two** Dana Fairley checks under Service
+  Providers – Programs: 125.00 on 06/08/2026 and 150.00 on 09/21/2026, total 275.00 =
+  **27,500 cents**. Both fall inside the app period for the pilot org (fiscal year start through
+  books-through Sep 22, 2026), so the engine and the builder report **2 transactions · $275.00**.
+  The total agrees with the ticket; the count does not. AC3/AC6b assert the real engine count and
+  the 27,500-cent total; no expected value was edited. If the ticket meant a different Dana
+  Fairley line, say which and the assertion follows.
+- Practitioners working line 710,000 and Salah needs-review 118,841 are unchanged (AC8 baseline).
+
+### Decisions taken (revisit if wrong)
+
+- B1 two wordings, one grammar. `describeRule` returns the ticket grammar ("… transactions where
+  account is A AND name is B → target"); the list pages ask for `wording: 'list'`, which renders
+  the pre-phase strings ("Program is Culinary Training AND account is Salaries & Wages or Payroll
+  Taxes") byte-for-byte (AC1 asserts this against the captured baseline). Both come from the same
+  condition builder, so a new matcher group is described once. The /crosswalk list header
+  "Matchers" became "Matches when" (the word is banned by the vocabulary rule; /crosswalk is not
+  in the visual baseline).
+- B2 one client component, server-rendered. The builder is a single `'use client'` component
+  (justified in its header comment) whose fields are all real form controls; the "Add condition"
+  menu is a `<details>` that, before hydration, simply contains the remaining rows, and "Rule
+  decides" / "Show all accounts" are driven by CSS `:has()`. With JS disabled the form submits
+  and previews through the server action's `?preview=1` bounce; the server action, the bounce and
+  `POST /api/rules/preview` read the form through one reader (`src/lib/rule-form.ts`), so the
+  saved matchers JSON is the same with and without JS (AC2).
+- B2 preview is the app period for both kinds. The old grant-rule preview counted every member
+  line regardless of date; the ticket asks for "<count> transactions · $total in <period>", so
+  the grant preview now filters the engine's decided lines to the app period. The crosswalk
+  preview counts allocated amounts (pieces) as before but the panel says "transactions" per the
+  vocabulary rule; on the demo fixture the two coincide (3 · $1,800.00 for Youth Meals / Rent).
+- B2 name auto-fill uses the sentence with the "(choose a target)" placeholder dropped while no
+  target is chosen, truncated to 80 characters with an ellipsis. The server applies the same
+  suggestion when the name arrives blank, so a no-JS save never fails on a missing name.
+- B4 superset warning semantics: the JPH-9 conflict check is a runtime tie detector, so
+  "matches everything rule X matches; it will never win" is computed as: run the engine with the
+  candidate at priority (stored − 1) and again at its stored priority; if the candidate wins at
+  least one allocation at the lower number but none at its own, every line it matches is already
+  won by a lower-numbered rule, and the warning names the rule that takes the largest share.
+  Ties at equal priority are left to the conflict banner as before.
+- B4 default priority 50 is applied only when the field arrives blank or absent; stored rules
+  re-render with their own value and the edit form never rewrites it (AC4).
+- B5 prefill ignores ids the org does not have rather than rendering a phantom condition; a
+  `/new` URL with only unknown ids is a blank form.
+- Program row on crosswalk rules is offered through "Add condition" (the ticket's two starting
+  rows are Account and Name); `e2e/crosswalk.spec.ts` was updated to open it. Any prefilled
+  group opens as a row automatically.
+- AC3 sentence uses the stored names. The ticket abbreviates "Salah transactions where account is
+  Service Providers …"; the pilot grant is named "Salah Foundation — Trauma Programs" and the
+  account "Service Providers - Programs", so the builder (and the test) render
+  "Salah Foundation — Trauma Programs transactions where account is Service Providers - Programs
+  AND name is Dana Fairley → Dana Fairley". No alias table was added; say so if the sentence
+  should use a short grant name.
+- Scope-item commits: B2 lands the builder with the island's fetch and the superset/prefill
+  modules it imports (they must compile together); B3 adds the route handler, B4/B5 add their
+  tests and notes. Feature code therefore sits one commit earlier than its label in two cases.
+- Stored matcher shape: the builder omits groups the user left empty (the old crosswalk form
+  wrote `classIds: []`, `descriptionContains: ""`, … for every group). The schema already treats
+  absent and empty alike, so nothing in the engine changes (AC8 equality holds); the reason is
+  AC4 — a seed rule opened and saved untouched must come back with exactly its stored keys.
+- Flake seen once in the full e2e (not reproducible alone): `reports.spec` "GET builder …" read a
+  grand total of 7,651,860 instead of 7,711,861 — the 600.01 March utilities line, which
+  `allocation.spec` edits (split rule) while `status.spec`/`runs.spec` recompute in the same
+  parallel project. Pre-existing cross-spec race; the rerun was green (124 passed). Not touched.
+
+## JPH-26 → JPH-27 — Phase C: review queue
+
+### Preflight
+
+- typecheck, lint, `pnpm test` (one pre-existing skip: the optional live-model narrative smoke
+  test) and the full e2e were green on main before any change. Phase B is present
+  (`src/domain/describe-rule.ts`, shared `<RuleBuilder>` with query-param prefill in
+  `src/components/rule-builder/prefill.ts`).
+
+### Golden numbers — what the pilot fixture actually contains
+
+- Salah has **eight** pre-September "Leah" payroll lines under Salaries, not seven: 112.89,
+  113.96, 223.74, 232.54, 177.43, 171.60, 167.55 and 102.66. The 113.96 line ("Leah Sanctuary
+  Retreat", 03/26) is the positive half of the ±113.96 reversal-pair proposal with JE 19-35, so
+  the queue shows it as the pair row, and the seven remaining lines total exactly 118,841 cents.
+  The ticket's "7 Leah lines + 1 pair row = 8 rows · $1,188.41" therefore holds only because a
+  line inside a proposed pair is a pair row and nothing else. Consequences that follow from that
+  reading (revisit if it is wrong):
+  - The header total excludes pair rows (they net to zero), so it is 118,841 while the row count
+    is 8.
+  - Bulk actions ("Select all suggested → …", "Accept N", "Not grant-funded N") take their rows
+    from the same queue the page renders, so a pair line is never swept into an accept or
+    exclusion even though it also carries the Leah near-miss suggestion. The first cut derived the
+    selection from the raw waiting lines and produced `accepted=8`; fixed before commit C4.
+  - The sidebar badge and the grant-header chip count transactions a reviewer still has to decide
+    on: waiting lines minus the lines a proposed pair already accounts for
+    (`toReviewCount` in `src/domain/grant-figures.ts`) — Salah 7, matching the ticket's "badge =
+    7" while the queue lists 8 rows. The raw `needsReviewCount` (9 for Salah) is unchanged for the
+    JPH-21/23 tests; `NeedsReview.pairedCount` is additive.
+- Opioid has a pending ±207.02 proposal of its own (one waiting line, one settled). It is a pair
+  row on `/review`, not a transaction row, and it counts 0 toward the badge, so "nothing for
+  Opioid" (AC10) is asserted as *no Opioid transaction row and no Opioid group*; the pair row is
+  allowed. If a pending pair on Opioid should also be hidden from `/review`, say so and the
+  filter follows.
+
+### Decisions taken (revisit if wrong)
+
+- Suggestion reason uses the stored rule name. The pilot rule is named "Leah payroll from
+  September", so the reason reads `Matches rule "Leah payroll from September" except the date`;
+  the ticket's `Matches rule "Leah"` was read as an abbreviation, not as a rename of the rule
+  (renaming it would alter the JPH-21 fixture). AC2 asserts the full string.
+- "Leah" is a description term, not a name. The ADP payroll lines carry the payroll provider (or
+  nothing) in the QuickBooks Name column and "Leah …" in the description, and the pilot rule
+  matches on `descriptionContains`. "Always do this" from a Leah row therefore prefills the row's
+  name (when it has one), Account = Salaries, **description contains "Leah"** (the near-miss
+  rule's description term, so the proposed rule is the pilot rule minus the date) and
+  Target = Leah (Sept+), plus `returnTo` so saving lands back on the queue. AC7 asserts that; the
+  literal "Name = Leah" in the ticket cannot be met because no party is called Leah.
+- Near-miss ranking: among rules that miss on exactly one condition, the one with the most
+  satisfied conditions wins, then priority. A rule that misses on two conditions is not a near
+  miss. Inactive rules and rules whose target left the grant are skipped. Name history counts
+  only decisions in the current run on this grant; account default requires exactly one target
+  across the grant's active rules that name the account.
+- Sort order is "suggested, grouped by target in budget order → unsuggested → pairs", rows by
+  date inside each group; the group header carries the select-all checkbox and the count.
+- Accept is hidden without a suggestion (ticket); Change is always available and renders a
+  working-line select for membership grants and activity + category selects for activity ×
+  category grants. Not grant-funded keeps the existing "Draft correcting entry" checkbox (checked
+  by default, disabled with the existing Settings hint when no default destination is set) and
+  the reason select (not allowable / posted in error / duplicate / other); the note is optional
+  and defaults to `Not grant-funded: <reason>` so `LineDecision.note` stays non-empty.
+- Bulk exclude of one grant drafts one correcting entry per decision group (shared `groupId`) and
+  redirects with `excluded=N&drafted=<code>`; when the destination is unset it redirects with
+  `excluded=N&blocked=1` — the exclusions are kept, only the draft is skipped (same as the
+  single-row path).
+- After any action the page redirects to itself; `revalidatePath('/', 'layout')` is called so the
+  app header's Recompute button and the sidebar badge re-render on the same URL. Recording a
+  decision marks the run stale (existing behaviour); Status/Funder figures follow the current run
+  until Recompute, so the AC4/AC5 golden numbers are asserted after the header's Recompute.
+- `/review` is one table across membership-tracked grants (archived grants excluded) with a Grant
+  column; crosswalk-tracked grants keep the Phase 0 explanatory notice on their own review page
+  and do not appear on `/review` at all (they have no queue). Say so if a "tracked by crosswalk"
+  line per grant is wanted there.
+- Vocabulary: "member lines" → transactions, "kept by import fingerprint" → gone, "cell" →
+  "activity × category" via `src/copy/terms.ts`. AC13 scans the rendered text of both pages for
+  `member line`, `fingerprint` and `\bcells?\b`; "spreadsheet cell" does not occur.
+- Keyboard island: `J`/`K` move a focus ring between rows, `A` submits that row's Accept, `C`
+  opens its Change form, `X` opens its Not grant-funded form; the legend is one line above the
+  table and the island announces readiness with `data-island="ready"` so tests never race
+  hydration. Without JS every action is a plain `<form>` POST (AC8 runs with
+  `javaScriptEnabled: false`).
+- Playwright: the Phase C suite is its own project (`phase-c`, JS on, depends on `pilot`, single
+  worker); the full run on this 8 GB container needs `--workers=1` — with two workers the dev
+  server (2–3 GB) plus the workers and the editor's TypeScript server exhausted memory and the
+  dev server was killed mid-run.
+- Review follow-ups (after the first completion review):
+  - A ticked group header ("Select all suggested → Leah (Sept+) (4)") posts the ids of the rows it
+    listed when rendered — filters included — and the server accepts only those that are still
+    waiting and still suggested to that target. The first cut expanded the header to every
+    waiting transaction with that target, so a date-filtered "(4)" could accept all seven.
+    Covered by the "Filtered bulk" e2e (JS and no-JS paths).
+  - The sidebar badge, the grant-header chip and the figures' "waiting" amount now overlay the
+    decisions recorded since the current run, exactly as the queue does (`reviewQueue`), so they
+    drop on the same round trip as the row instead of waiting for Recompute. The run stays the
+    truth for assigned/excluded spend until Recompute, as before. `needs_review` results that
+    carry a decision id (an assignment whose target left the grant) are no longer skipped by the
+    badge. AC3 asserts badge 6 / chip 6 before the recompute.
+
+### Not done / left as is
+
+- The JPH-26 Dana Fairley count question is untouched.
+- No D1 decision is seeded; the seven Leah lines stay in the queue.
+- Screenshots of `/grants/<salah>/review` before and after are under
+  `artifacts/screenshots/jph27/` (gitignored, not committed).
+
+## JPH-27 → JPH-28 — Phase D: close checklist, automatic recalculation, activity log
+
+### Preflight
+
+- `typecheck`, `lint`, `test` (306 unit tests) and `e2e` (138 passed / 13 skipped, `--workers=1`)
+  were green on the Phase C branch before D1; `/review` and `src/domain/suggest.ts` present.
+
+### Decisions taken (revisit if wrong)
+
+- **Which writes trigger the automatic calculation.** Every server action whose service marks
+  the current run stale now calls `recalculateAfter(orgId, cause)` before it redirects:
+  crosswalk rules, shared cost splits (allocation rules), programs, grants (create / edit /
+  archive / delete), budget lines (single, bulk, import, activities), grant rules, review
+  decisions (single, bulk, revert, pair, flag), effort schedules and counts, and both imports
+  (`trigger = import`). Carrying a variance and voiding a draft do not touch the run and were
+  left alone; the checklist reads them directly. Reported periods, period locks, narratives and
+  settings never marked the run stale, so nothing was added there.
+- **Concurrency** is a per-org `RecomputeLock` row (`running`, `pending`) taken inside a short
+  transaction. A second mutation while a calculation is running sets `pending` and returns
+  immediately (`kind: 'coalesced'`); the running one loops once more when it finishes. Two
+  mutations within 100 ms therefore produce at most two runs and never two concurrent ones
+  (`tests/db/recompute-queue.test.ts`). The CLI `pnpm recompute` still calls the engine directly
+  (no lock) — it is a developer tool, not a user path.
+- **AC2 in the browser is proven with a recorded failed calculation, not a live invariant
+  breach.** Forcing a real invariant failure through the UI on the demo fixture would need a
+  corrupt write the app refuses to make. The failure path itself (invariant violation → failed
+  row recorded, previous run stays current, `kind: 'ran'` with `status: 'failed'`) is a unit
+  test; the e2e inserts a failed `ComputeRun` newer than the current one (exactly what that path
+  records) and asserts the chip, the red blocker on `/` linking to `/runs/<id>` and the activity
+  row. If a fixture that breaks an invariant on demand is wanted, say which one.
+- **Step rules that the ticket table left open.**
+  - Step 1 "latest import date" is the batch's `finishedAt` (falling back to `startedAt`), not the
+    export's date range; "12 days ago" counts from now, greenness from the as-of.
+  - Step 2 green when the needs-review **total is 0** (the ticket's rule), so a queue holding
+    only reversal pairs (±113.96 netting to zero) is green with the pairs mentioned. "Review N"
+    counts the rows of grants whose waiting total is **not** zero: on the pilot fixture `/review`
+    lists 9 rows (Salah's 7 Leah lines + 1 pair, plus one Opioid pair on May 20, 2026 that nets
+    to zero), and the ticket's "Review 8" is only reachable if a grant that already nets to zero
+    is treated as settled for this step — which is what the green rule says anyway. If "Review 9"
+    (every row) is what you wanted, it is a one-line change in `src/services/close-status.ts`.
+  - Step 3 amber when any grant is flagged **or** any health check warns; **red** (a blocker, and
+    the period cannot be called closed) when a check on the current calculation is recorded as
+    `fail` / `ok: false` — a successful calculation can still carry a failed trial-balance or
+    overlapping-rules check. The `stats` pseudo-check never counts. The demo fixture opens on
+    step 3 (2 flagged, 2 warnings), which is where the old cards now sit.
+  - "Closed through …" is never shown while the newest calculation attempt failed, even with
+    seven green steps: the steps were judged on the previous calculation's numbers.
+  - Step 4 "variance is 0 or carried": carried means `carriedVarianceCents === varianceCents`
+    on an active schedule of a non-archived grant; the badge sums `|variance|` over the open
+    schedules. The button goes to the first open schedule's grant.
+  - Step 5 counts `CorrectingEntryDraft` rows in `drafted` status; the amount is Σ debits.
+  - Step 6: the rollforward XLSX route writes an `Export` row (`kind = rollforward_xlsx`,
+    period = the exported `from`/`to`); the step is green when an export's period **contains the
+    as-of**. Exporting a different period does not count (asserted). The PDF/CSV rollforward
+    routes, if any, do not record exports — only the XLSX the ticket names.
+  - Step 7: green when a `PeriodLock` whose range contains the as-of exists; the button goes to
+    `/settings/periods` (the ticket says `/settings`; the lock form lives one level down). The
+    form's button was renamed "Lock current run" → "Lock period".
+- **The failed-calculation blocker** on `/` shows when the newest failed run is newer than the
+  current run's start — i.e. the last attempt failed. Once a later calculation succeeds it goes
+  away on its own.
+- **Header chip** is server-rendered (no island): "Updated just now" (< 60 s), "Updated N min
+  ago", "Updated N h ago", then "Updated <date>"; "Updating…" while the lock is held; "Update
+  failed — see activity log" when the last attempt failed; "Needs update · last updated …" when
+  the current run is flagged stale (a path that only the CLI or a direct DB write can still
+  reach, since actions recalculate). The relative age is computed at render time, so a page left
+  open says "just now" until it is reloaded — the ticket asked for no poller.
+- **Health-check names.** The six binding names are in `CHECK_LABELS`; two checks the ticket
+  did not name were given names in the same voice: `grant_line_states` → "Grant decisions match
+  transactions", `stats` → "Calculation statistics" (it is not a check; the activity log and the
+  checklist skip it). Rename if you prefer others.
+- **Vocabulary elsewhere.** `/runs` and `/runs/[id]` keep their tables but say "Calculation" /
+  "Calculations", show trigger and cause, and no longer carry a Recompute button; the sidebar
+  item "Activity log" is highlighted for `/runs*` and `/import*`, and the trail reads
+  "Data › Activity log › Calculations › Calculation <date>". `/runs?done=` redirects now land on
+  `/activity?done=`.
+- **Old dashboard cards** are rendered by `src/components/overview-cards.tsx` from
+  `src/services/dashboard.ts` (extracted from the old page verbatim) on `/reports/overview`;
+  step 3's detail reuses three of them (restricted balances, flagged grants, health checks) and
+  links to the full overview. Existing specs that read the cards on `/` were pointed at
+  `/reports/overview` — the assertions and golden numbers are unchanged.
+- **Timing.** Auto-recalculation on the pilot fixture is measured in
+  `e2e/jph28-phase-d-pilot.spec.ts` (bulk accept → redirect, which includes the calculation) and
+  logged as `[JPH-28] bulk accept + auto calculation … ms`: 1,030–1,219 ms on this workspace,
+  inside the ≤ 2 s target.
+
+### Not done / left as is
+
+- `pnpm recompute` (CLI) and the seed scripts bypass the lock; they record `trigger = manual`
+  with no cause.
+- No JPH-29 work; QuickBooks stays read-only; the engine is untouched.
+- Screenshots of `/` before and after are under `artifacts/screenshots/jph28/` (gitignored).

@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createProgram, updateProgram, ValidationError } from '@/services/programs';
-import { createGrant, updateGrant, upsertBudgetLine } from '@/services/grants';
+import { createGrant, saveBudgetLines, updateGrant, upsertBudgetLine } from '@/services/grants';
 import { createTestOrg, resetDatabase } from './helpers';
 
 const program = (code: string, classes: string[] = []) => ({
@@ -100,5 +100,77 @@ describe('programs & grants services (JPH-8)', () => {
       where: { grantId: g.id },
     });
     expect(sum._sum.budgetCents).toBe(600_000);
+  });
+
+  it('a batch save commits every edited line or none of them (JPH-25 A9)', async () => {
+    const g = await createGrant(orgId, grant);
+    const line = (code: string, budgetCents: number, sortOrder: number) => ({
+      code,
+      name: code,
+      budgetCents,
+      programId: null,
+      sortOrder,
+    });
+    const a = await upsertBudgetLine(orgId, g.id, line('PERS', 600_000, 1));
+    const b = await upsertBudgetLine(orgId, g.id, line('TRAV', 100_000, 2));
+    const c = await upsertBudgetLine(orgId, g.id, line('SUPP', 50_000, 3));
+    const auditBefore = await prisma.auditEvent.count({ where: { entity: 'GrantBudgetLine' } });
+
+    // Row 3 fails validation (duplicate code) after rows 1 and 2 would have been written.
+    await expect(
+      saveBudgetLines(orgId, g.id, [
+        { lineId: a.id, input: line('PERS', 650_000, 1) },
+        { lineId: b.id, input: line('TRAV', 120_000, 2) },
+        { lineId: c.id, input: line('PERS', 50_000, 3) },
+      ]),
+    ).rejects.toMatchObject({
+      lineId: c.id,
+      fieldErrors: { code: 'Code PERS is entered twice' },
+    });
+    const untouched = await prisma.grantBudgetLine.findMany({
+      where: { grantId: g.id },
+      orderBy: { sortOrder: 'asc' },
+    });
+    expect(untouched.map((l) => l.budgetCents)).toEqual([600_000, 100_000, 50_000]);
+    expect(await prisma.auditEvent.count({ where: { entity: 'GrantBudgetLine' } })).toBe(
+      auditBefore,
+    );
+
+    // A row that only the service can reject (its code collides with a line outside the
+    // batch) also rolls the earlier rows back.
+    await expect(
+      saveBudgetLines(orgId, g.id, [
+        { lineId: a.id, input: line('PERS', 650_000, 1) },
+        { lineId: b.id, input: line('SUPP', 120_000, 2) },
+      ]),
+    ).rejects.toMatchObject({
+      lineId: b.id,
+      fieldErrors: { code: 'Code SUPP is already used in this grant' },
+    });
+    const stillUntouched = await prisma.grantBudgetLine.findMany({
+      where: { grantId: g.id },
+      orderBy: { sortOrder: 'asc' },
+    });
+    expect(stillUntouched.map((l) => l.budgetCents)).toEqual([600_000, 100_000, 50_000]);
+    expect(await prisma.auditEvent.count({ where: { entity: 'GrantBudgetLine' } })).toBe(
+      auditBefore,
+    );
+
+    // A clean batch persists both edits with one audit event per changed row and skips the
+    // unchanged one.
+    const { saved } = await saveBudgetLines(orgId, g.id, [
+      { lineId: a.id, input: line('PERS', 650_000, 1) },
+      { lineId: b.id, input: line('TRAV', 120_000, 2) },
+      { lineId: c.id, input: line('SUPP', 50_000, 3) },
+    ]);
+    expect(saved).toBe(2);
+    const after = await prisma.grantBudgetLine.findMany({
+      where: { grantId: g.id },
+      orderBy: { sortOrder: 'asc' },
+    });
+    expect(after.map((l) => l.budgetCents)).toEqual([650_000, 120_000, 50_000]);
+    expect(await prisma.auditEvent.count({ where: { entity: 'GrantBudgetLine' } })).toBe(
+      auditBefore + 2,
+    );
   });
 });

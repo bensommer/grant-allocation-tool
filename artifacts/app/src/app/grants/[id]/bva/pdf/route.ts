@@ -1,22 +1,20 @@
-import { getOrgId } from '@/lib/org';
-import { bvaData, reportDate } from '@/services/bva';
-import { grantBvaTable } from '@/reports/bva-table';
 import { pdfDocument, pdfErrorResponse, pdfResponse } from '@/reports/pdf';
+import { loadBvaExport } from '../export';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { date, label } = reportDate(new URL(req.url).searchParams.get('asOf') ?? undefined);
-  const { run, grants } = await bvaData(await getOrgId(), date, id);
-  const grant = grants[0];
-  if (!grant) return new Response('Grant not found', { status: 404 });
-  const table = grantBvaTable(grant, date, label, run);
+  const data = await loadBvaExport(req, id);
+  if (!data) return new Response('Grant not found', { status: 404 });
+  const { table } = data;
   try {
     const buf = await pdfDocument({
       title: table.title,
+      subtitle: `${data.grant.funder} · as of ${data.label}`,
       parameters: table.parameters,
       sections: [{ table }],
+      portrait: data.view === 'funder',
     });
-    return pdfResponse(buf, `bva-${label}.pdf`);
+    return pdfResponse(buf, data.filename('pdf'));
   } catch (error) {
     return pdfErrorResponse(error);
   }

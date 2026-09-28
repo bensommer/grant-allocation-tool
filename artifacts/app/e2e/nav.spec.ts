@@ -8,20 +8,23 @@ test.beforeEach(() => {
 test('sidebar highlights the section a nested route belongs to', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   const all = await routes();
-  const grant = all.find((p) => /^\/grants\/[^/]+$/.test(p) && p !== '/grants/new')!;
+  const grant = all.find((p) => /^\/grants\/[^/]+$/.test(p) && !p.startsWith('/grants/new'))!;
   const allocation = all.find((p) => /^\/allocation\/[^/]+$/.test(p) && p !== '/allocation/new')!;
   const run = all.find((p) => /^\/runs\/[^/]+$/.test(p))!;
   const line = all.find((p) => /^\/lines\/[^/]+$/.test(p))!;
-  const cases: Array<[string, string, string]> = [
-    ['/', 'Dashboard', 'Overview › Dashboard'],
+  // Header trail is the full breadcrumb (JPH-25 A4): sidebar group › item › page.
+  const cases: Array<[string, string, string | RegExp]> = [
+    ['/', 'Close checklist', 'Overview › Close checklist'],
+    ['/reports/overview', 'Reports', 'Reports › Overview'],
+    ['/activity', 'Activity log', 'Data › Activity log'],
     ['/grants', 'Grants', 'Grants'],
-    [`${grant}/bva`, 'Grants', 'Grants'],
-    ['/crosswalk/matrix', 'Crosswalk', 'Setup › Crosswalk'],
-    [allocation, 'Allocation Rules', 'Setup › Allocation Rules'],
-    ['/reports/custom?rows=program&cols=glAccount', 'Reports', 'Reports'],
-    [line, 'Reports', 'Reports'],
-    [run, 'Runs', 'Data › Runs'],
-    ['/settings/periods', 'Settings', 'Settings'],
+    [`${grant}/bva`, 'Grants', /^Grants › .+ › Budget vs\. Actuals$/],
+    ['/crosswalk/matrix', 'Crosswalk', 'Setup › Crosswalk › Matrix'],
+    [allocation, 'Shared cost splits', /^Setup › Shared cost splits › .+$/],
+    ['/reports/custom?rows=program&cols=glAccount', 'Reports', 'Reports › Custom report'],
+    [line, 'Reports', 'Reports › Transaction'],
+    [run, 'Activity log', /^Data › Activity log › Calculations › Calculation .+$/],
+    ['/settings/periods', 'Settings', 'Settings › Periods'],
   ];
   const sidebar = page.getByRole('complementary', { name: 'Sidebar' });
   for (const [path, item, context] of cases) {
@@ -33,6 +36,6 @@ test('sidebar highlights the section a nested route belongs to', async ({ page }
   }
   await expect(sidebar.getByRole('link', { name: 'Settings' })).toBeVisible();
   const settingsTop = (await sidebar.getByRole('link', { name: 'Settings' }).boundingBox())!.y;
-  const runsTop = (await sidebar.getByRole('link', { name: 'Runs' }).boundingBox())!.y;
+  const runsTop = (await sidebar.getByRole('link', { name: 'Activity log' }).boundingBox())!.y;
   expect(settingsTop).toBeGreaterThan(runsTop + 100); // pinned to the bottom, not stacked
 });

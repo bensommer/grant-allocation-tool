@@ -449,6 +449,25 @@ enum BudgetLineKind {
 /// (line-keyed grants) or `cell`s (activity × category grants) through
 /// `parentId`. A cell is addressed by (activityId, categoryKey). `budgetCents`
 /// is the original budget; BudgetRevision rows adjust it and are never folded in.
+/// First-grant setup wizard state (JPH-29 E4). One row per browser (cookie token); the
+/// posted values of each step live in `data` so refresh, Back and "Save and finish later" all
+/// resume where the user left off. Additive; nothing else references it.
+model GrantDraft {
+  id        String   @id @default(cuid())
+  orgId     String
+  /// Random token stored in the `grant_draft` cookie.
+  token     String   @unique
+  /// The step to resume at (1–5).
+  step      Int      @default(1)
+  data      Json     @default("{}")
+  /// Set when Finish created the grant; the draft is deleted right after.
+  grantId   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orgId])
+}
+
 model GrantBudgetLine {
   id           String         @id @default(cuid())
   orgId        String
@@ -823,18 +842,54 @@ enum RunStatus {
   superseded
 }
 
+/// JPH-28 D1: manual = "Recalculate now"; auto = after a mutation; import = after an import.
+enum RunTrigger {
+  manual
+  auto
+  import
+}
+
+/**
+ * JPH-28 D1: one row per org. `running` is held for the whole calculation; a caller that arrives
+ * meanwhile sets `pending` and the holder runs once more when it finishes.
+ */
+model RecomputeLock {
+  orgId        String    @id
+  running      Boolean   @default(false)
+  pending      Boolean   @default(false)
+  pendingCause String?
+  lockedAt     DateTime?
+  updatedAt    DateTime  @default(now()) @updatedAt
+}
+
+/// JPH-28 D2: a file the CPA exported for a period (checklist step 6, "Export rollforward").
+model Export {
+  id         String   @id @default(cuid())
+  orgId      String
+  kind       String
+  periodFrom DateTime @db.Date
+  periodTo   DateTime @db.Date
+  createdAt  DateTime @default(now())
+  actor      String?
+
+  @@index([orgId, kind, periodTo])
+}
+
 model ComputeRun {
-  id             String    @id @default(cuid())
+  id             String     @id @default(cuid())
   orgId          String
-  startedAt      DateTime  @default(now())
+  startedAt      DateTime   @default(now())
   finishedAt     DateTime?
-  status         RunStatus @default(running)
+  status         RunStatus  @default(running)
   configHash     String
-  sourceBatchIds String[]  @default([])
-  warnings       Json      @default("[]")
-  checks         Json      @default("[]")
-  stale          Boolean   @default(false)
-  isCurrent      Boolean   @default(false)
+  sourceBatchIds String[]   @default([])
+  warnings       Json       @default("[]")
+  checks         Json       @default("[]")
+  stale          Boolean    @default(false)
+  isCurrent      Boolean    @default(false)
+  /// JPH-28 D1: what started the calculation and why (shown in the activity log).
+  trigger        RunTrigger @default(manual)
+  cause          String?
 
   allocatedLines AllocatedLine[]
   periodLocks    PeriodLock[]

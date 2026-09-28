@@ -13,6 +13,7 @@ import type { Prisma } from '@/generated/prisma/client';
 import { prisma } from '@/lib/db';
 import { recordAudit } from '@/lib/audit';
 import { utcDate } from '@/domain/dates';
+import { defaultRange } from '@/domain/period';
 import { MAX_CENTS } from '@/domain/money';
 import {
   RELEASE_CLASSES,
@@ -543,12 +544,8 @@ export async function snapshotLockedPeriod(
   return written;
 }
 
-/** Default rollforward window: the org's current fiscal year through today. */
+/** Default rollforward window: the org's current fiscal year through `today` (see domain/period). */
 export function defaultRollforwardRange(fiscalYearStartMonth: number, today = new Date()) {
-  const y = today.getUTCFullYear();
-  const m = today.getUTCMonth() + 1;
-  const startYear = m >= fiscalYearStartMonth ? y : y - 1;
-  const from = utcDate(startYear, fiscalYearStartMonth, 1);
-  const to = utcDate(y, m, today.getUTCDate());
-  return { from, to };
+  const asOf = utcDate(today.getUTCFullYear(), today.getUTCMonth() + 1, today.getUTCDate());
+  return defaultRange(asOf, { fiscalYearStartMonth });
 }

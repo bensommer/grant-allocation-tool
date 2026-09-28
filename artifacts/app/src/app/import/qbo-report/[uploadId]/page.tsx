@@ -128,7 +128,7 @@ export default async function ConfirmQboReportPage({
               }
               hint="Only this grant's lines inside this range are reconciled."
             />
-            <KeyFigure label="Transaction lines" value={report?.lines.length ?? 0} />
+            <KeyFigure label="Lines in report" value={report?.lines.length ?? 0} />
             <KeyFigure label="Income on report" value={<Money cents={incomeCents} zero="zero" />} />
             <KeyFigure
               label="Expense on report"

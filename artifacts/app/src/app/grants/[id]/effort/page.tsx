@@ -22,8 +22,12 @@ import { CATEGORY_KEYS, categoryLabel } from '@/domain/categories';
 import { centsToDecimalString } from '@/domain/money';
 import { budgetTree } from '@/services/grant-budget';
 import { effortSummary, type EffortScheduleView } from '@/services/effort';
-import { DESTINATION_UNSET_MESSAGE, GRANT_CODING_MISSING_MESSAGE } from '@/services/correcting-entries';
+import {
+  DESTINATION_UNSET_MESSAGE,
+  GRANT_CODING_MISSING_MESSAGE,
+} from '@/services/correcting-entries';
 import { getDefaultDestination, isDestinationSet } from '@/services/settings';
+import { EditGrantButton } from '@/app/grants/[id]/edit-grant-button';
 import { GrantTabs } from '../tabs';
 import {
   carryVarianceAction,
@@ -72,6 +76,7 @@ export default async function EffortPage({
       <PageHeader
         title={`${grant.name} · effort`}
         subtitle="Staff time charged by effort (hours × completed occurrences × burdened rate). Matched payroll lines are excluded from direct spend and compared with the charge."
+        secondaryActions={<EditGrantButton id={id} />}
       />
       <GrantTabs id={id} active="effort" />
       <FormBanner state={state} saved={!!saved} />
@@ -194,7 +199,11 @@ export default async function EffortPage({
             <select
               id="targetCategoryKey"
               name="targetCategoryKey"
-              defaultValue={pick(state, 'targetCategoryKey', editing?.targetCategoryKey ?? 'coordinator')}
+              defaultValue={pick(
+                state,
+                'targetCategoryKey',
+                editing?.targetCategoryKey ?? 'coordinator',
+              )}
             >
               {categoryKeys.map((k) => (
                 <option key={k} value={k}>
@@ -276,7 +285,9 @@ export default async function EffortPage({
             ) : null}
           </div>
           <div className="md:col-span-2">
-            <label htmlFor="descriptionContainsAny">Description contains any of (comma-separated)</label>
+            <label htmlFor="descriptionContainsAny">
+              Description contains any of (comma-separated)
+            </label>
             <input
               id="descriptionContainsAny"
               name="descriptionContainsAny"
@@ -294,7 +305,9 @@ export default async function EffortPage({
               <input
                 type="checkbox"
                 name="active"
-                defaultChecked={state ? pick(state, 'active', '') === 'on' : (editing?.active ?? true)}
+                defaultChecked={
+                  state ? pick(state, 'active', '') === 'on' : (editing?.active ?? true)
+                }
               />
               Active
             </label>
@@ -324,14 +337,15 @@ function ScheduleSection({
 }) {
   const usedActivities = new Set(s.entries.map((e) => e.activityId));
   const unused = activities.filter((a) => !usedActivities.has(a.id));
-  const stale = s.entries.some((e) => e.runChargeCents !== null && e.runChargeCents !== e.chargeCents);
+  const stale = s.entries.some(
+    (e) => e.runChargeCents !== null && e.runChargeCents !== e.chargeCents,
+  );
   return (
     <section className="mb-4" data-testid="schedule" data-schedule-id={s.id}>
       <Card
         title={
           <>
-            {s.personLabel}{' '}
-            {s.active ? null : <StatusPill tone="muted">inactive</StatusPill>}
+            {s.personLabel} {s.active ? null : <StatusPill tone="muted">inactive</StatusPill>}
           </>
         }
         action={
@@ -371,7 +385,7 @@ function ScheduleSection({
           </div>
           <div>
             <dt className="muted">Charged to</dt>
-            <dd>{categoryLabel(s.targetCategoryKey)} cells</dd>
+            <dd>{categoryLabel(s.targetCategoryKey)} (activity × category)</dd>
           </div>
         </dl>
         {stale ? (
@@ -464,7 +478,11 @@ function ScheduleSection({
             </label>
             <label className="text-sm">
               Hours / occurrence
-              <input name="hoursPerOccurrence" defaultValue={pick(state, 'hoursPerOccurrence', '')} size={6} />
+              <input
+                name="hoursPerOccurrence"
+                defaultValue={pick(state, 'hoursPerOccurrence', '')}
+                size={6}
+              />
             </label>
             <label className="text-sm">
               Count override

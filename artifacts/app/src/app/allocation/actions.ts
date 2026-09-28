@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { parseDateInput, toISODate } from '@/domain/dates';
 import { type Matchers } from '@/domain/matchers';
 import { parseMoneyToCents } from '@/domain/money';
+import { recalculateAfter } from '@/lib/after-mutation';
 import { getOrgId } from '@/lib/org';
 import {
   bool,
@@ -114,6 +115,7 @@ async function save(id: string | null, form: FormData): Promise<void> {
     const rule = id
       ? await updateAllocationRule(orgId, id, result.data!)
       : await createAllocationRule(orgId, result.data!);
+    await recalculateAfter(orgId, `shared cost split ${id ? 'updated' : 'created'}`);
     redirect(`/allocation/${rule.id}?saved=1`);
   } catch (error) {
     if (error instanceof ValidationError) redirectWithErrors(back, error.fieldErrors, form);
@@ -128,7 +130,12 @@ export async function updateAllocationAction(id: string, form: FormData): Promis
   await save(id, form);
 }
 export async function deleteAllocationAction(id: string): Promise<void> {
-  const result = await deleteAllocationRule(await getOrgId(), id);
+  const orgId = await getOrgId();
+  const result = await deleteAllocationRule(orgId, id);
+  await recalculateAfter(
+    orgId,
+    result.deactivated ? 'shared cost split deactivated' : 'shared cost split deleted',
+  );
   redirect(result.deactivated ? `/allocation/${id}?deactivated=1` : '/allocation?deleted=1');
 }
 
@@ -140,11 +147,13 @@ export async function saveDriversAction(form: FormData): Promise<void> {
     programId,
     value: Number(str(form, `value_${programId}`)),
   }));
+  const orgId = await getOrgId();
   try {
-    await upsertDriverValues(await getOrgId(), key, period, rows);
+    await upsertDriverValues(orgId, key, period, rows);
   } catch (error) {
     if (error instanceof ValidationError) redirectWithErrors(back, error.fieldErrors, form);
     throw error;
   }
+  await recalculateAfter(orgId, 'driver values saved');
   redirect(`${back}&saved=1`);
 }

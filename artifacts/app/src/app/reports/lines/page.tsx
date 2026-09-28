@@ -1,3 +1,4 @@
+import { TERMS } from '@/copy/terms';
 import Link from 'next/link';
 import { StaleRunBanner } from '@/components/stale-run-banner';
 import {
@@ -44,7 +45,7 @@ export default async function Lines({
           run ? (
             <>
               Run <DateText date={run.finishedAt ?? run.startedAt} time /> — {filtered.length}{' '}
-              pieces
+              {TERMS.allocatedAmountsLower}
             </>
           ) : (
             'No current run'
@@ -58,7 +59,7 @@ export default async function Lines({
       />
       <StaleRunBanner run={run} />
       <Card>
-        <DataTable caption="Report source lines">
+        <DataTable caption="Report transactions">
           <thead>
             <tr>
               <Th>Date</Th>

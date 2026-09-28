@@ -80,12 +80,12 @@ export default async function LineAuditPage({
     <>
       <PageHeader
         title={`Line ${t.docNumber ?? t.externalId} #${line.lineNumber}`}
-        subtitle="Source line as imported → allocation → crosswalk. Nothing here is editable; change rules and recompute instead."
+        subtitle="Transaction as imported → shared cost split → crosswalk. Nothing here is editable; change rules and recompute instead."
       />
 
       <div className="card mb-4">
-        <h2 className="mb-2">1 · Source line (as imported, never modified)</h2>
-        <DataTable caption="Imported source line">
+        <h2 className="mb-2">1 · Transaction (as imported, never modified)</h2>
+        <DataTable caption="Imported transaction">
           <tbody>
             <tr>
               <th>Date</th>
@@ -175,7 +175,7 @@ export default async function LineAuditPage({
               </p>
             ) : (
               <p>
-                No allocation rule matched. Assigned 100% to the program whose default class mapping
+                No shared cost split matched. Assigned 100% to the program whose default class mapping
                 includes <strong>{line.class?.name ?? 'no class'}</strong>
                 {pieces[0]?.program ? (
                   <>
@@ -197,8 +197,8 @@ export default async function LineAuditPage({
           </div>
 
           <div className="card">
-            <h2 className="mb-2">3 · Resulting pieces and crosswalk</h2>
-            <DataTable caption="Allocated pieces and crosswalk">
+            <h2 className="mb-2">3 · Resulting allocated amounts and crosswalk</h2>
+            <DataTable caption="Allocated amounts and crosswalk">
               <thead>
                 <tr>
                   <th>#</th>
@@ -247,7 +247,7 @@ export default async function LineAuditPage({
                             {p.crosswalkRule.name}
                           </Link>
                         ) : p.grantBudgetLineId && p.allocationRuleId ? (
-                          <span className="muted">allocation rule target</span>
+                          <span className="muted">shared cost split target</span>
                         ) : xConflicts.length > 0 ? (
                           <>
                             tie between{' '}
@@ -277,7 +277,7 @@ export default async function LineAuditPage({
               </tbody>
               <tfoot>
                 <tr>
-                  <th colSpan={2}>Σ pieces</th>
+                  <th colSpan={2}>Σ allocated amounts</th>
                   <th className="num" data-cents={total}>
                     <Money cents={total} dollar />
                   </th>

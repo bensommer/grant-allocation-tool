@@ -30,3 +30,12 @@ workflow is restarted; a feature reading process.env looked "disabled" until the
   screenshot is usually the DB state left by `pnpm test` (a different org/data), not an engine regression —
   truncate, restore demo and re-check before touching a baseline.
 - Playwright specs run in plain Node: nothing they import from `src/` may reach `next/navigation`.
+
+## Backgrounding and tsx paths
+- A plain `( … ) &` started from a shell call is killed when that call returns, so a full e2e run
+  (≈10 min, over the 5-minute call limit) must be fully detached (`setsid nohup … > file 2>&1 &` or
+  the tool's background mode) with `echo EXIT=$? >> file` at the end; poll the file.
+- `__dirname` misresolves under `tsx` ESM in this repo (points at a temp dir); use `process.cwd()`
+  for fixture paths in one-off scripts.
+- `pnpm test` (vitest DB files) leaves the dev DB as a pilot/test org: truncate + `import:csv --dir
+  fixtures/demo && seed:demo && recompute` before any e2e or screenshot.

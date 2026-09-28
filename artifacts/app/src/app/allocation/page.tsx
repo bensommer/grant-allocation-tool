@@ -1,3 +1,4 @@
+import { TERMS } from '@/copy/terms';
 import Link from 'next/link';
 import {
   Banner,
@@ -56,8 +57,8 @@ export default async function AllocationPage({
   return (
     <>
       <PageHeader
-        title="Allocation rules"
-        subtitle="Shared cost splits. Changes mark the current run stale until recomputed on Runs."
+        title={TERMS.sharedCostSplits}
+        subtitle="How shared costs are split across programs. Numbers update by themselves after a change."
         secondaryActions={
           <>
             <ButtonLink variant="secondary" href="/allocation/drivers">
@@ -70,7 +71,7 @@ export default async function AllocationPage({
       {deleted ? <Banner tone="ok">Rule deleted.</Banner> : null}
             <div className="card">
         {rules.length ? (
-          <DataTable caption="Allocation rules">
+          <DataTable caption={TERMS.sharedCostSplits}>
             <thead>
               <tr>
                 <Th>Rule</Th>
@@ -124,7 +125,7 @@ export default async function AllocationPage({
             </tbody>
           </DataTable>
         ) : (
-          <p className="muted">No allocation rules yet.</p>
+          <p className="muted">No shared cost splits yet.</p>
         )}
       </div>
     </>

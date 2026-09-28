@@ -1,3 +1,6 @@
+import { formatMoney, formatPeriod } from '@/domain/format';
+import { defaultRange } from '@/domain/period';
+import { isExpenseAccountType, unmappedProgramExpense } from '@/domain/unmapped';
 import { prisma } from '@/lib/db';
 import type { SourceTrialBalance } from '@/datasource/types';
 
@@ -7,14 +10,32 @@ export type ReconciliationCheck = {
   ok: boolean;
   detail: string;
   href: string;
+  /** Dollar figure behind the check, when it has one (rendered as money, JPH-25 A3). */
+  cents?: number;
+  /** Distinct transactions behind `cents`. */
+  transactions?: number;
+  /** ISO dates of the period `cents` covers, when the check is period-scoped. */
+  periodFrom?: string;
+  periodTo?: string;
 };
+
+/** "$2,160.00 across 6 transactions · Jan 1 – Mar 31, 2026" — shared by the run and the dashboard. */
+export function describeUnmapped(
+  summary: { cents: number; transactions: number },
+  period: { from: Date; to: Date },
+): string {
+  const n = summary.transactions;
+  return `${formatMoney(summary.cents, { dollar: true, zero: 'zero' })} across ${n} transaction${n === 1 ? '' : 's'} · ${formatPeriod(period.from, period.to)}`;
+}
 
 export async function reconciliationChecks(
   orgId: string,
   runId: string,
 ): Promise<ReconciliationCheck[]> {
-  const [run, batch, pieces, income, grants] = await Promise.all([
+  const [run, org, booksThrough, batch, pieces, income, grants] = await Promise.all([
     prisma.computeRun.findFirstOrThrow({ where: { id: runId, orgId } }),
+    prisma.org.findUniqueOrThrow({ where: { id: orgId }, select: { fiscalYearStartMonth: true } }),
+    prisma.transaction.aggregate({ where: { orgId, deletedAt: null }, _max: { txnDate: true } }),
     prisma.importBatch.findFirst({
       where: { orgId, status: 'succeeded' },
       orderBy: { startedAt: 'desc' },
@@ -29,7 +50,14 @@ export async function reconciliationChecks(
         programId: true,
         grantBudgetLineId: true,
         status: true,
-        sourceLine: { select: { account: { select: { type: true } } } },
+        program: { select: { functionalCategory: true } },
+        sourceLine: {
+          select: {
+            transactionId: true,
+            account: { select: { type: true } },
+            transaction: { select: { txnDate: true } },
+          },
+        },
       },
     }),
     prisma.transactionLine.findMany({
@@ -62,7 +90,7 @@ export async function reconciliationChecks(
     check(
       'sum_per_source_line',
       'pass',
-      `${pieces.length} allocation pieces balanced`,
+      `${pieces.length} allocated amounts balanced`,
       `/runs/${run.id}`,
     ),
   ];
@@ -146,30 +174,34 @@ export async function reconciliationChecks(
     check(
       'unassigned_program',
       unassigned ? 'warn' : 'pass',
-      `${unassigned} allocation pieces without program`,
+      `${unassigned} allocated amounts without program`,
       '/programs',
     ),
   );
-  const expensePieces = pieces.filter((p) =>
-    ['Expense', 'COGS', 'OtherExpense'].includes(p.sourceLine.account.type),
-  );
-  const unmapped = expensePieces.filter(
-    (p) => p.programId && !p.grantBudgetLineId && p.status === 'ok',
-  ).length;
-  result.push(
-    check(
+  const expensePieces = pieces.filter((p) => isExpenseAccountType(p.sourceLine.account.type));
+  // Same period the app shows by default: [fiscal year start, books through]. The dashboard
+  // re-derives this figure for whatever as-of it is showing, with the same predicate.
+  const asOf = booksThrough._max.txnDate ?? new Date();
+  const period = defaultRange(asOf, org);
+  const unmapped = unmappedProgramExpense(pieces, period);
+  result.push({
+    ...check(
       'unmapped_program_expense',
-      unmapped ? 'warn' : 'pass',
-      `${unmapped} unmapped pieces`,
+      unmapped.pieces.length ? 'warn' : 'pass',
+      describeUnmapped(unmapped, period),
       '/crosswalk/coverage',
     ),
-  );
+    cents: unmapped.cents,
+    transactions: unmapped.transactions,
+    periodFrom: period.from.toISOString().slice(0, 10),
+    periodTo: period.to.toISOString().slice(0, 10),
+  });
   const conflicts = expensePieces.filter((p) => p.status === 'crosswalk_conflict').length;
   result.push(
     check(
       'crosswalk_conflicts',
       conflicts ? 'fail' : 'pass',
-      `${conflicts} conflicting pieces`,
+      `${conflicts} conflicting allocated amounts`,
       '/crosswalk/coverage',
     ),
   );

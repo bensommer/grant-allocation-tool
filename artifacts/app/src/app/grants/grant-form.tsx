@@ -1,8 +1,11 @@
+import { TERMS } from '@/copy/terms';
 import { CheckboxList, Field, FormBanner } from '@/components/form';
 import { type FormState, pick, pickList } from '@/lib/forms';
+import type { TrackingOptions } from '@/services/tracking-options';
 import { centsToDecimalString, formatBps } from '@/domain/money';
 import { toISODate } from '@/domain/dates';
 import { GRANT_STATUS_LABEL, RESTRICTION_LABEL } from './labels';
+import { GrantIncomeBlock, TrackingBlock } from './tracking-block';
 
 export interface GrantFormData {
   name: string;
@@ -29,9 +32,9 @@ export function GrantForm({
   saved,
   grant,
   customers,
-  memberParties,
   classes,
   programs,
+  tracking,
   submitLabel,
 }: {
   action: (formData: FormData) => Promise<void>;
@@ -39,9 +42,9 @@ export function GrantForm({
   saved?: boolean;
   grant: GrantFormData | null;
   customers: Array<{ id: string; displayName: string }>;
-  memberParties: Array<{ id: string; displayName: string; kind: string }>;
   classes: Array<{ id: string; name: string }>;
   programs: Array<{ id: string; code: string; name: string }>;
+  tracking: TrackingOptions;
   submitLabel: string;
 }) {
   const selectedPrograms = pickList(
@@ -223,78 +226,8 @@ export function GrantForm({
             </table>
           </div>
         </Field>
-        <Field
-          label="Revenue matcher — parties"
-          name="matchPartyIds"
-          hint="Income lines from these parties count as this grant's receipts."
-        >
-          <CheckboxList
-            name="matchPartyIds"
-            options={customers.map((c) => ({ value: c.id, label: c.displayName }))}
-            selected={pickList(state, 'matchPartyIds', grant?.matchPartyIds ?? [])}
-          />
-        </Field>
-        <Field
-          label="Revenue matcher — classes"
-          name="matchClassIds"
-          hint="Optional: income lines tagged with these classes."
-        >
-          <CheckboxList
-            name="matchClassIds"
-            options={classes.map((c) => ({ value: c.id, label: c.name }))}
-            selected={pickList(state, 'matchClassIds', grant?.matchClassIds ?? [])}
-          />
-        </Field>
-        <Field
-          label="Grant membership — classes"
-          name="memberClassIds"
-          hint="Live-QuickBooks mode: every line tagged with these classes belongs to this grant."
-        >
-          <CheckboxList
-            name="memberClassIds"
-            options={classes.map((c) => ({ value: c.id, label: c.name }))}
-            selected={pickList(state, 'memberClassIds', grant?.memberClassIds ?? [])}
-          />
-        </Field>
-        <Field
-          label="Grant membership — customers / projects"
-          name="memberPartyIds"
-          hint="Lines tagged with these customers or projects belong to this grant."
-        >
-          <CheckboxList
-            name="memberPartyIds"
-            options={memberParties.map((c) => ({
-              value: c.id,
-              label: c.displayName,
-              note: c.kind === 'project' ? 'project' : undefined,
-            }))}
-            selected={pickList(state, 'memberPartyIds', grant?.memberPartyIds ?? [])}
-          />
-        </Field>
-        <Field
-          label="QuickBooks class"
-          name="qboClassName"
-          hint="Class full name the grant is coded to in QuickBooks (e.g. Programs:Trauma Grants). Used on the grant side of correcting entries when the class is not a ledger row."
-          error={state?.errors['qboClassName']}
-        >
-          <input
-            id="qboClassName"
-            name="qboClassName"
-            defaultValue={pick(state, 'qboClassName', grant?.qboClassName)}
-          />
-        </Field>
-        <Field
-          label="QuickBooks project / customer"
-          name="qboProjectName"
-          hint="Project (customer) name the grant is coded to in QuickBooks. Used on the grant side of correcting entries when the project is not a ledger row."
-          error={state?.errors['qboProjectName']}
-        >
-          <input
-            id="qboProjectName"
-            name="qboProjectName"
-            defaultValue={pick(state, 'qboProjectName', grant?.qboProjectName)}
-          />
-        </Field>
+        <TrackingBlock state={state} grant={grant} options={tracking} />
+        <GrantIncomeBlock state={state} grant={grant} customers={customers} classes={classes} />
       </div>
       <div className="mt-4">
         <button type="submit" className="btn">

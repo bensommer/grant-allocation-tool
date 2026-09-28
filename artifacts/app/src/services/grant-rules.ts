@@ -18,6 +18,7 @@ import { assignGrantLines, type GrantLineDraft, type GrantStageRule } from '@/en
 import { loadEngineLines, loadGrantStageConfig } from '@/engine/recompute';
 import { zodErrors } from '@/lib/zod-errors';
 import { assertMatcherRefs } from './refs';
+import { inTransaction, type Db } from './grants';
 import { ValidationError } from './programs';
 
 export const grantRuleInputSchema = z.object({
@@ -32,7 +33,7 @@ export const grantRuleInputSchema = z.object({
   priority: z.number().int('Priority must be an integer').min(0, 'Priority cannot be negative'),
   active: z.boolean(),
   matchers: matchersSchema
-    .refine((m) => !isEmptyMatchers(m), 'Add at least one matcher condition')
+    .refine((m) => !isEmptyMatchers(m), 'Add at least one condition')
     .refine(
       (m) => !m.accountRange || (!!m.accountRange.from && !!m.accountRange.to),
       'Enter both account range endpoints',
@@ -40,11 +41,11 @@ export const grantRuleInputSchema = z.object({
 });
 export type GrantRuleInput = z.infer<typeof grantRuleInputSchema>;
 
-async function validate(orgId: string, grantId: string, input: GrantRuleInput) {
+async function validate(orgId: string, grantId: string, input: GrantRuleInput, db: Db = prisma) {
   const result = grantRuleInputSchema.safeParse(input);
   if (!result.success) throw new ValidationError(zodErrors(result.error));
   const d = result.data;
-  const grant = await prisma.grant.findFirst({ where: { id: grantId, orgId } });
+  const grant = await db.grant.findFirst({ where: { id: grantId, orgId } });
   if (!grant) throw new ValidationError({ _: 'Grant not found' });
   const data = {
     name: d.name,
@@ -56,8 +57,9 @@ async function validate(orgId: string, grantId: string, input: GrantRuleInput) {
     active: d.active,
   };
   if (d.dimension === 'line') {
-    if (!d.grantBudgetLineId) throw new ValidationError({ grantBudgetLineId: 'Select a target line' });
-    const line = await prisma.grantBudgetLine.findFirst({
+    if (!d.grantBudgetLineId)
+      throw new ValidationError({ grantBudgetLineId: 'Select a target line' });
+    const line = await db.grantBudgetLine.findFirst({
       where: { id: d.grantBudgetLineId, orgId, grantId },
     });
     if (!line) throw new ValidationError({ grantBudgetLineId: 'Budget line not found' });
@@ -66,23 +68,27 @@ async function validate(orgId: string, grantId: string, input: GrantRuleInput) {
     data.grantBudgetLineId = line.id;
   } else if (d.dimension === 'activity') {
     if (!d.targetActivityId) throw new ValidationError({ targetActivityId: 'Select an activity' });
-    const a = await prisma.grantActivity.findFirst({
+    const a = await db.grantActivity.findFirst({
       where: { id: d.targetActivityId, orgId, grantId },
     });
     if (!a) throw new ValidationError({ targetActivityId: 'Activity not found' });
     data.targetActivityId = a.id;
   } else {
-    if (!d.targetCategoryKey)
-      throw new ValidationError({ targetCategoryKey: 'Select a category' });
+    if (!d.targetCategoryKey) throw new ValidationError({ targetCategoryKey: 'Select a category' });
     data.targetCategoryKey = d.targetCategoryKey;
   }
-  await assertMatcherRefs(prisma, orgId, d.matchers);
+  await assertMatcherRefs(db, orgId, d.matchers);
   return { ...data, matchers: d.matchers as Prisma.InputJsonValue };
 }
 
-export async function createGrantRule(orgId: string, grantId: string, input: GrantRuleInput) {
-  const data = await validate(orgId, grantId, input);
-  return prisma.$transaction(async (tx) => {
+export async function createGrantRule(
+  orgId: string,
+  grantId: string,
+  input: GrantRuleInput,
+  db: Db = prisma,
+) {
+  const data = await validate(orgId, grantId, input, db);
+  return inTransaction(db, async (tx) => {
     const after = await tx.crosswalkRule.create({ data: { orgId, grantId, ...data } });
     await recordAudit(tx, {
       orgId,
@@ -199,8 +205,7 @@ export async function previewGrantRule(
   config.rules = [...config.rules.filter((r) => r.id !== candidate.ruleId), rule];
   const drafts = assignGrantLines(lines, config).filter((d) => d.grantId === grantId);
   const won = drafts.filter(
-    (d) =>
-      d.ruleId === GRANT_RULE_PREVIEW_ID || d.categoryRuleId === GRANT_RULE_PREVIEW_ID,
+    (d) => d.ruleId === GRANT_RULE_PREVIEW_ID || d.categoryRuleId === GRANT_RULE_PREVIEW_ID,
   );
   // Count raw matches among the grant's members to report what earlier rules/decisions absorb.
   const wonIds = new Set(won.map((d) => d.transactionLineId));

@@ -90,7 +90,7 @@ test('AC1: the Culinary figures are identical on the grants list, the overview, 
   );
 
   // / — restricted balances total = Culinary + Youth Meals
-  await page.goto(`/?asOf=${AS_OF}`);
+  await page.goto(`/reports/overview?asOf=${AS_OF}`);
   await cents(page.getByTestId('restricted-total'), g.balance + GOLD.youth.balance);
 });
 
@@ -166,7 +166,7 @@ test('AC5: the review queue of a crosswalk grant explains itself instead of sayi
   await page.goto(`/grants/${ids.culinary}/review`);
   const notice = page.getByTestId('crosswalk-notice');
   await expect(notice).toContainText(
-    'This grant is tracked by crosswalk rules, so it has no QuickBooks member lines.',
+    'This grant is tracked by crosswalk rules, so it has no QuickBooks transactions of its own.',
   );
   await expect(notice.getByRole('link', { name: 'Edit grant' })).toHaveAttribute(
     'href',

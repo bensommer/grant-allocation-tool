@@ -1,3 +1,4 @@
+import { TERMS } from '@/copy/terms';
 import { CheckboxList, Field, FormBanner } from '@/components/form';
 import { Button, Card, DataTable, DateText, Money, NumTd, Th } from '@/components/ui';
 import { toISODate } from '@/domain/dates';
@@ -224,7 +225,7 @@ export async function RuleForm({
               options.locations.map((l) => ({ value: l.id, label: l.name })),
             )}
             <fieldset>
-              <legend className="mb-0.5 text-xs font-semibold text-ink-soft">Parties</legend>
+              <legend className="mb-0.5 text-xs font-semibold text-ink-soft">{TERMS.namesShort}</legend>
               {partyGroups.map((group) => (
                 <details key={group.label} className="party-group" open={group.selected > 0}>
                   <summary>

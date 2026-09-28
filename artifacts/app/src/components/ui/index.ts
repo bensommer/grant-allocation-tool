@@ -18,3 +18,5 @@ export { Card, KeyFigure, PageHeader, EmptyState, Banner, DangerZone } from './l
 export { DataTable, Th, Td, NumTd, TotalRow, LinkCell } from './table';
 export { ConfirmPage } from './confirm-action';
 export { MiniBarChart } from './mini-bar-chart';
+export { Breadcrumbs } from './breadcrumbs';
+export { PeriodSubtitle } from './period-subtitle';

@@ -18,3 +18,8 @@ decisions, locks and drafts from an aborted run persist into the next one and sh
   throwaway profile (the AC4 test does this) — otherwise a "formulas" check proves nothing.
 **Why:** the first parity pass read cached zeros for blank-cache formula cells and the recalc test
 passed vacuously until the profile flag was set.
+
+## The pilot export has no class column
+"Trauma Grants" is never a real class in the pilot books; anything that needs it as the grant's
+class has to record it as a free-text name, not a class id. The pilot seed matches grants by name
+and budget line codes, so a grant created another way must use the fixture's codes exactly.

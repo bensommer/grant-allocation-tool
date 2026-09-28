@@ -11,13 +11,16 @@ import {
   NumTd,
   PageHeader,
   Period,
+  PeriodSubtitle,
   Td,
   Th,
   Toolbar,
+  TotalRow,
 } from '@/components/ui';
 import { GrantPaceStatus } from '@/components/grant-pace-status';
 import { getOrgId } from '@/lib/org';
-import { bvaData, defaultReportDate } from '@/services/bva';
+import { currentPeriod } from '@/lib/period';
+import { bvaData } from '@/services/bva';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,9 +31,18 @@ export default async function RestrictedPage({
 }) {
   const query = await searchParams;
   const orgId = await getOrgId();
-  const { date, label } = await defaultReportDate(orgId, query.asOf);
+  const period = await currentPeriod(orgId, query);
+  const { date, label } = period;
   const { run, grants } = await bvaData(orgId, date);
   const rows = grants.filter((g) => g.restrictionType !== 'unrestricted');
+  const sum = (pick: (g: (typeof rows)[number]) => number) => rows.reduce((n, g) => n + pick(g), 0);
+  const totals = {
+    award: sum((g) => g.awardAmountCents),
+    received: sum((g) => g.received),
+    spent: sum((g) => g.actual),
+    balance: sum((g) => g.balance),
+    remaining: sum((g) => g.figures.remainingAwardCents),
+  };
   const sort = [
     'name',
     'award',
@@ -90,8 +102,8 @@ export default async function RestrictedPage({
         title="Restricted funds"
         subtitle={
           <>
-            As of <DateText date={date} /> · Current run:{' '}
-            {run ? <DateText date={run.finishedAt ?? run.startedAt} time /> : 'none'}
+            <PeriodSubtitle from={period.range.from} to={date} booksThrough={period.booksThrough} />{' '}
+            · Current run: {run ? <DateText date={run.finishedAt ?? run.startedAt} time /> : 'none'}
           </>
         }
         secondaryActions={
@@ -103,7 +115,8 @@ export default async function RestrictedPage({
       <StaleRunBanner run={run} />
       {!run && (
         <Banner tone="warn">
-          No current run — recompute on <Link href="/runs">Compute runs</Link>.
+          No calculation yet — import QuickBooks data or open the{' '}
+          <Link href="/activity">activity log</Link>.
         </Banner>
       )}
       <FilterBar>
@@ -171,9 +184,22 @@ export default async function RestrictedPage({
             </tr>
           ))}
         </tbody>
+        <tfoot>
+          <TotalRow data-testid="restricted-total-row">
+            <Th scope="row">Total</Th>
+            <NumTd cents={totals.award} dollar data-testid="restricted-total-award" />
+            <NumTd cents={totals.received} dollar data-testid="restricted-total-received" />
+            <NumTd cents={totals.spent} dollar data-testid="restricted-total-spent" />
+            <NumTd cents={totals.balance} dollar data-testid="restricted-total-balance" />
+            <NumTd cents={totals.remaining} dollar data-testid="restricted-total-remaining" />
+            <Td />
+            <Td />
+            <Td />
+          </TotalRow>
+        </tfoot>
       </DataTable>
       <p className="muted mt-4 text-sm">
-        Received: matched income source lines in the grant period through as-of. Spent: current-run
+        Received: matched income transactions in the grant period through as-of. Spent: current-run
         expense allocations to budget lines. Restricted balance = received − spent; remaining award
         = award − spent. Pacing compares spend to straight-line expected award through as-of
         (inclusive days).

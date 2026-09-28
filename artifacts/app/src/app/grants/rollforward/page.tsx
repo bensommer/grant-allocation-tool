@@ -12,6 +12,7 @@ import {
   Money,
   NumTd,
   PageHeader,
+  PeriodSubtitle,
   Th,
   TotalRow,
 } from '@/components/ui';
@@ -44,7 +45,7 @@ export default async function RollforwardPage({
 }) {
   const sp = await searchParams;
   const orgId = await getOrgId();
-  const { from, to, preset, error, fallback, booksThrough } = await resolveRange(orgId, sp);
+  const { from, to, preset, error, fallback, booksThrough, period } = await resolveRange(orgId, sp);
   const rf = error ? null : await rollforward(orgId, from, to);
   const notes = rf
     ? await Promise.all(
@@ -65,7 +66,12 @@ export default async function RollforwardPage({
     <>
       <PageHeader
         title="Restricted grants rollforward"
-        subtitle="Beginning balance, received, released by class, ending — per fund, with a check row."
+        subtitle={
+          <>
+            <PeriodSubtitle from={from} to={to} booksThrough={period.booksThrough} /> · Beginning
+            balance, received, released by class, ending — per fund, with a check row.
+          </>
+        }
         secondaryActions={
           rf && (
             <>

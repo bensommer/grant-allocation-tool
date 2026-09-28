@@ -55,7 +55,7 @@ export default async function ChangesPage({ params }: { params: Promise<{ batchI
           ))}
         </div>
       )}
-      <div className="card">
+      <div className="card max-w-full overflow-x-auto">
         {!versions.length && <p className="muted">No changed or deleted transactions.</p>}
         {versions.map((version) => {
           const current = byId.get(version.externalId);

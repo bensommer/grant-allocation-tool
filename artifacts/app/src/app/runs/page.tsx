@@ -1,8 +1,8 @@
+import { TERMS } from '@/copy/terms';
 import Link from 'next/link';
-import { Button, DataTable, DateText, PageHeader, StatusPill, Th } from '@/components/ui';
+import { ButtonLink, DataTable, DateText, PageHeader, StatusPill, Th } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
-import { recomputeAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,28 +35,28 @@ export default async function RunsPage({
   return (
     <>
       <PageHeader
-        title="Compute runs"
-        subtitle="Every recompute is a new run; reports always read from the current successful run."
-        primaryAction={
-          <form action={recomputeAction}>
-            <Button>Recompute now</Button>
-          </form>
+        title={TERMS.calculations}
+        subtitle="Every change starts a new calculation; reports always read from the current successful one."
+        secondaryActions={
+          <ButtonLink href="/activity" variant="secondary">
+            {TERMS.activityLog}
+          </ButtonLink>
         }
       />
       {done ? (
         <div className="banner banner-ok">
-          Recompute succeeded. Run {done.slice(-8)} is now current.
+          {TERMS.calculation} {done.slice(-8)} finished and is now current.
         </div>
       ) : null}
       {failedRun ? (
         <div className="banner banner-bad">
-          Recompute failed and was not promoted; the previous run stays current.{' '}
+          The calculation failed and was not promoted; the previous one stays current.{' '}
           {failedCheck ? String(failedCheck.detail) : null}
         </div>
       ) : null}
             {!current ? (
         <div className="banner banner-warn">
-          No successful run yet. Import data, then recompute.
+          No successful calculation yet. Import data to start one.
         </div>
       ) : null}
 
@@ -70,8 +70,8 @@ export default async function RunsPage({
                 <th>Started</th>
                 <th>Status</th>
                 <th className="num">Duration</th>
-                <th>Config hash</th>
-                <th className="num">Lines → pieces</th>
+                <th>{TERMS.technicalDetails}</th>
+                <th className="num">Transactions → allocated amounts</th>
                 <th className="num">Warnings</th>
                 <th className="num">Conflicts</th>
                 <th>Compare</th>
@@ -91,7 +91,7 @@ export default async function RunsPage({
                     <td className="whitespace-nowrap">
                       <DateText date={r.startedAt} time />
                       {r.isCurrent ? <StatusPill tone="ok">current</StatusPill> : null}
-                      {r.stale && r.isCurrent ? <StatusPill tone="warn">stale</StatusPill> : null}
+                      {r.stale && r.isCurrent ? <StatusPill tone="warn">{TERMS.needsUpdateLower}</StatusPill> : null}
                     </td>
                     <td>
                       <StatusPill
@@ -112,7 +112,10 @@ export default async function RunsPage({
                       {r.finishedAt ? `${r.finishedAt.getTime() - r.startedAt.getTime()} ms` : '–'}
                     </td>
                     <td>
-                      <span className="break-all">{r.configHash}</span>
+                      <details>
+                        <summary className="muted text-xs">{TERMS.technicalDetails}</summary>
+                        <span className="break-all text-xs">{r.configHash}</span>
+                      </details>
                     </td>
                     <td className="num">{stats ? `${stats.lines} → ${stats.pieces}` : '–'}</td>
                     <td className="num">{warnings}</td>

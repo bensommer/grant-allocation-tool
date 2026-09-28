@@ -14,7 +14,7 @@ export const crosswalkInputSchema = z.object({
   priority: z.number().int('Priority must be an integer').min(0, 'Priority cannot be negative'),
   active: z.boolean(),
   matchers: matchersSchema
-    .refine((m) => !isEmptyMatchers(m), 'Add at least one matcher condition')
+    .refine((m) => !isEmptyMatchers(m), 'Add at least one condition')
     .refine(
       (m) => !m.accountRange || (!!m.accountRange.from && !!m.accountRange.to),
       'Enter both account range endpoints',

@@ -24,6 +24,22 @@ export interface ReviewLine {
   decisionId: string | null;
   reason: string | null;
   atRisk: boolean;
+  /** A decision recorded after the current run settled this line; recompute makes it official. */
+  pending: boolean;
+  // What the suggestion engine and the "Always do this" link need (JPH-27).
+  accountId: string;
+  accountName: string;
+  accountNumber: string | null;
+  classId: string | null;
+  locationId: string | null;
+  partyId: string | null;
+  partyName: string | null;
+  txnPartyId: string | null;
+  txnPartyName: string | null;
+  memo: string | null;
+  activityId: string | null;
+  ruleId: string | null;
+  categoryRuleId: string | null;
 }
 
 export interface ReviewGroup {
@@ -71,7 +87,7 @@ export async function reviewQueue(orgId: string, grantId: string): Promise<Revie
               include: {
                 account: { select: { name: true, number: true } },
                 class: { select: { name: true } },
-                party: { select: { displayName: true } },
+                party: { select: { id: true, displayName: true } },
                 transaction: {
                   select: {
                     txnDate: true,
@@ -79,7 +95,7 @@ export async function reviewQueue(orgId: string, grantId: string): Promise<Revie
                     docNumber: true,
                     partyId: true,
                     memo: true,
-                    party: { select: { displayName: true } },
+                    party: { select: { id: true, displayName: true } },
                   },
                 },
               },
@@ -106,12 +122,45 @@ export async function reviewQueue(orgId: string, grantId: string): Promise<Revie
     : [];
   const ruleName = new Map(rules.map((r) => [r.id, r.name ?? r.id]));
 
-  // The `source: transaction` filter above guarantees a line; narrow the type once.
-  const rows = results.flatMap((r) =>
-    r.line && r.transactionLineId
-      ? [{ ...r, line: r.line, transactionLineId: r.transactionLineId }]
-      : [],
+  // Decisions recorded since the current run: the queue shows them settled straight away
+  // (the row disappears on the round trip); the run itself catches up on recompute.
+  const active = decisions.filter((d) => d.supersededAt === null && d.transactionLineId);
+  const stateDecision = new Map(
+    active.filter((d) => d.kind !== 'at_risk').map((d) => [d.transactionLineId!, d]),
   );
+  const atRiskDecision = new Set(
+    active.filter((d) => d.kind === 'at_risk').map((d) => d.transactionLineId!),
+  );
+  const targetCode = new Map(
+    decisions.flatMap((d) =>
+      d.targetBudgetLineId ? [[d.targetBudgetLineId, d.targetBudgetLine?.code ?? null]] : [],
+    ),
+  );
+
+  // The `source: transaction` filter above guarantees a line; narrow the type once.
+  const rows = results.flatMap((r) => {
+    if (!r.line || !r.transactionLineId) return [];
+    const d = stateDecision.get(r.transactionLineId);
+    // Already in the run (same decision) or nothing newer: the run is the truth.
+    if (!d || r.decisionId === d.id) return [{ ...r, line: r.line, transactionLineId: r.transactionLineId, pending: false }];
+    return [
+      {
+        ...r,
+        line: r.line,
+        transactionLineId: r.transactionLineId,
+        pending: true,
+        state: d.kind === 'assign' ? ('assigned' as const) : ('excluded' as const),
+        budgetLineId: d.kind === 'assign' ? d.targetBudgetLineId : null,
+        budgetLine: d.kind === 'assign' && d.targetBudgetLineId ? { code: targetCode.get(d.targetBudgetLineId) ?? '' } : null,
+        activityId: null,
+        activity: null,
+        ruleId: null,
+        categoryRuleId: null,
+        decisionId: d.id,
+        reason: d.kind === 'assign' ? null : d.reason,
+      },
+    ];
+  });
   const lines: ReviewLine[] = rows
     .map((r) => ({
       id: r.transactionLineId,
@@ -136,7 +185,21 @@ export async function reviewQueue(orgId: string, grantId: string): Promise<Revie
           .join(' + ') || null,
       decisionId: r.decisionId,
       reason: r.reason,
-      atRisk: r.atRisk,
+      atRisk: r.atRisk || atRiskDecision.has(r.transactionLineId),
+      pending: r.pending,
+      accountId: r.line.accountId,
+      accountName: r.line.account.name,
+      accountNumber: r.line.account.number,
+      classId: r.line.classId,
+      locationId: r.line.locationId,
+      partyId: r.line.party?.id ?? null,
+      partyName: r.line.party?.displayName ?? null,
+      txnPartyId: r.line.transaction.partyId,
+      txnPartyName: r.line.transaction.party?.displayName ?? null,
+      memo: r.line.transaction.memo,
+      activityId: r.activityId,
+      ruleId: r.ruleId,
+      categoryRuleId: r.categoryRuleId,
     }))
     .sort(
       (a, b) =>

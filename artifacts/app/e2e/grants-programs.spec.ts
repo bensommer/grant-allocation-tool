@@ -29,7 +29,7 @@ test('create grant → add budget line → edit award → history shows before/a
   page,
 }) => {
   const name = `E2E Grant ${stamp()}`;
-  await page.goto('/grants/new');
+  await page.goto('/grants/new?mode=form');
   await page.fill('input[name="name"]', name);
   await page.fill('input[name="funderText"]', 'Test Funder');
   await page.fill('input[name="awardAmount"]', '10,000.00');
@@ -65,9 +65,10 @@ test('create grant → add budget line → edit award → history shows before/a
   await page.waitForURL(/\?saved=1/);
   await page.goto(`${url}/history`);
   const row = page.locator('tbody tr').first();
-  await expect(row).toContainText('awardAmountCents');
-  await expect(row.locator('.line-through')).toHaveText('1000000');
-  await expect(row.locator('.text-green-800')).toHaveText('1200000');
+  const change = row.locator('[data-testid="history-changes"] li[data-field="awardAmountCents"]');
+  await expect(change).toContainText('Award amount:');
+  await expect(change.getByTestId('history-old')).toHaveText('$10,000.00');
+  await expect(change.getByTestId('history-new')).toHaveText('$12,000.00');
 
   // delete (no compute run references it) → back to list
   await page.goto(`${url}/edit`);

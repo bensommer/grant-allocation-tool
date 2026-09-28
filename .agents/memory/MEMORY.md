@@ -6,3 +6,4 @@
 - [Privacy denylist guard](privacy-denylist.md) — scans tests/comments/docs too; invented names only; skips silently without the private fixtures.
 - [sr-only in scrolling tables](mobile-overflow-sr-only.md) — absolute sr-only spans escape overflow-x-auto cards and widen the page; give the th `relative`.
 - [Pilot e2e state + parity report](pilot-parity.md) — seed:pilot reuses grants by name (leftovers persist); parity map/report private-only; LibreOffice needs OOXMLRecalcMode=0.
+- [Full e2e needs a quiet workspace](e2e-isolation.md) — no edits/DB tests mid-run; `--workers=1` (2 workers OOM the dev server); anchor project testMatch regexes (substring matches).

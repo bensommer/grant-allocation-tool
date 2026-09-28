@@ -1,16 +1,12 @@
 import { prisma } from '@/lib/db';
+import { trackingOptions } from '@/services/tracking-options';
 
 export async function grantFormOptions(orgId: string) {
-  const [customers, memberParties, classes, programs] = await Promise.all([
+  const [customers, classes, programs, tracking] = await Promise.all([
     prisma.party.findMany({
       where: { orgId, kind: 'customer', deletedAt: null },
       orderBy: { displayName: 'asc' },
       select: { id: true, displayName: true },
-    }),
-    prisma.party.findMany({
-      where: { orgId, kind: { in: ['customer', 'project'] }, deletedAt: null },
-      orderBy: { displayName: 'asc' },
-      select: { id: true, displayName: true, kind: true },
     }),
     prisma.trackingClass.findMany({
       where: { orgId, deletedAt: null },
@@ -22,6 +18,7 @@ export async function grantFormOptions(orgId: string) {
       orderBy: { code: 'asc' },
       select: { id: true, code: true, name: true },
     }),
+    trackingOptions(orgId),
   ]);
-  return { customers, memberParties, classes, programs };
+  return { customers, classes, programs, tracking };
 }

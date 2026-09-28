@@ -43,7 +43,7 @@ export default async function PeriodSettings({
             Note
             <input name="note" defaultValue={pick(state, 'note', '')} />
           </label>
-          <button className="btn">Lock current run</button>
+          <button className="btn">Lock period</button>
         </form>
       </Card>
       <Card title="Locked periods">

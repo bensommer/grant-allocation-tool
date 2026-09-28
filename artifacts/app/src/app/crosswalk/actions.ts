@@ -1,75 +1,39 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { parseDateInput } from '@/domain/dates';
+import { crosswalkBuilderOptions } from '@/components/rule-builder/options';
+import { describeValues } from '@/components/rule-builder/describe';
+import { recalculateAfter } from '@/lib/after-mutation';
 import { getOrgId } from '@/lib/org';
-import { bool, list, redirectWithErrors, str, zodErrors } from '@/lib/forms';
+import { redirectWithErrors, str } from '@/lib/forms';
+import { formDataReader, readRuleValues } from '@/lib/rule-form';
+import { parseRuleForm } from '@/lib/rule-form-parse';
 import {
   createCrosswalkRule,
-  crosswalkInputSchema,
   deleteCrosswalkRule,
   updateCrosswalkRule,
 } from '@/services/crosswalk';
 import { ValidationError } from '@/services/programs';
 
-function parse(formData: FormData) {
-  const from = str(formData, 'accountFrom');
-  const to = str(formData, 'accountTo');
-  const matchers = {
-    programIds: list(formData, 'programIds'),
-    accountIds: list(formData, 'accountIds'),
-    ...(from || to ? { accountRange: { from, to } } : {}),
-    classIds: list(formData, 'classIds'),
-    locationIds: list(formData, 'locationIds'),
-    partyIds: list(formData, 'partyIds'),
-    descriptionContains: str(formData, 'descriptionContains'),
-    ...(str(formData, 'dateFrom') ? { dateFrom: str(formData, 'dateFrom') } : {}),
-    ...(str(formData, 'dateTo') ? { dateTo: str(formData, 'dateTo') } : {}),
-  };
-  const result = crosswalkInputSchema.safeParse({
-    name: str(formData, 'name'),
-    grantBudgetLineId: str(formData, 'grantBudgetLineId'),
-    priority: Number(str(formData, 'priority')),
-    active: bool(formData, 'active'),
-    matchers,
-  });
-  const errors = result.success ? {} : zodErrors(result.error);
-  if ((from && !to) || (!from && to)) errors['accountRange'] = 'Enter both range endpoints';
-  if (
-    from &&
-    to &&
-    from > to &&
-    !(Number.isFinite(Number(from)) && Number.isFinite(Number(to)) && Number(from) <= Number(to))
-  )
-    errors['accountRange'] = 'Range start must be before end';
-  if (matchers.dateFrom && matchers.dateTo && matchers.dateFrom > matchers.dateTo)
-    errors['matchers.dateTo'] = 'End date must be on or after start';
-  return { data: result.success ? result.data : null, errors };
-}
-
 async function save(back: string, id: string | null, formData: FormData): Promise<void> {
-  if (str(formData, 'intent') === 'preview') {
-    const errors: Record<string, string> = {};
-    try {
-      if (parseDateInput(str(formData, 'previewFrom')) > parseDateInput(str(formData, 'previewTo')))
-        errors['previewTo'] = 'End date must be on or after start';
-    } catch {
-      errors['previewFrom'] = 'Enter valid preview dates';
-    }
-    redirectWithErrors(
-      errors['previewFrom'] || errors['previewTo'] ? back : `${back}?preview=1`,
-      errors,
-      formData,
-    );
-  }
-  const parsed = parse(formData);
-  if (!parsed.data || Object.keys(parsed.errors).length)
-    redirectWithErrors(back, parsed.errors, formData);
+  // The no-JS Preview button bounces the form back and the page server-renders the preview.
+  if (str(formData, 'intent') === 'preview') redirectWithErrors(`${back}?preview=1`, {}, formData);
   const orgId = await getOrgId();
+  const options = await crosswalkBuilderOptions(orgId);
+  const reader = formDataReader(formData);
+  const suggested = describeValues(
+    readRuleValues(reader, 'crosswalk'),
+    'crosswalk',
+    options,
+  ).suggestedName;
+  const parsed = parseRuleForm(reader, 'crosswalk', suggested);
+  if (parsed.kind !== 'crosswalk' || !parsed.data || Object.keys(parsed.errors).length)
+    redirectWithErrors(back, parsed.errors, formData);
   try {
     const rule = id
       ? await updateCrosswalkRule(orgId, id, parsed.data)
       : await createCrosswalkRule(orgId, parsed.data);
+    await recalculateAfter(orgId, `crosswalk rule ${id ? 'updated' : 'created'}`);
     redirect(`/crosswalk/${rule.id}?saved=1`);
   } catch (e) {
     if (e instanceof ValidationError) redirectWithErrors(back, e.fieldErrors, formData);
@@ -84,6 +48,11 @@ export async function updateCrosswalkAction(id: string, formData: FormData): Pro
   await save(`/crosswalk/${id}`, id, formData);
 }
 export async function deleteCrosswalkAction(id: string): Promise<void> {
-  const r = await deleteCrosswalkRule(await getOrgId(), id);
+  const orgId = await getOrgId();
+  const r = await deleteCrosswalkRule(orgId, id);
+  await recalculateAfter(
+    orgId,
+    r.deactivated ? 'crosswalk rule deactivated' : 'crosswalk rule deleted',
+  );
   redirect(r.deactivated ? `/crosswalk/${id}?deactivated=1` : '/crosswalk?deleted=1');
 }

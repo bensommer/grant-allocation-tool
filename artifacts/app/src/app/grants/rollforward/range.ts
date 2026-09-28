@@ -1,7 +1,6 @@
 import { parseDateInput } from '@/domain/dates';
 import { prisma } from '@/lib/db';
-import { booksThrough } from '@/services/grant-figures';
-import { defaultRollforwardRange } from '@/services/grant-periods';
+import { currentPeriod, type CurrentPeriod } from '@/lib/period';
 
 export const RANGE_PRESETS = ['fy', 'last-closed', 'grant-to-date', 'custom'] as const;
 export type RangePreset = (typeof RANGE_PRESETS)[number];
@@ -22,27 +21,22 @@ export interface ResolvedRange {
   fallback: string | null;
   /** `to` is the books-through date (the last imported transaction), not a date the user chose. */
   booksThrough: boolean;
+  period: CurrentPeriod;
 }
 
 /**
- * Resolve ?range (preset) or ?from&to (custom). Presets: the org's fiscal year to
- * books-through (default), the most recently locked period, or the earliest active
- * grant's start through books-through. "Books through" is the last imported
- * transaction date — the same as-of the other pages default to (JPH-30) — falling
- * back to today when nothing has been imported. All GET, so the URL is the report.
+ * Resolve ?range (preset) or ?from&to (custom). Presets: the app default range
+ * (fiscal year start through as-of — JPH-25 A1, `?asOf=` → cookie → books-through),
+ * the most recently locked period, or the earliest active grant's start through as-of.
+ * All GET, so the URL is the report.
  */
 export async function resolveRange(
   orgId: string,
-  q: { range?: string; from?: string; to?: string },
+  q: { range?: string; from?: string; to?: string; asOf?: string },
 ): Promise<ResolvedRange> {
-  const [org, books] = await Promise.all([
-    prisma.org.findFirstOrThrow({
-      where: { id: orgId },
-      select: { fiscalYearStartMonth: true },
-    }),
-    booksThrough(orgId),
-  ]);
-  const fy = defaultRollforwardRange(org.fiscalYearStartMonth, books);
+  const period = await currentPeriod(orgId, q);
+  const books = period.date;
+  const fy = period.range;
   const preset: RangePreset = (RANGE_PRESETS as readonly string[]).includes(q.range ?? '')
     ? (q.range as RangePreset)
     : q.from || q.to
@@ -79,5 +73,13 @@ export async function resolveRange(
     else fallback = 'No active grants; showing the fiscal year to date.';
   }
   if (from > to) error = 'From must not be after To.';
-  return { from, to, preset, error, fallback, booksThrough: to.getTime() === books.getTime() };
+  return {
+    from,
+    to,
+    preset,
+    error,
+    fallback,
+    booksThrough: to.getTime() === books.getTime(),
+    period,
+  };
 }

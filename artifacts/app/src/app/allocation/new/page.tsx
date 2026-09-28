@@ -14,7 +14,7 @@ export default async function NewAllocationPage({
   return (
     <>
       <PageHeader
-        title="New allocation rule"
+        title="New shared cost split"
         secondaryActions={
           <ButtonLink href="/allocation" variant="secondary">
             All rules

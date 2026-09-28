@@ -2,8 +2,14 @@ import { Button, ButtonLink, Card, PageHeader } from '@/components/ui';
 import { decodeFormState, pick } from '@/lib/forms';
 import { getOrgId } from '@/lib/org';
 import { prisma } from '@/lib/db';
-import { getDefaultDestination, getPacingSettings, isDestinationSet } from '@/services/settings';
-import { saveDestinationAction, saveSettingsAction } from './actions';
+import { MONTH_NAMES } from '@/domain/period';
+import {
+  getDefaultDestination,
+  getFiscalYearStartMonth,
+  getPacingSettings,
+  isDestinationSet,
+} from '@/services/settings';
+import { saveDestinationAction, saveFiscalYearAction, saveSettingsAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,9 +20,10 @@ export default async function SettingsPage({
 }) {
   const { f, saved } = await searchParams;
   const orgId = await getOrgId();
-  const [settings, destination, classes, parties] = await Promise.all([
+  const [settings, destination, fiscalYearStartMonth, classes, parties] = await Promise.all([
     getPacingSettings(orgId),
     getDefaultDestination(orgId),
+    getFiscalYearStartMonth(orgId),
     prisma.trackingClass.findMany({ where: { orgId, active: true }, orderBy: { name: 'asc' } }),
     prisma.party.findMany({
       where: { orgId, kind: { in: ['customer', 'project'] } },
@@ -28,9 +35,36 @@ export default async function SettingsPage({
     <>
       <PageHeader
         title="Settings"
-        subtitle="Configure grant pacing thresholds and the default destination for correcting entries."
+        subtitle="Fiscal year, grant pacing thresholds and the default destination for correcting entries."
       />
       {saved && <div className="banner banner-ok">Settings saved.</div>}
+      <div id="fiscal-year">
+        <Card title="Fiscal year">
+          <form action={saveFiscalYearAction} className="flex flex-wrap items-end gap-4">
+            <label>
+              Fiscal year starts in
+              <select
+                name="fiscalYearStartMonth"
+                defaultValue={pick(state, 'fiscalYearStartMonth', String(fiscalYearStartMonth))}
+              >
+                {MONTH_NAMES.map((name, i) => (
+                  <option key={name} value={i + 1}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              {state?.errors.fiscalYearStartMonth && (
+                <span className="text-red-700">{state.errors.fiscalYearStartMonth}</span>
+              )}
+            </label>
+            <Button>Save fiscal year</Button>
+          </form>
+          <p className="muted mt-2 text-sm">
+            Date ranges default to the fiscal year start through the as-of date.
+          </p>
+        </Card>
+      </div>
+      <div className="mt-4">
       <Card title="Pacing thresholds">
         <form action={saveSettingsAction} className="flex flex-wrap items-end gap-4">
           <label>
@@ -66,6 +100,7 @@ export default async function SettingsPage({
           <Button>Save thresholds</Button>
         </form>
       </Card>
+      </div>
       <div className="mt-4" id="destination">
         <Card title="Default destination for correcting entries">
           <p className="muted mb-3 text-sm">

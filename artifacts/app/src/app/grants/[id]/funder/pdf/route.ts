@@ -1,5 +1,5 @@
 import { getOrgId } from '@/lib/org';
-import { funderViewTable } from '@/reports/funder-view';
+import { funderCategoriesTable } from '@/reports/funder-view';
 import { pdfDocument, pdfErrorResponse, pdfResponse } from '@/reports/pdf';
 import { defaultReportDate } from '@/services/bva';
 import { budgetTree } from '@/services/grant-budget';
@@ -14,7 +14,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     orgId,
     new URL(req.url).searchParams.get('asOf') ?? undefined,
   );
-  const table = funderViewTable(grant, await budgetTree(orgId, id, date), date);
+  const table = funderCategoriesTable(grant, await budgetTree(orgId, id, date), date);
   try {
     const buf = await pdfDocument({
       title: table.title,

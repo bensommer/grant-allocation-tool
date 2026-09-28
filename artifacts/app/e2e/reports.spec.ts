@@ -2,10 +2,13 @@ import { test, expect } from '@playwright/test';
 import ExcelJS from 'exceljs';
 test('GET builder, XLSX formulas and cached totals match the page', async ({ page, request }) => {
   await page.goto('/reports/custom');
-  await page.locator('select[name="rows"]').selectOption('program');
-  await page.locator('select[name="cols"]').selectOption('glAccount');
-  await page.locator('input[name="from"]').fill('2026-01-01');
-  await page.locator('input[name="to"]').fill('2026-03-31');
+  // The PDF export form carries the current parameters as hidden inputs (JPH-25 A10), so
+  // drive the visible filter bar explicitly.
+  const filters = page.locator('form.filter-bar');
+  await filters.locator('select[name="rows"]').selectOption('program');
+  await filters.locator('select[name="cols"]').selectOption('glAccount');
+  await filters.locator('input[name="from"]').fill('2026-01-01');
+  await filters.locator('input[name="to"]').fill('2026-03-31');
   await page.getByRole('button', { name: 'Apply' }).click();
   // Program × GL is one table: every program row in it, one grand total, no per-status tables.
   await expect(page.locator('table')).toHaveCount(1);

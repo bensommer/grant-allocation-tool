@@ -1,13 +1,26 @@
-import { Button } from '@/components/ui';
-import { formatDate, formatDateTime } from '@/domain/format';
-import { recomputeAndReturnAction } from '@/app/runs/actions';
+import Link from 'next/link';
+import { TERMS } from '@/copy/terms';
+import { formatDate } from '@/domain/format';
+import { freshnessLabel } from '@/domain/freshness';
 import type { getGlobalStatus } from '@/lib/status';
 
 type GlobalStatus = Awaited<ReturnType<typeof getGlobalStatus>>;
 
-/** The one place the app reports data freshness: books, current run, and whether to recompute. */
-export function StatusIndicator({ status, returnTo }: { status: GlobalStatus; returnTo: string }) {
-  const run = status.currentRun;
+const TONE: Record<GlobalStatus['state'], string> = {
+  fresh: 'pill pill-ok',
+  updating: 'pill pill-info',
+  failed: 'pill pill-bad',
+  needs_update: 'pill pill-warn',
+  none: 'pill pill-muted',
+};
+
+/**
+ * The one place the app reports data freshness (JPH-28 D3): books through, and a chip that says
+ * when the numbers were last updated. The chip links to the activity log; there is no button —
+ * calculations run by themselves after every change.
+ */
+export function StatusIndicator({ status }: { status: GlobalStatus }) {
+  const label = freshnessLabel(status.state, status.updatedAt, status.ageMs);
   return (
     <div
       className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-soft"
@@ -18,21 +31,17 @@ export function StatusIndicator({ status, returnTo }: { status: GlobalStatus; re
         {status.booksThrough ? formatDate(status.booksThrough) : 'no imported transactions'}
       </span>
       <span aria-hidden="true">·</span>
-      <span data-volatile>
-        Run {run ? formatDateTime(run.finishedAt ?? run.startedAt) : 'none'}
-      </span>
-      {run?.stale ? (
-        <>
-          <span aria-hidden="true">·</span>
-          <span className="pill pill-warn" data-stale>
-            Recompute needed
-          </span>
-          <form action={recomputeAndReturnAction} className="inline">
-            <input type="hidden" name="returnTo" value={returnTo} />
-            <Button size="sm">Recompute</Button>
-          </form>
-        </>
-      ) : null}
+      <Link
+        href="/activity"
+        className={`${TONE[status.state]} no-underline`}
+        data-volatile
+        data-testid="freshness-chip"
+        data-state={status.state}
+        data-stale={status.state === 'needs_update' ? '' : undefined}
+        title={`Open the ${TERMS.activityLog.toLowerCase()}`}
+      >
+        {label}
+      </Link>
     </div>
   );
 }

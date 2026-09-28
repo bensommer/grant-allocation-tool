@@ -1,6 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { recalculateAfter } from '@/lib/after-mutation';
 import { getOrgId } from '@/lib/org';
 import { bool, list, redirectWithErrors, str, strOrNull, zodErrors } from '@/lib/forms';
 import {
@@ -33,6 +34,7 @@ export async function createProgramAction(formData: FormData): Promise<void> {
     if (e instanceof ValidationError) redirectWithErrors('/programs/new', e.fieldErrors, formData);
     throw e;
   }
+  await recalculateAfter(orgId, 'program created');
   redirect(`/programs/${id}?saved=1`);
 }
 
@@ -47,11 +49,13 @@ export async function updateProgramAction(id: string, formData: FormData): Promi
       redirectWithErrors(`/programs/${id}`, e.fieldErrors, formData);
     throw e;
   }
+  await recalculateAfter(orgId, 'program updated');
   redirect(`/programs/${id}?saved=1`);
 }
 
 export async function deleteProgramAction(id: string): Promise<void> {
   const orgId = await getOrgId();
   const r = await deleteProgram(orgId, id);
+  await recalculateAfter(orgId, r.deleted ? 'program deleted' : 'program deactivated');
   redirect(r.deleted ? '/programs?deleted=1' : `/programs/${id}?deactivated=1`);
 }

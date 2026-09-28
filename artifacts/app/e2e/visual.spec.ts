@@ -43,7 +43,7 @@ test('twelve key pages at desktop and mobile', async ({ page }) => {
   ] as const)
     execFileSync(command, args, { stdio: 'pipe' });
   const all = await routes();
-  const grant = all.find((p) => /^\/grants\/[^/]+$/.test(p) && p !== '/grants/new')!;
+  const grant = all.find((p) => /^\/grants\/[^/]+$/.test(p) && !p.startsWith('/grants/new'))!;
   const allocation = all.find((p) => /^\/allocation\/[^/]+$/.test(p) && p !== '/allocation/new')!;
   const paths = [
     '/',

@@ -1,12 +1,18 @@
 import Link from 'next/link';
 import { Banner, StatusPill } from '@/components/ui';
-import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
-import { grantTracking } from '@/services/grant-figures';
-import { needsReviewCount } from '@/services/grant-workspace';
+import { currentPeriod } from '@/lib/period';
+import { grantTracking, loadGrant } from '@/services/grant-figures';
+import { toReviewCount } from '@/domain/grant-figures';
+import { grantTodo, setupNeedsAttention } from '@/services/grant-todo';
 
+/**
+ * Page keys the workspace pages pass. Each maps onto one of the three tabs (JPH-29 E1):
+ * Status, To do, Setup. The old keys stay so every existing page keeps its one-line call.
+ */
 export type GrantTab =
   | 'detail'
+  | 'todo'
   | 'funder'
   | 'working'
   | 'activity'
@@ -21,10 +27,29 @@ export type GrantTab =
   | 'narratives'
   | 'edit';
 
-type Tab = { key: GrantTab; href: string; label: string; count?: number };
+export type TopTab = 'status' | 'todo' | 'setup';
 
-/** Tabs whose content is the membership pipeline (member lines, rules, effort, entries, periods). */
+export const TOP_TAB_OF: Record<GrantTab, TopTab> = {
+  detail: 'status',
+  funder: 'status',
+  working: 'status',
+  bva: 'status',
+  activity: 'setup',
+  todo: 'todo',
+  review: 'todo',
+  effort: 'todo',
+  entries: 'todo',
+  edit: 'setup',
+  budget: 'setup',
+  rules: 'setup',
+  periods: 'setup',
+  history: 'setup',
+  narratives: 'setup',
+};
+
+/** Pages whose content is the transaction pipeline (review, rules, effort, entries, periods). */
 const MEMBER_LINE_TABS: ReadonlySet<GrantTab> = new Set([
+  'todo',
   'review',
   'rules',
   'effort',
@@ -33,100 +58,90 @@ const MEMBER_LINE_TABS: ReadonlySet<GrantTab> = new Set([
 ]);
 
 /**
- * Grant workspace navigation (JPH-23). The working tabs sit in three groups —
- * Report (what goes out), Work (what needs doing), Close (periods) — with a quieter
- * row for setup and reference pages. The activity grid only appears for grants that
- * have activities; the Review tab carries the count of lines waiting.
- *
- * The tracking badge (JPH-30) sits above the tabs on every grant page, and a
- * crosswalk-tracked grant gets one explanatory notice on the member-line tabs
- * instead of their empty queues.
+ * Grant workspace navigation: three tabs. Status (the numbers), To do (what needs a decision),
+ * Setup (how the grant is defined). The tracking badge sits above the tabs on every grant page;
+ * a crosswalk-tracked grant gets one explanatory notice on the transaction pages instead of
+ * their empty queues.
  */
 export async function GrantTabs({ id, active }: { id: string; active: GrantTab }) {
   const orgId = await getOrgId();
-  const [activities, waiting, tracking] = await Promise.all([
-    prisma.grantActivity.count({ where: { grantId: id } }),
-    needsReviewCount(orgId, id),
+  const period = await currentPeriod(orgId, {});
+  const [tracking, loaded, todo] = await Promise.all([
     grantTracking(orgId, id),
+    loadGrant(orgId, id, new Date()),
+    grantTodo(orgId, id, period),
   ]);
+  const setup = await setupNeedsAttention(orgId, id, tracking?.mode ?? null);
+  // JPH-27 C5: the header chip counts transactions to decide on, net of proposed reversal pairs.
+  const toReview = loaded ? toReviewCount(loaded.needsReview) : 0;
   const base = `/grants/${id}`;
+  const top = TOP_TAB_OF[active];
   const crosswalkNotice = tracking?.mode === 'crosswalk' && MEMBER_LINE_TABS.has(active);
-  const groups: Array<{ label: string; tabs: Tab[] }> = [
-    {
-      label: 'Report',
-      tabs: [
-        { key: 'detail', href: base, label: 'Overview' },
-        { key: 'funder', href: `${base}/funder`, label: 'Funder view' },
-        { key: 'working', href: `${base}/working`, label: 'Working view' },
-        ...(activities > 0
-          ? [{ key: 'activity', href: `${base}/activity`, label: 'Activity grid' } as Tab]
-          : []),
-      ],
-    },
-    {
-      label: 'Work',
-      tabs: [
-        { key: 'review', href: `${base}/review`, label: 'Review', count: waiting },
-        { key: 'rules', href: `${base}/rules`, label: 'Rules' },
-        { key: 'effort', href: `${base}/effort`, label: 'Effort' },
-        { key: 'entries', href: `${base}/entries`, label: 'Entries' },
-      ],
-    },
-    { label: 'Close', tabs: [{ key: 'periods', href: `${base}/periods`, label: 'Periods' }] },
-  ];
-  const secondary: Tab[] = [
-    { key: 'bva', href: `${base}/bva`, label: 'BvA' },
-    { key: 'budget', href: `${base}/budget`, label: 'Budget lines' },
-    { key: 'history', href: `${base}/history`, label: 'History' },
-    { key: 'narratives', href: `${base}/narratives`, label: 'Narratives' },
-    { key: 'edit', href: `${base}/edit`, label: 'Edit' },
+  const tabs: Array<{ key: TopTab; href: string; label: string }> = [
+    { key: 'status', href: base, label: 'Status' },
+    { key: 'todo', href: `${base}/todo`, label: 'To do' },
+    { key: 'setup', href: `${base}/edit`, label: 'Setup' },
   ];
   return (
     <>
       {tracking && (
-        <p className="mb-3 text-sm" data-testid="tracking-badge" data-mode={tracking.mode}>
-          <StatusPill tone="muted" icon="◦">
-            {tracking.label}
-          </StatusPill>
+        <p className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <span data-testid="tracking-badge" data-mode={tracking.mode}>
+            <StatusPill tone="muted" icon="◦">
+              {tracking.label}
+            </StatusPill>
+          </span>
+          {toReview > 0 ? (
+            <Link
+              href={`${base}/review`}
+              className="no-underline"
+              data-testid="review-chip"
+              data-count={toReview}
+            >
+              <StatusPill tone="warn">{toReview} to review</StatusPill>
+            </Link>
+          ) : null}
         </p>
       )}
-      <nav className="no-print mb-4" aria-label="Grant workspace">
-        <div className="tab-groups">
-          {groups.map((g) => (
-            <div key={g.label} className="tab-group">
-              <span className="tab-group-label" aria-hidden="true">
-                {g.label}
-              </span>
-              <div className="tab-group-links">
-                {g.tabs.map((t) => (
-                  <Link
-                    key={t.key}
-                    href={t.href}
-                    aria-current={t.key === active ? 'page' : undefined}
-                    className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm hover:no-underline ${t.key === active ? 'border-harbor font-semibold text-ink' : 'border-transparent text-ink-soft'}`}
-                  >
-                    {t.label}
-                    {t.count ? (
-                      <span className="tab-count" data-testid="review-tab-count">
-                        {t.count}
-                        <span className="sr-only"> lines waiting for review</span>
-                      </span>
-                    ) : null}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="mt-1 flex max-w-full gap-3 overflow-x-auto px-1 text-xs">
-          {secondary.map((t) => (
+      <nav className="no-print mb-4 border-b border-line" aria-label="Grant workspace">
+        <div className="flex max-w-full gap-1 overflow-x-auto" data-testid="grant-tabs">
+          {tabs.map((t) => (
             <Link
               key={t.key}
               href={t.href}
-              aria-current={t.key === active ? 'page' : undefined}
-              className={`shrink-0 whitespace-nowrap py-1 ${t.key === active ? 'font-semibold text-ink' : 'text-ink-soft'}`}
+              data-testid={`tab-${t.key}`}
+              aria-current={t.key === top ? 'page' : undefined}
+              className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm hover:no-underline ${t.key === top ? 'border-harbor font-semibold text-ink' : 'border-transparent text-ink-soft'}`}
             >
               {t.label}
+              {t.key === 'todo' && todo.openCount > 0 ? (
+                <span
+                  className="tab-count"
+                  data-testid="review-tab-count"
+                  data-count={todo.openCount}
+                >
+                  {todo.openCount}
+                  <span className="sr-only"> items waiting</span>
+                </span>
+              ) : null}
+              {t.key === 'setup' && setup.dot ? (
+                <span
+                  className="ml-1 inline-block h-2 w-2 rounded-full bg-amber-500 align-middle"
+                  data-testid="setup-dot"
+                  data-difference-cents={setup.differenceCents}
+                  title={
+                    setup.differenceCents !== 0
+                      ? 'Working lines do not add up to the funder budget'
+                      : 'No rules yet'
+                  }
+                >
+                  <span className="sr-only">
+                    {setup.differenceCents !== 0
+                      ? ' Working lines do not add up to the funder budget'
+                      : ' No rules yet'}
+                  </span>
+                </span>
+              ) : null}
             </Link>
           ))}
         </div>
@@ -134,8 +149,8 @@ export async function GrantTabs({ id, active }: { id: string; active: GrantTab }
       {crosswalkNotice && (
         <div data-testid="crosswalk-notice">
           <Banner tone="info">
-            This grant is tracked by crosswalk rules, so it has no QuickBooks member lines. To use
-            the review queue, rules, effort and entries, set how QuickBooks tracks it on{' '}
+            This grant is tracked by crosswalk rules, so it has no QuickBooks transactions of its
+            own. To use the review queue, rules, effort and entries, set how QuickBooks tracks it on{' '}
             <Link href={`${base}/edit`}>Edit grant</Link>.
           </Banner>
         </div>

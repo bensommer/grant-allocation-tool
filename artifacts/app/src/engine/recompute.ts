@@ -14,7 +14,7 @@
  * function later without changing its contract.
  */
 import { createHash } from 'node:crypto';
-import type { Prisma } from '@/generated/prisma/client';
+import type { Prisma, RunTrigger } from '@/generated/prisma/client';
 import { prisma } from '@/lib/db';
 import { toJson } from '@/lib/audit';
 import { reconciliationChecks } from '@/services/reconciliation';
@@ -195,35 +195,35 @@ export async function loadGrantStageConfig(
   const lineIds = new Set(lines.map((l) => l.id));
   const [grants, memberships, rules, budgetLines, decisions, schedules, postedLines] =
     await Promise.all([
-    prisma.grant.findMany({
-      where: { orgId, status: { not: 'archived' } },
-      select: { id: true },
-      orderBy: { id: 'asc' },
-    }),
-    prisma.grantMembership.findMany({
-      where: { orgId, supersededAt: null },
-      select: { grantId: true, transactionLineId: true },
-    }),
-    prisma.crosswalkRule.findMany({
-      where: { orgId, grantId: { not: null } },
-      orderBy: { id: 'asc' },
-    }),
-    prisma.grantBudgetLine.findMany({ where: { orgId }, orderBy: { id: 'asc' } }),
-    prisma.lineDecision.findMany({
-      where: { orgId, supersededAt: null },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      select: {
-        id: true,
-        grantId: true,
-        fingerprint: true,
-        kind: true,
-        targetBudgetLineId: true,
-        reason: true,
-      },
-    }),
-    loadStageSchedules(orgId),
-    loadPostedLines(orgId),
-  ]);
+      prisma.grant.findMany({
+        where: { orgId, status: { not: 'archived' } },
+        select: { id: true },
+        orderBy: { id: 'asc' },
+      }),
+      prisma.grantMembership.findMany({
+        where: { orgId, supersededAt: null },
+        select: { grantId: true, transactionLineId: true },
+      }),
+      prisma.crosswalkRule.findMany({
+        where: { orgId, grantId: { not: null } },
+        orderBy: { id: 'asc' },
+      }),
+      prisma.grantBudgetLine.findMany({ where: { orgId }, orderBy: { id: 'asc' } }),
+      prisma.lineDecision.findMany({
+        where: { orgId, supersededAt: null },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          grantId: true,
+          fingerprint: true,
+          kind: true,
+          targetBudgetLineId: true,
+          reason: true,
+        },
+      }),
+      loadStageSchedules(orgId),
+      loadPostedLines(orgId),
+    ]);
   const fingerprints = [...new Set(decisions.map((d) => d.fingerprint))];
   const externalIds = [...new Set(fingerprints.map((f) => f.slice(0, f.lastIndexOf('#'))))];
   const rows =
@@ -286,7 +286,15 @@ export async function loadGrantStageConfig(
 
 export async function recompute(
   orgId: string,
-  opts: { compute?: ComputeFn; grantStage?: GrantStageFn; actor?: string } = {},
+  opts: {
+    compute?: ComputeFn;
+    grantStage?: GrantStageFn;
+    actor?: string;
+    /** JPH-28 D1: what started the calculation (defaults to a manual "Recalculate now"). */
+    trigger?: RunTrigger;
+    /** JPH-28 D1: why, e.g. "crosswalk rule saved" — shown in the activity log. */
+    cause?: string;
+  } = {},
 ): Promise<RecomputeResult> {
   const started = Date.now();
   const compute = opts.compute ?? allocate;
@@ -300,7 +308,14 @@ export async function recompute(
   const grantConfig = await loadGrantStageConfig(orgId, lines);
   const hash = configHash(config);
   const run = await prisma.computeRun.create({
-    data: { orgId, status: 'running', configHash: hash, sourceBatchIds: batchIds },
+    data: {
+      orgId,
+      status: 'running',
+      configHash: hash,
+      sourceBatchIds: batchIds,
+      trigger: opts.trigger ?? 'manual',
+      cause: opts.cause ?? null,
+    },
   });
 
   const fail = async (
@@ -392,7 +407,7 @@ export async function recompute(
           {
             name: 'sum_per_source_line',
             ok: true,
-            detail: `${lines.length} lines, ${result.pieces.length} pieces`,
+            detail: `${lines.length} transactions, ${result.pieces.length} allocated amounts`,
           },
           { name: 'stats', ok: true, detail: result.stats },
           { name: 'grant_line_states', ok: true, detail: `${grantDrafts.length} grant lines` },
@@ -419,7 +434,7 @@ export async function recompute(
           name: 'sum_per_source_line',
           ok: true,
           status: 'pass',
-          detail: `${lines.length} lines, ${result.pieces.length} pieces`,
+          detail: `${lines.length} transactions, ${result.pieces.length} allocated amounts`,
           href: `/runs/${run.id}`,
         },
         { name: 'stats', ok: true, detail: result.stats },

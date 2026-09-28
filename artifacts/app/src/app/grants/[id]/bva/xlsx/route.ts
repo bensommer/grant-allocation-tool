@@ -1,14 +1,13 @@
-import { getOrgId } from '@/lib/org';
-import { bvaData, reportDate } from '@/services/bva';
-import { grantBvaTable } from '@/reports/bva-table';
 import { xlsxResponse, xlsxTable } from '@/reports/table-export';
+import { loadBvaExport } from '../export';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { date, label } = reportDate(new URL(req.url).searchParams.get('asOf') ?? undefined);
-  const { run, grants } = await bvaData(await getOrgId(), date, id);
-  const grant = grants[0];
-  if (!grant) return new Response('Grant not found', { status: 404 });
-  const buf = await xlsxTable(grantBvaTable(grant, date, label, run));
-  return xlsxResponse(buf, `bva-${grant.awardNumber ?? grant.name}-${label}.xlsx`);
+  const data = await loadBvaExport(req, id);
+  if (!data) return new Response('Grant not found', { status: 404 });
+  // Funder view is category rows only (see loadBvaExport), so SUM totals do not double-count.
+  const buf = await xlsxTable(
+    data.view === 'funder' ? { ...data.table, sumColumns: [1, 2, 3] } : data.table,
+  );
+  return xlsxResponse(buf, data.filename('xlsx'));
 }

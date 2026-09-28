@@ -2,7 +2,10 @@ import type { Metadata } from 'next';
 import localFont from 'next/font/local';
 import { headers } from 'next/headers';
 import './globals.css';
-import { Nav, navContext } from '@/components/nav';
+import { Nav } from '@/components/nav';
+import { reviewBadgeCount } from '@/services/grant-figures';
+import { Breadcrumbs } from '@/components/ui/breadcrumbs';
+import { breadcrumbsFor } from '@/lib/breadcrumbs';
 import { StatusIndicator } from '@/components/status-indicator';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
@@ -26,37 +29,23 @@ export const dynamic = 'force-dynamic';
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const orgId = await getOrgId();
-  const [org, status, requestHeaders] = await Promise.all([
+  const [org, status, requestHeaders, toReview] = await Promise.all([
     prisma.org.findUniqueOrThrow({ where: { id: orgId } }),
     getGlobalStatus(orgId),
     headers(),
+    reviewBadgeCount(orgId),
   ]);
   const pathname = requestHeaders.get('x-pathname') ?? '/';
-  const returnTo = `${pathname}${requestHeaders.get('x-search') ?? ''}`;
-  const context = navContext(pathname);
+  const trail = await breadcrumbsFor(orgId, pathname);
   return (
     <html lang="en" className={inter.variable}>
       <body>
         <div className="app-shell">
-          <Nav orgName={org.name} />
+          <Nav orgName={org.name} badges={{ '/review': toReview }} />
           <div className="app-body">
             <header className="app-header">
-              <div className="hidden min-w-0 truncate text-xs text-ink-soft lg:block" data-page-context>
-                {context ? (
-                  <>
-                    <span>{context.group}</span>
-                    {context.item !== context.group ? (
-                      <>
-                        <span aria-hidden="true"> › </span>
-                        <span className="font-semibold text-ink">{context.item}</span>
-                      </>
-                    ) : null}
-                  </>
-                ) : (
-                  <span>{org.name}</span>
-                )}
-              </div>
-              <StatusIndicator status={status} returnTo={returnTo} />
+              <Breadcrumbs trail={trail} fallback={org.name} />
+              <StatusIndicator status={status} />
             </header>
             <main className="app-main">{children}</main>
           </div>

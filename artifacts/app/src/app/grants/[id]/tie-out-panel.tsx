@@ -1,3 +1,4 @@
+import { TERMS } from '@/copy/terms';
 import Link from 'next/link';
 import { DataTable, DateText, Money, NumTd, StatusPill, Td, Th, TotalRow } from '@/components/ui';
 import { TIE_OUT_INLINE_LINES, type TieOut } from '@/services/grant-workspace';
@@ -30,7 +31,7 @@ export function TieOutPanel({ id, tieOut: t }: { id: string; tieOut: TieOut }) {
             {t.needsReviewCount} line{t.needsReviewCount === 1 ? '' : 's'} waiting for review
           </StatusPill>
         )}
-        {t.stale && <StatusPill tone="muted">run is stale</StatusPill>}
+        {t.stale && <StatusPill tone="muted">run {TERMS.needsUpdateLower}</StatusPill>}
         <Link href={reviewHref} className="text-sm">
           Open review queue →
         </Link>
@@ -108,7 +109,7 @@ export function TieOutPanel({ id, tieOut: t }: { id: string; tieOut: TieOut }) {
             <tr className="ledger-sum">
               <Td className="op">=</Td>
               <Th scope="row">
-                Coded to the grant (member lines, current run){' '}
+                Coded to the grant (transactions, current run){' '}
                 {ties ? (
                   <span className="check-ok text-xs" aria-label="sum ties to coded">
                     ✓

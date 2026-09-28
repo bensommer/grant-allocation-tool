@@ -13,6 +13,7 @@ import {
   Td,
   Th,
 } from '@/components/ui';
+import Link from 'next/link';
 import { GrantPaceStatus } from '@/components/grant-pace-status';
 import { getOrgId } from '@/lib/org';
 import { bvaData, defaultReportDate } from '@/services/bva';
@@ -24,9 +25,9 @@ const STATUSES = Object.keys(GRANT_STATUS_LABEL) as GrantStatusKey[];
 export default async function GrantsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; deleted?: string; asOf?: string }>;
+  searchParams: Promise<{ status?: string; deleted?: string; asOf?: string; draft?: string }>;
 }) {
-  const { status, deleted, asOf } = await searchParams;
+  const { status, deleted, asOf, draft } = await searchParams;
   const orgId = await getOrgId();
   const { date } = await defaultReportDate(orgId, asOf);
   const { grants } = await bvaData(orgId, date);
@@ -42,6 +43,14 @@ export default async function GrantsPage({
         primaryAction={<ButtonLink href="/grants/new">New grant</ButtonLink>}
       />
       {deleted && <Banner tone="ok">Grant deleted.</Banner>}
+      {draft && (
+        <Banner tone="ok">
+          <span data-testid="draft-saved">
+            Setup saved. <Link href="/grants/new">Continue setting up the grant</Link> whenever you
+            are ready.
+          </span>
+        </Banner>
+      )}
       <FilterBar action="/grants">
         <label htmlFor="status">Status</label>
         <select id="status" name="status" defaultValue={filter ?? ''}>

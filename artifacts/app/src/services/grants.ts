@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Prisma } from '@/generated/prisma/client';
 import { categoryKeyPattern } from '@/domain/categories';
 import { prisma } from '@/lib/db';
 import { recordAudit } from '@/lib/audit';
@@ -69,11 +70,21 @@ function trackingModeFor(data: { memberClassIds: string[]; memberPartyIds: strin
     : {};
 }
 
-export async function createGrant(orgId: string, rawInput: GrantInput) {
+export type Db = Prisma.TransactionClient | typeof prisma;
+
+/** Run `fn` in a new transaction, or inside the caller's when it already has one. */
+export function inTransaction<T>(
+  db: Db,
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  return db === prisma ? prisma.$transaction(fn) : fn(db as Prisma.TransactionClient);
+}
+
+export async function createGrant(orgId: string, rawInput: GrantInput, db: Db = prisma) {
   const input = grantInputSchema.parse(rawInput);
   const { programs, ...data } = input;
   await assertGrantRefs(orgId, input);
-  return prisma.$transaction(async (tx) => {
+  return inTransaction(db, async (tx) => {
     const g = await tx.grant.create({
       data: { orgId, ...data, ...trackingModeFor(data), programs: { create: programs } },
       include: { programs: true },
@@ -182,7 +193,9 @@ export const budgetLineInputSchema = z.object({
 export type BudgetLineInput = z.input<typeof budgetLineInputSchema>;
 
 /** Structural rules for a two-level budget line, beyond the field shapes. */
+
 async function assertBudgetLineShape(
+  db: Db,
   grantId: string,
   input: BudgetLineInput,
   id: string | undefined,
@@ -194,7 +207,7 @@ async function assertBudgetLineShape(
       errors['activityId'] = 'Only cells carry an activity and category';
   } else {
     if (input.parentId) {
-      const parent = await prisma.grantBudgetLine.findFirst({
+      const parent = await db.grantBudgetLine.findFirst({
         where: { id: input.parentId, grantId },
       });
       if (!parent) errors['parentId'] = 'Parent not found in this grant';
@@ -206,11 +219,11 @@ async function assertBudgetLineShape(
       if (!input.activityId || !input.categoryKey)
         errors['activityId'] = 'A cell needs both an activity and a category';
       else {
-        const activity = await prisma.grantActivity.findFirst({
+        const activity = await db.grantActivity.findFirst({
           where: { id: input.activityId, grantId },
         });
         if (!activity) errors['activityId'] = 'Activity not found in this grant';
-        const dup = await prisma.grantBudgetLine.findFirst({
+        const dup = await db.grantBudgetLine.findFirst({
           where: {
             grantId,
             kind: 'cell',
@@ -233,19 +246,20 @@ export async function upsertBudgetLine(
   grantId: string,
   rawInput: BudgetLineInput,
   id?: string,
+  db: Db = prisma,
 ) {
   const input = budgetLineInputSchema.parse(rawInput);
-  const grant = await prisma.grant.findFirst({ where: { id: grantId, orgId } });
+  const grant = await db.grant.findFirst({ where: { id: grantId, orgId } });
   if (!grant) throw new ValidationError({ _: 'Grant not found' });
-  await assertOrgRefs(prisma, orgId, 'programId', {
+  await assertOrgRefs(db, orgId, 'programId', {
     programIds: input.programId ? [input.programId] : [],
   });
-  const dup = await prisma.grantBudgetLine.findFirst({
+  const dup = await db.grantBudgetLine.findFirst({
     where: { grantId, code: input.code, ...(id ? { id: { not: id } } : {}) },
   });
   if (dup) throw new ValidationError({ code: `Code ${input.code} is already used in this grant` });
-  await assertBudgetLineShape(grantId, input, id);
-  return prisma.$transaction(async (tx) => {
+  await assertBudgetLineShape(db, grantId, input, id);
+  return inTransaction(db, async (tx) => {
     if (id) {
       const before = await tx.grantBudgetLine.findFirstOrThrow({ where: { id, grantId } });
       if (before.kind === 'funder_category' && input.kind !== 'funder_category') {
@@ -276,6 +290,96 @@ export async function upsertBudgetLine(
     await markCurrentRunStale(tx, orgId);
     return created;
   });
+}
+
+/** One row of a batch save: the line and its new values (JPH-25 A9). */
+export interface BudgetLineEdit {
+  lineId: string;
+  input: BudgetLineInput;
+}
+
+/** A batch save that failed: `lineId` names the row so the form can mark it. */
+export class BudgetLineBatchError extends ValidationError {
+  constructor(
+    public readonly lineId: string,
+    fieldErrors: Record<string, string>,
+  ) {
+    super(fieldErrors);
+    this.name = 'BudgetLineBatchError';
+  }
+}
+
+/**
+ * Save every edited budget line of a grant in one transaction: either all rows (and their
+ * audit events) commit, or none do and the caller gets the first row's validation errors.
+ * Rows equal to what is stored are skipped (no write, no audit event).
+ */
+export async function saveBudgetLines(
+  orgId: string,
+  grantId: string,
+  edits: BudgetLineEdit[],
+): Promise<{ saved: number }> {
+  const inputs = edits.map((e) => ({
+    lineId: e.lineId,
+    input: budgetLineInputSchema.parse(e.input),
+  }));
+  const seen = new Map<string, string>();
+  for (const { lineId, input } of inputs) {
+    const other = seen.get(input.code);
+    if (other)
+      throw new BudgetLineBatchError(lineId, { code: `Code ${input.code} is entered twice` });
+    seen.set(input.code, lineId);
+  }
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.grantBudgetLine.findMany({
+      where: { orgId, grantId, id: { in: inputs.map((e) => e.lineId) } },
+    });
+    const byId = new Map(existing.map((l) => [l.id, l]));
+    let saved = 0;
+    for (const { lineId, input } of inputs) {
+      const current = byId.get(lineId);
+      if (!current)
+        throw new BudgetLineBatchError(lineId, { _: 'Budget line is not on this grant' });
+      if (budgetLineUnchanged(current, input)) continue;
+      try {
+        await upsertBudgetLine(orgId, grantId, input, lineId, tx);
+      } catch (e) {
+        if (e instanceof ValidationError) throw new BudgetLineBatchError(lineId, e.fieldErrors);
+        throw e;
+      }
+      saved++;
+    }
+    return { saved };
+  });
+}
+
+function budgetLineUnchanged(
+  current: {
+    code: string;
+    name: string;
+    budgetCents: number;
+    programId: string | null;
+    sortOrder: number;
+    kind: string;
+    parentId: string | null;
+    activityId: string | null;
+    categoryKey: string | null;
+    releaseClass: string;
+  },
+  data: BudgetLineInput,
+): boolean {
+  return (
+    current.code === data.code &&
+    current.name === data.name &&
+    current.budgetCents === data.budgetCents &&
+    (current.programId ?? null) === (data.programId ?? null) &&
+    current.sortOrder === data.sortOrder &&
+    current.kind === data.kind &&
+    (current.parentId ?? null) === (data.parentId ?? null) &&
+    (current.activityId ?? null) === (data.activityId ?? null) &&
+    (current.categoryKey ?? null) === (data.categoryKey ?? null) &&
+    current.releaseClass === data.releaseClass
+  );
 }
 
 export async function deleteBudgetLine(orgId: string, grantId: string, id: string) {

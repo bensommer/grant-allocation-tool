@@ -36,8 +36,8 @@ test('six matrix cells match fixture cents', async ({ page }) => {
   }
 });
 
-test('dashboard and restricted balances use the current run', async ({ page }) => {
-  await page.goto('/');
+test('overview and restricted balances use the current run', async ({ page }) => {
+  await page.goto('/reports/overview');
   await expect(page.getByLabel('As of')).toHaveValue('2026-03-31');
   await expect(page.getByRole('heading', { name: 'Flagged grants' })).toBeVisible();
   await expect(

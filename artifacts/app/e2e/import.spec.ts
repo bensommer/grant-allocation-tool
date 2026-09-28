@@ -23,7 +23,9 @@ test('upload demo CSV bundle → batch page shows Succeeded', async ({ page }) =
   await page.getByRole('button', { name: 'Import' }).click();
   await page.waitForURL(/\/import\/[a-z0-9]+$/);
   await expect(page.locator('main .pill').first()).toContainText('Succeeded');
-  await expect(page.getByText('38 transaction lines')).toBeVisible();
+  await expect(page.getByTestId('import-banner')).toContainText(
+    'Succeeded — 20 transactions (38 lines) imported.',
+  );
 });
 
 test('upload broken bundle → Failed with 5 errors and CSV download', async ({ page }) => {

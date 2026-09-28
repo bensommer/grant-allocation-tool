@@ -1,3 +1,4 @@
+import { TERMS } from '@/copy/terms';
 import Link from 'next/link';
 import {
   Banner,
@@ -11,10 +12,16 @@ import {
 } from '@/components/ui';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
-import { parseMatchers } from '@/domain/matchers';
-import { describeMatchers, loadLabelMaps } from '@/lib/matcher-labels';
+import { parseMatchers, type Matchers } from '@/domain/matchers';
+import { describeRule } from '@/domain/describe-rule';
+import { loadLabelMaps, type LabelMaps } from '@/lib/matcher-labels';
 
 export const dynamic = 'force-dynamic';
+
+/** The "Matches when" text: the list wording of describeRule (AC1 pins it byte-for-byte). */
+const listConditions = (m: Matchers, labels: LabelMaps) =>
+  describeRule({ scope: 'all', matchers: m, target: null, labels }, { wording: 'list' })
+    .conditionsText;
 
 export default async function CrosswalkPage({
   searchParams,
@@ -52,7 +59,7 @@ export default async function CrosswalkPage({
     <>
       <PageHeader
         title="Crosswalk"
-        subtitle="Map expense pieces to grant budget lines. Changes mark the current run stale."
+        subtitle={`${TERMS.crosswalkSubtitle}. Changes mean the current run needs an update.`}
         secondaryActions={
           <div className="flex flex-wrap gap-2">
             {[
@@ -90,11 +97,11 @@ export default async function CrosswalkPage({
                         <Th>Rule</Th>
                         <Th>Priority</Th>
                         <Th>Status</Th>
-                        <Th>Matchers</Th>
+                        <Th>Matches when</Th>
                         {run ? (
                           <>
                             <Th num>Mapped ($)</Th>
-                            <Th num>Pieces</Th>
+                            <Th num>{TERMS.transactions}</Th>
                           </>
                         ) : null}
                       </tr>
@@ -111,7 +118,7 @@ export default async function CrosswalkPage({
                               {r.active ? 'Active' : 'Inactive'}
                             </StatusPill>
                           </td>
-                          <td>{describeMatchers(parseMatchers(r.matchers), labels)}</td>
+                          <td>{listConditions(parseMatchers(r.matchers), labels)}</td>
                           {run ? (
                             <>
                               <NumTd cents={byRule.get(r.id)?._sum.amountCents ?? 0} />

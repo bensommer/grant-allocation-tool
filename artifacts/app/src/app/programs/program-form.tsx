@@ -101,7 +101,7 @@ export function ProgramForm({
             label="Default class mapping"
             name="matchClassIds"
             error={state?.errors['matchClassIds']}
-            hint="Lines carrying one of these QuickBooks classes go 100% to this program unless an allocation rule splits them."
+            hint="Lines carrying one of these QuickBooks classes go 100% to this program unless a shared cost split divides them."
             className="md:col-span-2"
           >
             <CheckboxList

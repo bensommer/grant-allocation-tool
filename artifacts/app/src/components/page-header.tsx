@@ -12,7 +12,6 @@ export function PageHeader({
   actions?: ReactNode;
   secondaryActions?: ReactNode;
   primaryAction?: ReactNode;
-  breadcrumb?: ReactNode;
 }) {
   return <NewPageHeader {...props} secondaryActions={secondaryActions ?? actions} />;
 }

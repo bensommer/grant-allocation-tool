@@ -2,7 +2,13 @@
 
 import { redirect } from 'next/navigation';
 import { parse as parseCsv } from 'csv-parse/sync';
+import { grantBuilderOptions } from '@/components/rule-builder/options';
+import { describeValues } from '@/components/rule-builder/describe';
+import { recalculateAfter } from '@/lib/after-mutation';
 import { getOrgId } from '@/lib/org';
+import { safeReturnPath } from '@/lib/return-path';
+import { formDataReader, readRuleValues } from '@/lib/rule-form';
+import { parseRuleForm } from '@/lib/rule-form-parse';
 import { prisma } from '@/lib/db';
 import { bool, list, redirectWithErrors, str, strOrNull, zodErrors } from '@/lib/forms';
 import {
@@ -11,12 +17,7 @@ import {
   revisionInputSchema,
   upsertActivity,
 } from '@/services/grant-budget';
-import {
-  createGrantRule,
-  deactivateGrantRule,
-  grantRuleInputSchema,
-  updateGrantRule,
-} from '@/services/grant-rules';
+import { createGrantRule, deactivateGrantRule, updateGrantRule } from '@/services/grant-rules';
 import {
   clearAtRisk,
   recordDecision,
@@ -24,14 +25,17 @@ import {
   revertDecision,
 } from '@/services/line-decisions';
 import { parseDateInput } from '@/domain/dates';
-import { MoneyParseError, parseMoneyToCents } from '@/domain/money';
+import { readTrackingFields } from '@/app/grants/tracking-form';
+import { MoneyParseError, centsToDecimalString, parseMoneyToCents } from '@/domain/money';
 import {
   budgetLineInputSchema,
+  BudgetLineBatchError,
   createGrant,
   deleteBudgetLine,
   deleteOrArchiveGrant,
   grantInputSchema,
   importBudgetLines,
+  saveBudgetLines,
   updateGrant,
   upsertBudgetLine,
   type BudgetLineInput,
@@ -95,10 +99,7 @@ async function parseGrant(orgId: string, formData: FormData) {
     revenueAccountId: strOrNull(formData, 'revenueAccountId'),
     matchPartyIds: list(formData, 'matchPartyIds'),
     matchClassIds: list(formData, 'matchClassIds'),
-    memberClassIds: list(formData, 'memberClassIds'),
-    memberPartyIds: list(formData, 'memberPartyIds'),
-    qboClassName: strOrNull(formData, 'qboClassName'),
-    qboProjectName: strOrNull(formData, 'qboProjectName'),
+    ...(await readTrackingFields(orgId, formData)),
     programs,
   };
   const parsed = grantInputSchema.safeParse(candidate);
@@ -107,16 +108,24 @@ async function parseGrant(orgId: string, formData: FormData) {
   return { ok: true as const, data: parsed.success ? parsed.data : null! };
 }
 
+/** "Update count" on the tracking block: re-render the form with the posted values, no save. */
+function recountRequested(formData: FormData) {
+  return str(formData, 'intent') === 'recount';
+}
+
 export async function createGrantAction(formData: FormData): Promise<void> {
   const orgId = await getOrgId();
+  if (recountRequested(formData)) redirectWithErrors('/grants/new?mode=form', {}, formData);
   const r = await parseGrant(orgId, formData);
-  if (!r.ok) redirectWithErrors('/grants/new', r.errors, formData);
+  if (!r.ok) redirectWithErrors('/grants/new?mode=form', r.errors, formData);
   const g = await createGrant(orgId, r.data);
+  await recalculateAfter(orgId, 'grant created');
   redirect(`/grants/${g.id}?saved=1`);
 }
 
 export async function updateGrantAction(id: string, formData: FormData): Promise<void> {
   const orgId = await getOrgId();
+  if (recountRequested(formData)) redirectWithErrors(`/grants/${id}/edit`, {}, formData);
   const r = await parseGrant(orgId, formData);
   if (!r.ok) redirectWithErrors(`/grants/${id}/edit`, r.errors, formData);
   try {
@@ -126,12 +135,14 @@ export async function updateGrantAction(id: string, formData: FormData): Promise
       redirectWithErrors(`/grants/${id}/edit`, e.fieldErrors, formData);
     throw e;
   }
+  await recalculateAfter(orgId, 'grant updated');
   redirect(`/grants/${id}?saved=1`);
 }
 
 export async function deleteGrantAction(id: string): Promise<void> {
   const orgId = await getOrgId();
   const r = await deleteOrArchiveGrant(orgId, id);
+  await recalculateAfter(orgId, r.archived ? 'grant archived' : 'grant deleted');
   redirect(r.archived ? `/grants/${id}?archived=1` : '/grants?deleted=1');
 }
 
@@ -182,7 +193,75 @@ export async function saveBudgetLineAction(
       );
     throw e;
   }
+  await recalculateAfter(orgId, 'budget line saved');
   redirect(`${back}?saved=1`);
+}
+
+const BATCH_FIELDS = [
+  'code',
+  'name',
+  'budget',
+  'budgetCents',
+  'programId',
+  'sortOrder',
+  'kind',
+  'parentId',
+  'activityId',
+  'categoryKey',
+  'releaseClass',
+] as const;
+
+/**
+ * One form saves every existing budget line (JPH-25 A9). Each row posts the same field names,
+ * so the values are read as aligned columns keyed by the `$row` ids; only rows whose values
+ * differ from the stored line are written. `budgetCents` (integer cents, filled in by the
+ * client island) wins over the decimal `budget` text when present, so a JS-less post still
+ * works and a JS post never re-parses a formatted number.
+ */
+export async function saveBudgetLinesAction(grantId: string, formData: FormData): Promise<void> {
+  const back = `/grants/${grantId}/budget`;
+  const ids = formData.getAll('$row').filter((v): v is string => typeof v === 'string');
+  const columns = Object.fromEntries(
+    BATCH_FIELDS.map((f) => [f, formData.getAll(f).map((v) => (typeof v === 'string' ? v : ''))]),
+  ) as Record<(typeof BATCH_FIELDS)[number], string[]>;
+  for (const f of BATCH_FIELDS)
+    if (columns[f].length !== ids.length)
+      throw new Error(
+        `Budget line form posted ${columns[f].length} "${f}" values for ${ids.length} rows`,
+      );
+
+  const errors: Record<string, string> = {};
+  const rows = ids.map((lineId, i) => {
+    const fd = new FormData();
+    for (const f of BATCH_FIELDS) fd.set(f, columns[f][i] ?? '');
+    const cents = columns.budgetCents[i] ?? '';
+    if (/^-?\d+$/.test(cents)) fd.set('budget', centsToDecimalString(Number(cents)));
+    const r = parseBudgetLine(fd);
+    if (!r.ok) for (const [k, v] of Object.entries(r.errors)) errors[`${lineId}.${k}`] = v;
+    return { lineId, data: r.ok ? r.data : null };
+  });
+  if (Object.keys(errors).length > 0) redirectWithErrors(back, errors, formData);
+
+  const orgId = await getOrgId();
+  let saved = 0;
+  try {
+    // All rows commit together or not at all (one save, one transaction).
+    ({ saved } = await saveBudgetLines(
+      orgId,
+      grantId,
+      rows.map(({ lineId, data }) => ({ lineId, input: data! })),
+    ));
+  } catch (e) {
+    if (e instanceof BudgetLineBatchError)
+      redirectWithErrors(
+        back,
+        Object.fromEntries(Object.entries(e.fieldErrors).map(([k, v]) => [`${e.lineId}.${k}`, v])),
+        formData,
+      );
+    throw e;
+  }
+  await recalculateAfter(orgId, `budget lines saved (${saved})`);
+  redirect(`${back}?saved=${saved}`);
 }
 
 export async function deleteBudgetLineAction(grantId: string, lineId: string): Promise<void> {
@@ -194,6 +273,7 @@ export async function deleteBudgetLineAction(grantId: string, lineId: string): P
       redirectWithErrors(`/grants/${grantId}/budget`, e.fieldErrors, new FormData());
     throw e;
   }
+  await recalculateAfter(orgId, 'budget line deleted');
   redirect(`/grants/${grantId}/budget?saved=1`);
 }
 
@@ -263,6 +343,7 @@ export async function importBudgetLinesAction(grantId: string, formData: FormDat
       formData,
     );
   const result = await importBudgetLines(orgId, grantId, rows);
+  await recalculateAfter(orgId, 'budget lines imported');
   redirect(`/grants/${grantId}/budget?imported=${result.created}&updated=${result.updated}`);
 }
 
@@ -295,6 +376,7 @@ export async function saveActivityAction(
     if (e instanceof ValidationError) redirectWithErrors(back, prefixed(e.fieldErrors), formData);
     throw e;
   }
+  await recalculateAfter(orgId, 'budget activity saved');
   redirect(`${back}?saved=1#activities`);
 }
 
@@ -323,50 +405,37 @@ export async function addRevisionAction(grantId: string, formData: FormData): Pr
   redirect(`${back}?saved=1#revisions`);
 }
 
-function parseGrantRule(formData: FormData) {
-  const dimension = str(formData, 'dimension') || 'line';
-  const matchers = {
-    accountIds: list(formData, 'accountIds'),
-    classIds: list(formData, 'classIds'),
-    partyIds: list(formData, 'partyIds'),
-    descriptionContains: str(formData, 'descriptionContains'),
-    descriptionContainsAny: str(formData, 'descriptionContainsAny')
-      .split(/[,;\n]/)
-      .map((a) => a.trim())
-      .filter((a) => a !== ''),
-    txnTypes: list(formData, 'txnTypes'),
-    ...(str(formData, 'amountSign') ? { amountSign: str(formData, 'amountSign') } : {}),
-    ...(str(formData, 'dateFrom') ? { dateFrom: str(formData, 'dateFrom') } : {}),
-    ...(str(formData, 'dateTo') ? { dateTo: str(formData, 'dateTo') } : {}),
-  };
-  const result = grantRuleInputSchema.safeParse({
-    name: str(formData, 'name'),
-    dimension,
-    grantBudgetLineId: dimension === 'line' ? strOrNull(formData, 'grantBudgetLineId') : null,
-    targetActivityId: dimension === 'activity' ? strOrNull(formData, 'targetActivityId') : null,
-    targetCategoryKey: dimension === 'category' ? strOrNull(formData, 'targetCategoryKey') : null,
-    priority: Number(str(formData, 'priority')),
-    active: bool(formData, 'active'),
-    matchers,
-  });
-  const errors = result.success ? {} : zodErrors(result.error);
-  if (matchers.dateFrom && matchers.dateTo && matchers.dateFrom > matchers.dateTo)
-    errors['matchers.dateTo'] = 'End date must be on or after start';
-  return { data: result.success ? result.data : null, errors };
-}
-
 async function saveGrantRule(
   grantId: string,
   ruleId: string | null,
   back: string,
   formData: FormData,
 ): Promise<void> {
-  // Preview follows the crosswalk pattern: bounce the form state back with ?preview=1.
-  if (str(formData, 'intent') === 'preview') redirectWithErrors(`${back}?preview=1`, {}, formData);
-  const parsed = parseGrantRule(formData);
-  if (!parsed.data || Object.keys(parsed.errors).length)
-    redirectWithErrors(back, parsed.errors, formData);
+  // JPH-27: the review queue's "Always do this" link asks to come back to the queue after Save;
+  // the bounces below keep the parameter so a Preview or a validation error does not lose it.
+  const returnTo = str(formData, 'returnTo') ? safeReturnPath(str(formData, 'returnTo'), '') : '';
+  const bounce = (extra: Record<string, string> = {}) => {
+    const q = new URLSearchParams({ ...extra, ...(returnTo ? { returnTo } : {}) }).toString();
+    return q ? `${back}?${q}` : back;
+  };
+  // The no-JS Preview button bounces the form back and the page server-renders the preview.
+  if (str(formData, 'intent') === 'preview')
+    redirectWithErrors(bounce({ preview: '1' }), {}, formData);
   const orgId = await getOrgId();
+  const [grant, options] = await Promise.all([
+    prisma.grant.findFirst({ where: { id: grantId, orgId }, select: { name: true } }),
+    grantBuilderOptions(orgId, grantId),
+  ]);
+  const reader = formDataReader(formData);
+  const suggested = describeValues(
+    readRuleValues(reader, 'grant'),
+    'grant',
+    options,
+    grant?.name,
+  ).suggestedName;
+  const parsed = parseRuleForm(reader, 'grant', suggested);
+  if (parsed.kind !== 'grant' || !parsed.data || Object.keys(parsed.errors).length)
+    redirectWithErrors(bounce(), parsed.errors, formData);
   let id = ruleId;
   try {
     const rule = ruleId
@@ -374,8 +443,13 @@ async function saveGrantRule(
       : await createGrantRule(orgId, grantId, parsed.data);
     id = rule.id;
   } catch (e) {
-    if (e instanceof ValidationError) redirectWithErrors(back, e.fieldErrors, formData);
+    if (e instanceof ValidationError) redirectWithErrors(bounce(), e.fieldErrors, formData);
     throw e;
+  }
+  await recalculateAfter(orgId, `grant rule ${ruleId ? 'updated' : 'created'}`);
+  if (returnTo) {
+    const sep = returnTo.includes('?') ? '&' : '?';
+    redirect(`${returnTo}${sep}saved=1&rule=${id}`);
   }
   redirect(`/grants/${grantId}/rules/${id}?saved=1`);
 }
@@ -393,6 +467,7 @@ export async function updateGrantRuleAction(
 export async function deactivateGrantRuleAction(grantId: string, ruleId: string): Promise<void> {
   const orgId = await getOrgId();
   await deactivateGrantRule(orgId, grantId, ruleId);
+  await recalculateAfter(orgId, 'grant rule deactivated');
   redirect(`/grants/${grantId}/rules?deactivated=1`);
 }
 
@@ -425,6 +500,7 @@ export async function recordDecisionAction(grantId: string, formData: FormData):
     if (e instanceof ValidationError) redirectWithErrors(back, e.fieldErrors, formData);
     throw e;
   }
+  await recalculateAfter(orgId, `review decision recorded (${kind})`);
   // "Draft correcting entry" (JPH-22): an exclusion may draft the D1-B reclass in the same
   // action. The exclusion is already saved; a blocked draft only reports why.
   if (kind === 'exclude' && bool(formData, 'draftEntry')) {
@@ -435,7 +511,9 @@ export async function recordDecisionAction(grantId: string, formData: FormData):
       if (e instanceof DestinationUnsetError) redirect(`${back}?saved=1&blocked=1`);
       if (e instanceof GrantCodingUnsetError) redirect(`${back}?saved=1&blocked=grant`);
       if (e instanceof ValidationError)
-        redirect(`${back}?saved=1&draftError=${encodeURIComponent(Object.values(e.fieldErrors).join('; '))}`);
+        redirect(
+          `${back}?saved=1&draftError=${encodeURIComponent(Object.values(e.fieldErrors).join('; '))}`,
+        );
       throw e;
     }
   }
@@ -463,17 +541,20 @@ export async function confirmReversalPairAction(
     if (e instanceof ValidationError) redirectWithErrors(back, e.fieldErrors, formData);
     throw e;
   }
+  await recalculateAfter(orgId, 'reversal pair confirmed');
   redirect(`${back}?saved=1`);
 }
 
 export async function revertDecisionAction(grantId: string, formData: FormData): Promise<void> {
   const orgId = await getOrgId();
   await revertDecision(orgId, grantId, list(formData, 'lineIds'));
+  await recalculateAfter(orgId, 'review decision reverted');
   redirect(`/grants/${grantId}/review?saved=1`);
 }
 
 export async function clearAtRiskAction(grantId: string, formData: FormData): Promise<void> {
   const orgId = await getOrgId();
   await clearAtRisk(orgId, grantId, list(formData, 'lineIds'));
+  await recalculateAfter(orgId, 'at-risk flag cleared');
   redirect(`/grants/${grantId}/review?saved=1`);
 }

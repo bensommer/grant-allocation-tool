@@ -3,7 +3,11 @@
 import { redirect } from 'next/navigation';
 import { redirectWithErrors, str, strOrNull } from '@/lib/forms';
 import { getOrgId } from '@/lib/org';
-import { saveDefaultDestination, savePacingSettings } from '@/services/settings';
+import {
+  saveDefaultDestination,
+  saveFiscalYearStartMonth,
+  savePacingSettings,
+} from '@/services/settings';
 
 export async function saveSettingsAction(formData: FormData) {
   const under = str(formData, 'underPercent');
@@ -19,6 +23,15 @@ export async function saveSettingsAction(formData: FormData) {
   if (Object.keys(errors).length) redirectWithErrors('/settings', errors, formData);
   await savePacingSettings(await getOrgId(), Number(under), Number(over));
   redirect('/settings?saved=1');
+}
+
+/** Fiscal year start month — the start of every default date range (JPH-25 A1). */
+export async function saveFiscalYearAction(formData: FormData) {
+  const month = Number(str(formData, 'fiscalYearStartMonth'));
+  if (!Number.isInteger(month) || month < 1 || month > 12)
+    redirectWithErrors('/settings', { fiscalYearStartMonth: 'Choose a month.' }, formData);
+  await saveFiscalYearStartMonth(await getOrgId(), month);
+  redirect('/settings?saved=1#fiscal-year');
 }
 
 /** Default destination (class and/or project/customer) for correcting entries (JPH-22). */

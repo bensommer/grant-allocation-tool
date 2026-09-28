@@ -9,7 +9,7 @@ import { createNarrative } from '@/narratives/service';
 import { GET as bvaPdf } from '@/app/grants/[id]/bva/pdf/route';
 import { GET as restrictedPdf } from '@/app/restricted/pdf/route';
 import { GET as reportPdf } from '@/app/reports/export/pdf/route';
-import { GET as narrativePdf } from '@/app/grants/[id]/narratives/[nid]/pdf/route';
+import { GET as narrativePdf } from '@/app/grants/[id]/(setup)/narratives/[nid]/pdf/route';
 import { createTestOrg, resetDatabase } from './helpers';
 
 describe('PDF route exports', () => {

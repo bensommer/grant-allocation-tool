@@ -55,7 +55,7 @@ export default async function CellLinesPage({
       ) : (
         <div className="card">
           {!lines.length ? (
-            <EmptyState title="No expense in this cell" />
+            <EmptyState title="No expense for this program and account" />
           ) : (
             <DataTable caption="Allocated lines">
               <thead>

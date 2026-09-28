@@ -7,6 +7,7 @@ import { redirect } from 'next/navigation';
 import { CSV_FILES, CsvDataSource, type CsvFileName } from '@/datasource/csv/adapter';
 import { FULL_RANGE, runImport } from '@/datasource/import-service';
 import { parseDateInput } from '@/domain/dates';
+import { recalculateAfter } from '@/lib/after-mutation';
 import { getOrgId } from '@/lib/org';
 
 /**
@@ -51,6 +52,8 @@ export async function uploadCsvBundle(formData: FormData): Promise<void> {
     }
     const orgId = await getOrgId();
     const result = await runImport(orgId, new CsvDataSource({ dir }), range, { fullRange });
+    if (result.status === 'succeeded')
+      await recalculateAfter(orgId, 'QuickBooks export imported', 'import');
     redirect(`/import/${result.batchId}`);
   } finally {
     await rm(dir, { recursive: true, force: true });

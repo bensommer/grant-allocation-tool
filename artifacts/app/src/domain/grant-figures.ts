@@ -122,6 +122,26 @@ export interface FiguresGrant extends RevenueMatcher {
   restrictionType: 'purpose' | 'time' | 'unrestricted' | string;
 }
 
+/**
+ * The review queue of one grant in the current run: every waiting transaction line, its total,
+ * and how many of those lines sit in a proposed reversal pair (JPH-27 C5).
+ */
+export interface NeedsReview {
+  count: number;
+  cents: number;
+  /** Waiting lines that are one half of an equal-and-opposite proposal; 0 when unknown. */
+  pairedCount?: number;
+}
+
+/**
+ * Transactions a reviewer still has to decide on: the waiting lines minus the ones a proposed
+ * reversal pair already accounts for (the queue shows a pair as one row with "Confirm pair").
+ * This is the sidebar badge and the grant-header chip (JPH-27 C5).
+ */
+export function toReviewCount(needsReview: NeedsReview): number {
+  return Math.max(0, needsReview.count - (needsReview.pairedCount ?? 0));
+}
+
 export interface FiguresInput {
   mode: TrackingMode;
   grant: FiguresGrant;
@@ -132,7 +152,7 @@ export interface FiguresInput {
   /** Income lines of the org, unfiltered by date. */
   receipts: ReceiptLine[];
   /** Lines waiting in the review queue (membership only; zero for crosswalk). */
-  needsReview: { count: number; cents: number };
+  needsReview: NeedsReview;
   thresholds: { underPercent: number; overPercent: number };
 }
 
@@ -181,6 +201,8 @@ export interface GrantFigures {
   releasedByClass: ByClass;
   needsReviewCents: number;
   needsReviewCount: number;
+  /** Waiting transactions net of proposed reversal pairs — the "N to review" chip and badge. */
+  toReviewCount: number;
   effortCents: number;
   /** Outside the pacing thresholds (restricted grants) or a line over budget. */
   flagged: boolean;
@@ -370,6 +392,7 @@ export function grantFigures(input: FiguresInput): GrantFigures {
     ),
     needsReviewCents: needsReview.cents,
     needsReviewCount: needsReview.count,
+    toReviewCount: toReviewCount(needsReview),
     effortCents,
     flagged:
       (grant.restrictionType !== 'unrestricted' && pace.flag !== 'on pace') ||

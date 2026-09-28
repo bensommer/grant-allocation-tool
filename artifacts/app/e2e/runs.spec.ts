@@ -1,10 +1,14 @@
 import { expect, test } from '@playwright/test';
 
-test('recompute now creates a current run; diff and line audit render', async ({ page }) => {
+test('recalculate now (on /activity) creates a current run; diff and line audit render', async ({
+  page,
+}) => {
+  // JPH-28 D4: the only manual "Recalculate now" lives in the activity log.
+  await page.goto('/activity');
+  await page.getByRole('button', { name: 'Recalculate now' }).click();
+  await page.waitForURL(/\/activity\?done=/);
+  await expect(page.locator('.banner-ok')).toContainText('Calculation finished');
   await page.goto('/runs');
-  await page.getByRole('button', { name: 'Recompute now' }).click();
-  await page.waitForURL(/\/runs\?done=/);
-  await expect(page.locator('.banner-ok')).toContainText('Recompute succeeded');
   const currentRow = page.locator('tbody tr').first();
   await expect(currentRow.locator('.pill', { hasText: 'current' })).toBeVisible();
   await expect(currentRow.locator('.pill', { hasText: 'Succeeded' })).toBeVisible();
@@ -22,7 +26,7 @@ test('recompute now creates a current run; diff and line audit render', async ({
   if (await audit.count()) {
     await audit.click();
     await page.waitForURL(/\/lines\/[a-z0-9]+/);
-    await expect(page.locator('h2').first()).toContainText('Source line');
+    await expect(page.locator('h2').first()).toContainText('Transaction (as imported');
     await expect(page.locator('.pill', { hasText: 'equals source amount' })).toBeVisible();
   }
 });

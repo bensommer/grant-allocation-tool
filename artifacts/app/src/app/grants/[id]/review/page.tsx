@@ -1,26 +1,26 @@
-import { Fragment } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/page-header';
-import { FormBanner } from '@/components/form';
 import { Banner, DateText, KeyFigure, Money, NumTd, StatusPill } from '@/components/ui';
-import { prisma } from '@/lib/db';
+import { TERMS } from '@/copy/terms';
 import { getOrgId } from '@/lib/org';
-import { decodeFormState, pick } from '@/lib/forms';
-import { budgetTree } from '@/services/grant-budget';
-import { grantTracking } from '@/services/grant-figures';
-import { reviewQueue, type ReviewLine } from '@/services/review';
-import {
-  DESTINATION_UNSET_MESSAGE,
-  GRANT_CODING_MISSING_MESSAGE,
-} from '@/services/correcting-entries';
-import {
-  clearAtRiskAction,
-  confirmReversalPairAction,
-  recordDecisionAction,
-  revertDecisionAction,
-} from '../../actions';
+import { decodeFormState } from '@/lib/forms';
+import { grantReviewQueue } from '@/services/review-queue';
+import type { ReviewLine } from '@/services/review';
+import { getDefaultDestination, isDestinationSet } from '@/services/settings';
+import { clearAtRiskAction, revertDecisionAction } from '../../actions';
+import { EditGrantButton } from '@/app/grants/[id]/edit-grant-button';
 import { GrantTabs } from '../tabs';
+import { QueueTable } from '@/app/review/queue-table';
+import {
+  QueueBanners,
+  QueueFilterBar,
+  QueueHeadline,
+  hasFilters,
+  queueFilters,
+  type QueueSearchParams,
+} from '@/app/review/queue-chrome';
+import { confirmPairAction } from '@/app/grants/review-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,87 +43,63 @@ function LineCells({ l }: { l: ReviewLine }) {
   );
 }
 
-const HEADERS = ['Date', 'Doc', 'Account', 'Payee', 'Class', 'Description', 'Amount ($)'];
+const HEADERS = ['Date', 'Doc', 'Account', 'Name', 'Class', 'Description', 'Amount ($)'];
+
+function plural(n: number, one: string, many: string) {
+  return `${n} ${n === 1 ? one : many}`;
+}
 
 export default async function ReviewPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{
-    f?: string;
-    saved?: string;
-    show?: string;
-    drafted?: string;
-    blocked?: string;
-    draftError?: string;
-  }>;
+  searchParams: Promise<QueueSearchParams & { show?: string }>;
 }) {
   const { id } = await params;
-  const { f, saved, show, drafted, blocked, draftError } = await searchParams;
+  const sp = await searchParams;
   const orgId = await getOrgId();
-  const grant = await prisma.grant.findFirst({ where: { id, orgId } });
-  if (!grant) notFound();
-  const [queue, tree, tracking] = await Promise.all([
-    reviewQueue(orgId, id),
-    budgetTree(orgId, id),
-    grantTracking(orgId, id),
+  const filters = queueFilters(sp);
+  const [grant, destination] = await Promise.all([
+    grantReviewQueue(orgId, id, filters),
+    getDefaultDestination(orgId),
   ]);
-  // A crosswalk-tracked grant has no member lines; the notice above the page says so.
-  const crosswalk = tracking?.mode === 'crosswalk';
-  const state = decodeFormState(f);
-  const targets = tree.all.filter((l) => l.kind !== 'funder_category');
-  const activityName = new Map(tree.activities.map((a) => [a.id, a.name]));
-  const targetLabel = (l: (typeof targets)[number]) =>
-    l.kind === 'cell'
-      ? `${l.code} — ${activityName.get(l.activityId ?? '') ?? '?'} / ${l.categoryKey}`
-      : `${l.code} — ${l.name}`;
+  if (!grant) notFound();
+  const { queue } = grant;
+  // A crosswalk-tracked grant has no transactions of its own; the tabs strip explains that.
+  const crosswalk = grant.tracking?.mode === 'crosswalk';
+  const state = decodeFormState(sp.f);
+  const returnTo = `/grants/${id}/review`;
   const atRiskLines = [
     ...queue.assigned,
     ...queue.excluded,
     ...queue.groups.flatMap((g) => g.lines),
   ].filter((l) => l.atRisk);
-  const showAll = show === 'all';
+  const showAll = sp.show === 'all';
+  const pairLines = grant.pairCount;
+  const filtered = hasFilters(filters);
 
   return (
     <>
       <PageHeader
-        title={`${grant.name} · review queue`}
-        subtitle="Member lines the rules could not settle, grouped by reason. Tick lines and record a decision; decisions are kept by import fingerprint and survive re-imports."
+        title={`${grant.grantName} · review`}
+        subtitle={`One row per ${TERMS.transaction} the rules could not settle, with a suggested target and why. Accept it, change it, or mark the ${TERMS.transaction} not grant-funded; ${TERMS.decisionsSurvive}.`}
+        secondaryActions={<EditGrantButton id={id} />}
       />
       <GrantTabs id={id} active="review" />
-      <FormBanner state={state} saved={!!saved} />
-      {drafted ? (
-        <div data-testid="draft-created">
-          <Banner tone="ok">
-            Correcting entry <code>{drafted}</code> drafted —{' '}
-            <Link href={`/grants/${id}/entries`}>open entries</Link>.
-          </Banner>
-        </div>
-      ) : null}
-      {blocked || draftError ? (
-        <div data-testid="draft-blocked">
-          <Banner tone="warn">
-            Exclusion saved, but no correcting entry was drafted:{' '}
-            {blocked === 'grant'
-              ? GRANT_CODING_MISSING_MESSAGE
-              : blocked
-                ? DESTINATION_UNSET_MESSAGE
-                : draftError}{' '}
-            {blocked === 'grant' ? (
-              <Link href={`/grants/${id}/edit`}>Edit grant</Link>
-            ) : blocked ? (
-              <Link href="/settings#destination">Open settings</Link>
-            ) : null}
-          </Banner>
-        </div>
-      ) : null}
+      <QueueBanners
+        sp={sp}
+        state={state}
+        entriesHref={`/grants/${id}/entries`}
+        editGrantHref={`/grants/${id}/edit`}
+      />
       {queue.runId === null ? (
         <Banner tone="info">No compute run yet — run a recompute to populate the queue.</Banner>
       ) : null}
       {queue.stale ? (
         <Banner tone="warn">
-          Configuration changed since the current run; recompute to refresh these states.
+          Configuration or decisions changed since the current run; recompute to refresh the
+          figures.
         </Banner>
       ) : null}
 
@@ -131,35 +107,68 @@ export default async function ReviewPage({
         <KeyFigure
           label="Needs review"
           value={<Money cents={queue.totals.needsReviewCents} dollar />}
-          hint={<span data-testid="needs-review-count">{queue.counts.needsReview} lines</span>}
+          hint={
+            <span data-testid="needs-review-count">
+              {plural(queue.counts.needsReview, TERMS.transaction, TERMS.transactionsLower)}
+              {pairLines > 0 ? ` · ${plural(pairLines, 'pair', 'pairs')} to confirm` : ''}
+            </span>
+          }
           tone={queue.counts.needsReview > 0 ? 'warn' : 'ok'}
         />
         <KeyFigure
           label="Assigned"
           value={<Money cents={queue.totals.assignedCents} dollar />}
-          hint={`${queue.counts.assigned} lines`}
+          hint={plural(queue.counts.assigned, TERMS.transaction, TERMS.transactionsLower)}
         />
         <KeyFigure
           label="Excluded"
           value={<Money cents={queue.totals.excludedCents} dollar />}
-          hint={`${queue.counts.excluded} lines`}
+          hint={plural(queue.counts.excluded, TERMS.transaction, TERMS.transactionsLower)}
         />
         <KeyFigure
-          label="Members"
+          label="Transactions on this grant"
           value={<Money cents={queue.totals.memberCents} dollar />}
           hint={`${queue.counts.atRisk} flagged at risk`}
           tone={queue.counts.atRisk > 0 ? 'warn' : 'muted'}
         />
       </div>
 
-      {queue.proposals.length > 0 ? (
-        <div className="card mb-4" data-testid="proposals">
-          <h2>Proposed reversal pairs</h2>
-          <p className="muted text-sm">
-            Same account, equal and opposite amounts. Confirming records a reversal-pair decision
-            that excludes both lines with reason “reversal pair”.
-          </p>
-          <div className="max-w-full overflow-x-auto">
+      {crosswalk ? null : (
+        <div className="card mb-4" data-testid="queue-card">
+          <QueueHeadline count={grant.count} totalCents={grant.totalCents} />
+          <QueueFilterBar action={returnTo} filters={filters} grants={[grant]} />
+          <QueueTable
+            grants={[grant]}
+            showGrant={false}
+            returnTo={returnTo}
+            destinationSet={isDestinationSet(destination)}
+            state={state}
+            empty={
+              filtered ? (
+                <p className="muted text-sm" data-testid="queue-filtered-empty">
+                  No {TERMS.transactionsLower} match these filters —{' '}
+                  <Link href={returnTo}>clear them</Link>.
+                </p>
+              ) : (
+                <p className="muted text-sm" data-testid="queue-empty">
+                  Nothing waiting — every {TERMS.transaction} is assigned or excluded.
+                </p>
+              )
+            }
+          />
+        </div>
+      )}
+
+      {grant.settledPairs.length > 0 ? (
+        <details className="card mb-4" data-testid="settled-pairs">
+          <summary className="cursor-pointer">
+            <strong>{plural(grant.settledPairs.length, 'reversal pair', 'reversal pairs')}</strong>{' '}
+            <span className="muted text-sm">
+              between {TERMS.transactionsLower} that are already settled — confirming records them
+              as a pair instead
+            </span>
+          </summary>
+          <div className="mt-3 max-w-full overflow-x-auto">
             <table>
               <thead>
                 <tr>
@@ -175,210 +184,72 @@ export default async function ReviewPage({
                 </tr>
               </thead>
               <tbody>
-                {queue.proposals.map((p) => (
-                  <Fragment key={p.positive.id}>
-                    <tr data-pair={p.amountCents}>
-                      <LineCells l={p.positive} />
-                      <td>
-                        {p.positive.state}
-                        {p.positive.budgetLineCode ? ` → ${p.positive.budgetLineCode}` : ''}
-                      </td>
-                      <td rowSpan={2} className="align-middle">
-                        <form action={confirmReversalPairAction.bind(null, id)}>
-                          <input type="hidden" name="positiveId" value={p.positive.id} />
-                          <input type="hidden" name="negativeId" value={p.negative.id} />
-                          <input
-                            type="hidden"
-                            name="note"
-                            value={`Reversal pair ±${(p.amountCents / 100).toFixed(2)} confirmed`}
-                          />
-                          <button type="submit" className="btn btn-sm">
-                            Confirm pair
-                          </button>
-                        </form>
-                      </td>
-                    </tr>
-                    <tr className="border-b-2 border-line">
-                      <LineCells l={p.negative} />
-                      <td>
+                {grant.settledPairs.map((p) => (
+                  <tr key={p.positive.id} data-pair={p.amountCents} data-settled-pair>
+                    <LineCells l={p.positive} />
+                    <td>
+                      {p.positive.state}
+                      {p.positive.budgetLineCode ? ` → ${p.positive.budgetLineCode}` : ''}
+                      <span className="block">
                         {p.negative.state}
                         {p.negative.budgetLineCode ? ` → ${p.negative.budgetLineCode}` : ''}
-                      </td>
-                    </tr>
-                  </Fragment>
+                      </span>
+                    </td>
+                    <td>
+                      <form action={confirmPairAction}>
+                        <input type="hidden" name="grantId" value={id} />
+                        <input type="hidden" name="positiveId" value={p.positive.id} />
+                        <input type="hidden" name="negativeId" value={p.negative.id} />
+                        <input type="hidden" name="returnTo" value={returnTo} />
+                        <input
+                          type="hidden"
+                          name="note"
+                          value={`Reversal pair ±${(p.amountCents / 100).toFixed(2)} confirmed`}
+                        />
+                        <button type="submit" className="btn btn-secondary btn-sm">
+                          Confirm pair
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
+        </details>
       ) : null}
-
-      <form action={recordDecisionAction.bind(null, id)} className="card mb-4" id="decision-form">
-        <h2>Needs review</h2>
-        {queue.groups.length === 0 && !crosswalk ? (
-          <p className="muted text-sm" data-testid="queue-empty">
-            Nothing waiting — every member line is assigned or excluded.
-          </p>
-        ) : null}
-        {queue.groups.map((g) => (
-          <section
-            key={g.reason}
-            className="mb-4"
-            data-testid="review-group"
-            data-reason={g.reason}
-          >
-            <h3 className="flex items-center gap-2">
-              <span>{g.reason}</span>
-              <StatusPill tone="warn">
-                <span data-testid="group-count">{g.lines.length}</span> lines ·{' '}
-                <Money cents={g.totalCents} />
-              </StatusPill>
-            </h3>
-            <div className="max-w-full overflow-x-auto">
-              <table>
-                <thead>
-                  <tr>
-                    <th className="relative">
-                      <span className="sr-only">Select</span>
-                    </th>
-                    {HEADERS.map((h) => (
-                      <th key={h} className={h.endsWith('($)') ? 'num' : ''}>
-                        {h}
-                      </th>
-                    ))}
-                    <th>Flags</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {g.lines.map((l) => (
-                    <tr key={l.id} data-line-id={l.id}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          name="lineIds"
-                          value={l.id}
-                          aria-label={`Select ${l.description ?? l.id}`}
-                        />
-                      </td>
-                      <LineCells l={l} />
-                      <td>
-                        {l.atRisk ? <StatusPill tone="bad">at risk</StatusPill> : null}
-                        {l.activityName ? (
-                          <span className="muted text-xs">activity {l.activityName}</span>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <th colSpan={7}>{g.reason} total</th>
-                    <th className="num" data-cents={g.totalCents}>
-                      <Money cents={g.totalCents} />
-                    </th>
-                    <th className="relative">
-                      <span className="sr-only">—</span>
-                    </th>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </section>
-        ))}
-        {state?.errors['lineIds'] ? <p className="field-error">{state.errors['lineIds']}</p> : null}
-
-        <h3>Decision for the selected lines</h3>
-        <div className="grid-form">
-          <div>
-            <label htmlFor="kind">Decision</label>
-            <select id="kind" name="kind" defaultValue={pick(state, 'kind', 'assign')} required>
-              <option value="assign">Assign to a working line or cell</option>
-              <option value="exclude">Exclude as not allowable</option>
-              <option value="at_risk">Flag at risk</option>
-            </select>
-            {state?.errors['kind'] ? <p className="field-error">{state.errors['kind']}</p> : null}
-          </div>
-          <div>
-            <label htmlFor="targetBudgetLineId">Target (assign)</label>
-            <select
-              id="targetBudgetLineId"
-              name="targetBudgetLineId"
-              defaultValue={pick(state, 'targetBudgetLineId', '')}
-            >
-              <option value="">— select —</option>
-              {targets.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {targetLabel(t)}
-                </option>
-              ))}
-            </select>
-            {state?.errors['targetBudgetLineId'] ? (
-              <p className="field-error">{state.errors['targetBudgetLineId']}</p>
-            ) : null}
-          </div>
-          <div>
-            <label htmlFor="reason">Reason (required to exclude)</label>
-            <input
-              id="reason"
-              name="reason"
-              placeholder="not allowable"
-              defaultValue={pick(state, 'reason', '')}
-            />
-            {state?.errors['reason'] ? (
-              <p className="field-error">{state.errors['reason']}</p>
-            ) : null}
-            <label className="mt-2 flex items-center gap-2 text-sm font-normal">
-              <input
-                type="checkbox"
-                name="draftEntry"
-                defaultChecked={state ? pick(state, 'draftEntry', '') === 'on' : true}
-              />
-              Draft correcting entry (when excluding)
-            </label>
-          </div>
-          <div className="md:col-span-2">
-            <label htmlFor="note">Note (required)</label>
-            <input id="note" name="note" defaultValue={pick(state, 'note', '')} />
-            {state?.errors['note'] ? <p className="field-error">{state.errors['note']}</p> : null}
-            {state?.errors['_'] ? <p className="field-error">{state.errors['_']}</p> : null}
-          </div>
-          <div>
-            <button type="submit" className="btn">
-              Record decision
-            </button>
-          </div>
-        </div>
-      </form>
 
       {atRiskLines.length > 0 ? (
         <form action={clearAtRiskAction.bind(null, id)} className="card mb-4" data-testid="at-risk">
           <h2>Flagged at risk</h2>
-          <table>
-            <thead>
-              <tr>
-                <th className="relative">
-                  <span className="sr-only">Select</span>
-                </th>
-                {HEADERS.map((h) => (
-                  <th key={h} className={h.endsWith('($)') ? 'num' : ''}>
-                    {h}
+          <div className="max-w-full overflow-x-auto">
+            <table>
+              <thead>
+                <tr>
+                  <th className="relative">
+                    <span className="sr-only">Select</span>
                   </th>
-                ))}
-                <th>State</th>
-              </tr>
-            </thead>
-            <tbody>
-              {atRiskLines.map((l) => (
-                <tr key={l.id}>
-                  <td>
-                    <input type="checkbox" name="lineIds" value={l.id} aria-label="Select" />
-                  </td>
-                  <LineCells l={l} />
-                  <td>{l.state}</td>
+                  {HEADERS.map((h) => (
+                    <th key={h} className={h.endsWith('($)') ? 'num' : ''}>
+                      {h}
+                    </th>
+                  ))}
+                  <th>State</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {atRiskLines.map((l) => (
+                  <tr key={l.id} data-at-risk-line={l.id}>
+                    <td>
+                      <input type="checkbox" name="lineIds" value={l.id} aria-label="Select" />
+                    </td>
+                    <LineCells l={l} />
+                    <td>{l.state.replace('_', ' ')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <button type="submit" className="btn btn-secondary btn-sm mt-2">
             Clear at-risk flag
           </button>
@@ -409,7 +280,7 @@ export default async function ReviewPage({
                 </thead>
                 <tbody>
                   {queue.decisions.map((d) => (
-                    <tr key={d.id} data-decision-kind={d.kind}>
+                    <tr key={d.id} data-decision-kind={d.kind} data-decision-group={d.groupId}>
                       <td>
                         {d.lineId && !d.supersededAt && d.kind !== 'at_risk' ? (
                           <input
@@ -423,7 +294,7 @@ export default async function ReviewPage({
                       <td>
                         <DateText date={d.createdAt} time />
                       </td>
-                      <td>{d.kind}</td>
+                      <td>{d.kind.replace('_', ' ')}</td>
                       <td>{d.targetCode ?? '—'}</td>
                       <td>{d.reason ?? '—'}</td>
                       <td>{d.note}</td>
@@ -449,7 +320,7 @@ export default async function ReviewPage({
 
       <div className="card" data-testid="settled">
         <h2>
-          Settled lines{' '}
+          Settled {TERMS.transactionsLower}{' '}
           <span className="muted text-sm font-normal">
             ({queue.counts.assigned} assigned · {queue.counts.excluded} excluded)
           </span>
@@ -476,6 +347,7 @@ export default async function ReviewPage({
                       {l.state}
                       {l.budgetLineCode ? ` → ${l.budgetLineCode}` : ''}
                       {l.reason ? ` (${l.reason})` : ''}
+                      {l.pending ? ' · pending recompute' : ''}
                     </td>
                     <td className="muted text-xs">
                       {l.decisionId ? 'decision' : l.ruleName ? `rule: ${l.ruleName}` : '—'}
@@ -487,7 +359,7 @@ export default async function ReviewPage({
           </div>
         ) : (
           <a href={`/grants/${id}/review?show=all`} className="btn btn-secondary btn-sm">
-            Show settled lines
+            Show settled {TERMS.transactionsLower}
           </a>
         )}
       </div>

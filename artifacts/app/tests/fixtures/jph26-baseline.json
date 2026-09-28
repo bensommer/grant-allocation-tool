@@ -1,0 +1,79 @@
+{
+  "demo": {
+    "sentences": {
+      "Culinary Workforce Grant|line|CONT|||G-MWSC/CONT|10": "Program is Culinary Training AND account is Instructor Contract Services",
+      "Culinary Workforce Grant|line|OCC|||G-MWSC/OCC|10": "Program is Culinary Training AND account is Rent or Utilities",
+      "Culinary Workforce Grant|line|PERS|||G-MWSC/PERS|10": "Program is Culinary Training AND account is Salaries & Wages or Payroll Taxes",
+      "Culinary Workforce Grant|line|SUPP|||G-MWSC/SUPP|10": "Program is Culinary Training AND account is Food & Kitchen Supplies",
+      "Youth Meals Grant|line|MEALS|||G-HCF/MEALS|10": "Program is Youth Meals AND account is Food & Kitchen Supplies",
+      "Youth Meals Grant|line|STAFF|||G-HCF/STAFF|10": "Program is Youth Meals AND account is Salaries & Wages or Payroll Taxes"
+    },
+    "allocated": {
+      "(no budget line)": 13098450,
+      "(rows)": 65,
+      "Culinary Workforce Grant|CONT": 150000,
+      "Culinary Workforce Grant|OCC": 540001,
+      "Culinary Workforce Grant|PERS": 2648190,
+      "Culinary Workforce Grant|SUPP": 637100,
+      "Youth Meals Grant|MEALS": 329600,
+      "Youth Meals Grant|STAFF": 1808520
+    }
+  },
+  "pilot": {
+    "sentences": {
+      "Opioid Prevention — Town of Bayport|activity||Conference||Activity: Conference|20": "Description contains \"Breaking the Cycle\" or \"conference\"",
+      "Opioid Prevention — Town of Bayport|activity||Daytime Mother's||Activity: Daytime Mother's|10": "Description contains \"Carroll's Light\" or \"Carrolls Light\"",
+      "Opioid Prevention — Town of Bayport|activity||Mother's Exhaustion (virtual)||Activity: Mother's Exhaustion|40": "Description contains \"Centered in Recovery\" or \"Zoom\"",
+      "Opioid Prevention — Town of Bayport|activity||Mother's Exhaustion (virtual)||Activity: Zoom (payee) → Mother's Exhaustion|41": "Party is Zoom",
+      "Opioid Prevention — Town of Bayport|activity||Sober Socials||Activity: Sober Socials|50": "Description contains \"Friendsgiving\" or \"Game night\" or \"sober social\"",
+      "Opioid Prevention — Town of Bayport|activity||Teen Monthly||Activity: Teen Monthly|30": "Description contains \"Fun Friday\" or \"teen\"",
+      "Opioid Prevention — Town of Bayport|activity||Teen Monthly||Activity: Youth Programs class → Teen Monthly|90": "Class is Youth Programs",
+      "Opioid Prevention — Town of Bayport|category|||food|Category: food|20": "Account is Food and Refreshments - Programs",
+      "Opioid Prevention — Town of Bayport|category|||practitioners|Category: service providers → practitioners|10": "Account is Service Providers - Programs",
+      "Opioid Prevention — Town of Bayport|category|||program_support|Category: Leah / Cole payroll → program support|40": "Account is Salaries or Payroll Tax Expense or Camp - Payroll Taxes or Camp - Salaries & wages AND description contains \"Leah\" or \"Cole\"",
+      "Opioid Prevention — Town of Bayport|category|||supplies|Category: supplies & software|30": "Account is Program Supplies or Software & apps",
+      "Opioid Prevention — Town of Bayport|line|OVERHEAD|||Overhead JE → de minimis overhead|10": "Account is Overhead Expense",
+      "Salah Foundation — Trauma Programs|line|CULSTAFF|||Culinary trainers (Celeste Norwood, Luna Abruzzi)|70": "Account is Service Providers - Programs AND party is Luna Abruzzi or Celeste Norwood AND description contains \"culinary trainer\"",
+      "Salah Foundation — Trauma Programs|line|DANA|||Dana Fairley (payee)|60": "Account is Service Providers - Programs AND party is Dana Fairley",
+      "Salah Foundation — Trauma Programs|line|FOOD|||Food & refreshments|40": "Account is Food and Refreshments - Programs",
+      "Salah Foundation — Trauma Programs|line|KIRA|||Kira payroll|10": "Account is Salaries AND description contains \"Kira\"",
+      "Salah Foundation — Trauma Programs|line|LEAH|||Leah payroll from September|20": "Account is Salaries AND description contains \"Leah\" AND date is on or after Sep 1, 2026",
+      "Salah Foundation — Trauma Programs|line|PRACT|||Practitioners (service providers)|80": "Account is Service Providers - Programs",
+      "Salah Foundation — Trauma Programs|line|SUPP|||Program supplies|50": "Account is Program Supplies",
+      "Salah Foundation — Trauma Programs|line|TRAIN|||Training costs|30": "Account is Training Costs"
+    },
+    "grantLines": {
+      "(rows)": 298,
+      "Opioid Prevention — Town of Bayport|(none)|excluded": 551956,
+      "Opioid Prevention — Town of Bayport|(none)|needs_review": 0,
+      "Opioid Prevention — Town of Bayport|A1.COORDINATOR|assigned": 223193,
+      "Opioid Prevention — Town of Bayport|A1.FOOD|assigned": 19824,
+      "Opioid Prevention — Town of Bayport|A1.PRACTITIONERS|assigned": 300000,
+      "Opioid Prevention — Town of Bayport|A2.COORDINATOR|assigned": 89277,
+      "Opioid Prevention — Town of Bayport|A2.FOOD|assigned": 16796,
+      "Opioid Prevention — Town of Bayport|A2.PRACTITIONERS|assigned": 100000,
+      "Opioid Prevention — Town of Bayport|A3.COORDINATOR|assigned": 133916,
+      "Opioid Prevention — Town of Bayport|A3.FOOD|assigned": 103998,
+      "Opioid Prevention — Town of Bayport|A3.PRACTITIONERS|assigned": 10000,
+      "Opioid Prevention — Town of Bayport|A3.PROGRAM_SUPPORT|assigned": 49609,
+      "Opioid Prevention — Town of Bayport|A3.SUPPLIES|assigned": 4872,
+      "Opioid Prevention — Town of Bayport|A4.COORDINATOR|assigned": 46579,
+      "Opioid Prevention — Town of Bayport|A4.PRACTITIONERS|assigned": 60000,
+      "Opioid Prevention — Town of Bayport|A4.SUPPLIES|assigned": 15289,
+      "Opioid Prevention — Town of Bayport|A5.COORDINATOR|assigned": 44638,
+      "Opioid Prevention — Town of Bayport|A5.FOOD|assigned": 51875,
+      "Opioid Prevention — Town of Bayport|A5.PRACTITIONERS|assigned": 40000,
+      "Opioid Prevention — Town of Bayport|A5.PROGRAM_SUPPORT|assigned": 18744,
+      "Opioid Prevention — Town of Bayport|OVERHEAD|assigned": 300000,
+      "Salah Foundation — Trauma Programs|(none)|needs_review": 118841,
+      "Salah Foundation — Trauma Programs|CULSTAFF|assigned": 16000,
+      "Salah Foundation — Trauma Programs|DANA|assigned": 27500,
+      "Salah Foundation — Trauma Programs|FOOD|assigned": 92962,
+      "Salah Foundation — Trauma Programs|KIRA|assigned": 519264,
+      "Salah Foundation — Trauma Programs|LEAH|assigned": 90706,
+      "Salah Foundation — Trauma Programs|PRACT|assigned": 710000,
+      "Salah Foundation — Trauma Programs|SUPP|assigned": 549310,
+      "Salah Foundation — Trauma Programs|TRAIN|assigned": 146298
+    }
+  }
+}

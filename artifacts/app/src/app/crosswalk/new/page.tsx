@@ -1,51 +1,33 @@
 import { PageHeader } from '@/components/ui';
-import { decodeFormState, pick } from '@/lib/forms';
+import { crosswalkBuilderOptions } from '@/components/rule-builder/options';
+import { prefillValues, type PrefillParams } from '@/components/rule-builder/prefill';
+import { RuleBuilderPage } from '@/components/rule-builder/server';
+import { decodeFormState } from '@/lib/forms';
 import { getOrgId } from '@/lib/org';
-import { dateRange } from '../range';
-import { previewRule } from '@/engine/preview';
-import { parseMatchers } from '@/domain/matchers';
 import { createCrosswalkAction } from '../actions';
-import { crosswalkOptions } from '../options';
-import { RuleForm } from '../rule-form';
-import { previewInputMatchers } from '../preview-values';
 
 export const dynamic = 'force-dynamic';
 
 export default async function NewCrosswalkPage({
   searchParams,
 }: {
-  searchParams: Promise<{ f?: string; preview?: string }>;
+  searchParams: Promise<{ f?: string; preview?: string } & PrefillParams>;
 }) {
-  const { f, preview: showPreview } = await searchParams;
-  const state = decodeFormState(f);
+  const { f, preview, ...prefillParams } = await searchParams;
   const orgId = await getOrgId();
-  const options = await crosswalkOptions(orgId);
-  const range = dateRange(
-    state ? pick(state, 'previewFrom', '') : undefined,
-    state ? pick(state, 'previewTo', '') : undefined,
-  );
-  const preview =
-    showPreview && state && range.first && range.last
-      ? await previewRule(
-          orgId,
-          {
-            kind: 'crosswalk',
-            matchers: parseMatchers(previewInputMatchers(state)),
-            grantBudgetLineId: pick(state, 'grantBudgetLineId', '') || null,
-            priority: Number(pick(state, 'priority', '100')) || 0,
-          },
-          { from: range.first, to: range.last },
-        )
-      : undefined;
+  const options = await crosswalkBuilderOptions(orgId);
   return (
     <>
       <PageHeader title="New crosswalk rule" />
-      <RuleForm
-        action={createCrosswalkAction}
-        state={state}
+      <RuleBuilderPage
+        kind="crosswalk"
+        orgId={orgId}
         rule={null}
+        state={decodeFormState(f)}
+        showPreview={!!preview}
+        prefill={prefillValues('crosswalk', options, prefillParams)}
         options={options}
-        preview={preview}
+        action={createCrosswalkAction}
       />
     </>
   );

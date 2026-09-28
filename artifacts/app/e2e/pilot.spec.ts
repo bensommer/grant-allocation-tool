@@ -97,7 +97,10 @@ test.afterAll(async () => {
 
 async function recomputeFromHeader(page: Page) {
   const before = await prisma.computeRun.findFirstOrThrow({ where: { orgId, isCurrent: true } });
-  await page.locator('header.app-header').getByRole('button', { name: 'Recompute' }).click();
+  // JPH-28: the header has no button any more; the only manual "Recalculate now" is on /activity.
+  const returnTo = new URL(page.url()).pathname + new URL(page.url()).search;
+  await page.goto('/activity');
+  await page.getByTestId('recalculate-now').click();
   await expect
     .poll(
       async () =>
@@ -105,6 +108,8 @@ async function recomputeFromHeader(page: Page) {
       { timeout: 60_000 },
     )
     .not.toBe(before.id);
+  await page.waitForURL(/\/activity\?done=/);
+  await page.goto(returnTo);
 }
 
 test('Salah budget page renders Appendix 3 spend, the 0.61 warning, the funder view and the 1,400 revision', async ({
@@ -154,29 +159,40 @@ test('Opioid budget page renders the Appendix 2 grid and Program Support cells',
   }
 });
 
-test('Salah review queue shows 9 lines netting 1,188.41; confirming the ±113.96 pair leaves 7 "no rule match" lines', async ({
+test('Salah review queue shows 9 transactions netting 1,188.41 in 8 rows; confirming the ±113.96 pair leaves 7 Leah rows', async ({
   page,
 }) => {
   await page.goto(`/grants/${salahId}/review`);
-  await expect(page.getByTestId('needs-review-count')).toHaveText('9 lines');
+  await expect(page.getByTestId('needs-review-count')).toHaveText(
+    '9 transactions · 1 pair to confirm',
+  );
   await expect(page.getByTestId('review-counts').locator('[data-cents="118841"]')).toHaveCount(1);
-  const proposals = page.getByTestId('proposals');
-  await expect(proposals.locator('tr[data-pair="11396"]')).toHaveCount(1);
-  await expect(proposals.locator('tr[data-pair="10000"]')).toHaveCount(1);
+  // JPH-27: one row per transaction; the pending pair is one two-line row, the settled ±100.00
+  // pair sits under "settled pairs" and is not counted.
+  await expect(page.getByTestId('queue-count')).toHaveText('8');
+  await expect(page.getByTestId('queue-total')).toHaveAttribute('data-cents', '118841');
+  const queue = page.getByTestId('queue-table');
+  await expect(queue.locator('tr[data-pair="11396"]')).toHaveCount(1);
+  await expect(queue.locator('tr[data-pair="10000"]')).toHaveCount(0);
+  await expect(page.getByTestId('settled-pairs').locator('tr[data-pair="10000"]')).toHaveCount(1);
 
-  await proposals
+  await queue
     .locator('tr[data-pair="11396"]')
     .getByRole('button', { name: 'Confirm pair' })
     .click();
   await page.waitForURL(/\/review\?saved=1/);
   await recomputeFromHeader(page);
   await page.goto(`/grants/${salahId}/review`);
-  await expect(page.getByTestId('needs-review-count')).toHaveText('7 lines');
+  await expect(page.getByTestId('needs-review-count')).toHaveText('7 transactions');
   await expect(page.getByTestId('review-counts').locator('[data-cents="118841"]')).toHaveCount(1);
-  await expect(page.getByTestId('review-group')).toHaveCount(1);
-  await expect(page.getByTestId('review-group')).toContainText('no rule match');
-  await expect(page.getByTestId('review-group').locator('th[data-cents="118841"]')).toHaveCount(1);
-  await expect(proposals.locator('tr[data-pair="11396"]')).toHaveCount(0);
+  await expect(page.getByTestId('queue-count')).toHaveText('7');
+  const groups = page.locator('tr[data-group-header]');
+  await expect(groups).toHaveCount(1);
+  await expect(groups).toContainText('Select all suggested → Leah (Sept+) (7)');
+  await expect(groups.locator('[data-cents="118841"]')).toHaveCount(1);
+  await expect(page.locator('tr[data-line-id]')).toHaveCount(7);
+  await expect(page.getByTestId('queue-filters').locator('option', { hasText: 'no rule match' })).toHaveCount(1);
+  await expect(page.locator('tr[data-pair="11396"]')).toHaveCount(0);
   await page.goto(`/grants/${salahId}/review?show=all`);
   await expect(
     page.getByTestId('settled').locator('tr[data-state="excluded"]', { hasText: 'reversal pair' }),
@@ -194,6 +210,82 @@ test('grant rules list and the edit form with preview render for a seeded rule',
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await page.waitForURL(/preview=1/);
   await expect(page.getByTestId('rule-preview')).toBeVisible();
+});
+
+test('JPH-26 AC6b: /grants/<salah>/rules/new?partyId=<dana>&accountId=<serviceProviders>&targetBudgetLineId=<danaFairley> renders target and both conditions set', async ({
+  page,
+}) => {
+  const [dana, serviceProviders, line] = await Promise.all([
+    prisma.party.findFirstOrThrow({ where: { orgId, displayName: 'Dana Fairley' } }),
+    prisma.account.findFirstOrThrow({ where: { orgId, name: 'Service Providers - Programs' } }),
+    prisma.grantBudgetLine.findFirstOrThrow({ where: { grantId: salahId, code: 'DANA' } }),
+  ]);
+  await page.goto(
+    `/grants/${salahId}/rules/new?partyId=${dana.id}&accountId=${serviceProviders.id}&targetBudgetLineId=${line.id}`,
+  );
+  await expect(page.getByRole('radio', { name: 'Working line' })).toBeChecked();
+  await expect(page.locator('select[name="grantBudgetLineId"]')).toHaveValue(line.id);
+  await expect(
+    page.locator(`input[name="accountIds"][value="${serviceProviders.id}"]`),
+  ).toBeChecked();
+  await expect(page.locator(`input[name="partyIds"][value="${dana.id}"]`)).toBeChecked();
+  await expect(page.locator('input[type="checkbox"][name$="Ids"]:checked')).toHaveCount(2);
+  await expect(page.getByTestId('rule-sentence')).toHaveText(
+    `${SALAH_NAME} transactions where account is Service Providers - Programs AND name is Dana Fairley → Dana Fairley`,
+  );
+  // Golden number: the ticket says 1 transaction · 27,500; the pilot export holds two Dana
+  // Fairley checks (125.00 + 150.00) under Service Providers – Programs — see QUESTIONS.md.
+  await expect(page.getByTestId('preview-summary').locator('[data-cents]')).toHaveAttribute(
+    'data-cents',
+    '27500',
+  );
+  await expect(page.getByTestId('preview-count')).toHaveText('2');
+  await expect(page.getByTestId('preview-summary')).toContainText(
+    'Matches 2 transactions · $275.00 in ',
+  );
+});
+
+test('JPH-26 AC3: with JS, on Salah, adding Account = Service Providers then Name = Dana Fairley updates the sentence and the preview to $275.00', async ({
+  browser,
+}) => {
+  // The pilot project runs without JS; this case needs the island, so it opens its own context.
+  const ctx = await browser.newContext({ javaScriptEnabled: true });
+  const page = await ctx.newPage();
+  try {
+    const [dana, serviceProviders, line] = await Promise.all([
+      prisma.party.findFirstOrThrow({ where: { orgId, displayName: 'Dana Fairley' } }),
+      prisma.account.findFirstOrThrow({ where: { orgId, name: 'Service Providers - Programs' } }),
+      prisma.grantBudgetLine.findFirstOrThrow({ where: { grantId: salahId, code: 'DANA' } }),
+    ]);
+    await page.goto(`/grants/${salahId}/rules/new`);
+    await expect(page.getByTestId('grant-rule-form')).toHaveAttribute('data-hydrated', 'true');
+    await expect(page.getByTestId('rule-sentence')).toHaveText(
+      `${SALAH_NAME} transactions → (choose a target)`,
+    );
+    await page.locator('select[name="grantBudgetLineId"]').selectOption(line.id);
+    await page.locator(`input[name="accountIds"][value="${serviceProviders.id}"]`).check();
+    await expect(page.getByTestId('rule-sentence')).toHaveText(
+      `${SALAH_NAME} transactions where account is Service Providers - Programs → Dana Fairley`,
+    );
+    await page.locator(`input[name="partyIds"][value="${dana.id}"]`).check();
+    await expect(page.getByTestId('rule-sentence')).toHaveText(
+      `${SALAH_NAME} transactions where account is Service Providers - Programs AND name is Dana Fairley → Dana Fairley`,
+    );
+    await expect(page.getByTestId('chip')).toHaveCount(2);
+    // Live preview (300 ms debounce, POST /api/rules/preview) — golden total 27,500 cents.
+    await expect(page.getByTestId('preview-summary').locator('[data-cents]')).toHaveAttribute(
+      'data-cents',
+      '27500',
+    );
+    await expect(page.getByTestId('preview-count')).toHaveText('2');
+    await expect(page.getByTestId('rule-match-count')).toHaveText('2 transactions');
+    await expect(page.getByTestId('rule-preview').locator('tbody tr')).toHaveCount(2);
+    await expect(page.locator('input[name="name"]')).toHaveValue(
+      /^Salah Foundation — Trauma Programs transactions where account is/,
+    );
+  } finally {
+    await ctx.close();
+  }
 });
 
 test('Opioid effort page renders the coordinator schedule, per-activity charges, 16,286.10 charged / 3,713.90 remaining and booked 5,519.56 vs charged 5,376.03', async ({
@@ -355,7 +447,7 @@ test('JPH-23 AC6: Salah overview shows coded 22,708.81 with 1,188.41 waiting (no
 
   await page.goto(`/grants/${opioidId}/review`);
   await page
-    .getByTestId('proposals')
+    .getByTestId('queue-table')
     .locator('tr[data-pair="20702"]')
     .getByRole('button', { name: 'Confirm pair' })
     .click();
@@ -548,21 +640,28 @@ test('Excluding the 7 pre-September Leah lines with "Draft correcting entry" dra
   page,
 }) => {
   await page.goto(`/grants/${salahId}/review`);
-  await expect(page.getByTestId('needs-review-count')).toHaveText('7 lines');
-  const group = page.getByTestId('review-group');
-  const boxes = group.getByRole('checkbox', { name: /^Select / });
-  await expect(boxes).toHaveCount(7);
-  for (let i = 0; i < 7; i++) await boxes.nth(i).check();
-  const form = page.locator('#decision-form');
-  await form.getByLabel('Decision').selectOption('exclude');
-  await form.getByLabel('Reason (required to exclude)').fill('not allowable');
-  await expect(form.getByLabel('Draft correcting entry (when excluding)')).toBeChecked();
-  await form
-    .getByLabel('Note (required)')
+  await expect(page.getByTestId('needs-review-count')).toHaveText('7 transactions');
+  // JPH-27 C4 without JavaScript: the group checkbox posts the whole suggested group; the bulk
+  // "Not grant-funded" form excludes them with one reason and drafts the D1-B entry.
+  await expect(page.locator('tr[data-line-id]')).toHaveCount(7);
+  await page.getByLabel('Select all suggested → Leah (Sept+) (7)').check();
+  const bulk = page.getByTestId('bulk-bar');
+  await bulk.getByTestId('bulk-exclude').click();
+  await bulk.getByLabel('Reason').selectOption('not allowable');
+  await expect(bulk.getByLabel('Draft correcting entry')).toBeChecked();
+  await bulk
+    .getByLabel('Note (optional)')
     .fill('D1-B: pre-September payroll is outside the award period');
-  await form.getByRole('button', { name: 'Record decision' }).click();
-  await page.waitForURL(/\/review\?saved=1&drafted=GAT-\d{4}/);
+  await bulk.getByRole('button', { name: 'Exclude selected' }).click();
+  await page.waitForURL(/\/review\?saved=1&excluded=7&drafted=GAT-\d{4}/);
   await expect(page.getByTestId('draft-created')).toBeVisible();
+  await expect(page.getByTestId('queue-empty')).toBeVisible();
+  await expect(page.getByTestId('queue-count')).toHaveText('0');
+  expect(
+    await prisma.lineDecision.count({
+      where: { grantId: salahId, kind: 'exclude', reason: 'not allowable', supersededAt: null },
+    }),
+  ).toBe(7);
 
   await page.goto(`/grants/${salahId}/entries`);
   const row = page.locator('tr[data-kind="reclass"]');

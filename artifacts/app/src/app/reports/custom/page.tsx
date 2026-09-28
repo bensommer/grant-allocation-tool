@@ -1,6 +1,16 @@
 import Link from 'next/link';
 import { StaleRunBanner } from '@/components/stale-run-banner';
-import { Button, ButtonLink, DateText, FilterBar, PageHeader, Toolbar } from '@/components/ui';
+import {
+  Button,
+  ButtonLink,
+  DateText,
+  FilterBar,
+  PageHeader,
+  PeriodSubtitle,
+  Toolbar,
+} from '@/components/ui';
+import { toISODate } from '@/domain/dates';
+import { currentPeriod } from '@/lib/period';
 import { prisma } from '@/lib/db';
 import { getOrgId } from '@/lib/org';
 import { dimensionLabels, dimensions, parseParams } from '@/reports/params';
@@ -16,8 +26,16 @@ export default async function Custom({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const raw = await searchParams,
-    p = parseParams(raw);
+    typed = parseParams(raw);
   const orgId = await getOrgId();
+  // Blank From/To mean the app-wide default range (JPH-25 A1); the page, its exports and
+  // drill-downs all use the same effective dates.
+  const period = await currentPeriod(orgId, raw);
+  const p = {
+    ...typed,
+    from: typed.from ?? toISODate(period.range.from),
+    to: typed.to ?? toISODate(period.range.to),
+  };
   const [{ run, facts, budgets }, grants, programs, accounts] = await Promise.all([
     loadReport(orgId, p),
     prisma.grant.findMany({ where: { orgId }, orderBy: { name: 'asc' } }),
@@ -27,21 +45,33 @@ export default async function Custom({
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(raw))
     for (const value of Array.isArray(v) ? v : v === undefined ? [] : [v])
-      if (!['rowKey', 'colKey', 'pageKey'].includes(k)) q.append(k, value);
+      if (!['rowKey', 'colKey', 'pageKey', 'from', 'to'].includes(k)) q.append(k, value);
+  q.set('from', p.from);
+  q.set('to', p.to);
   const query = q.toString();
+  const pdfParams = new URLSearchParams(q);
+  pdfParams.delete('page');
   const sections = reportSections(facts, p, budgets);
   return (
     <>
       <PageHeader
         title="Custom report"
         subtitle={
-          run ? (
-            <>
-              Run <DateText date={run.finishedAt ?? run.startedAt} time />
-            </>
-          ) : (
-            'No current run'
-          )
+          <>
+            <PeriodSubtitle
+              from={new Date(`${p.from}T00:00:00.000Z`)}
+              to={new Date(`${p.to}T00:00:00.000Z`)}
+              booksThrough={period.booksThrough}
+            />
+            {run ? (
+              <>
+                {' '}
+                · Run <DateText date={run.finishedAt ?? run.startedAt} time />
+              </>
+            ) : (
+              ' · No current run'
+            )}
+          </>
         }
         secondaryActions={
           <ButtonLink href="/reports" variant="secondary">
@@ -70,17 +100,6 @@ export default async function Custom({
           <label>
             Columns{' '}
             <select name="cols" defaultValue={p.cols}>
-              {dimensions.map((d) => (
-                <option key={d} value={d}>
-                  {dimensionLabels[d]}
-                </option>
-              ))}
-            </select>
-          </label>{' '}
-          <label>
-            Page break{' '}
-            <select name="page" defaultValue={p.page ?? ''}>
-              <option value="">None</option>
               {dimensions.map((d) => (
                 <option key={d} value={d}>
                   {dimensionLabels[d]}
@@ -158,8 +177,8 @@ export default async function Custom({
           )}
           {reportLayout(p) === 'single' && (
             <label>
-              <input type="checkbox" name="mapping" value="1" defaultChecked={p.mapping} /> Group
-              by mapping status
+              <input type="checkbox" name="mapping" value="1" defaultChecked={p.mapping} /> Group by
+              mapping status
             </label>
           )}
           {p.run ? <input type="hidden" name="run" value={p.run} /> : null}
@@ -174,9 +193,33 @@ export default async function Custom({
             <ButtonLink variant="secondary" size="sm" href={`/reports/export/xlsx?${query}`}>
               XLSX
             </ButtonLink>
-            <ButtonLink variant="secondary" size="sm" href={`/reports/export/pdf?${query}`}>
-              PDF
-            </ButtonLink>
+            {/* Page break only matters on paper, so it lives with the PDF export (A10). */}
+            <form
+              action="/reports/export/pdf"
+              method="get"
+              className="flex flex-wrap items-end gap-2"
+              data-testid="pdf-export"
+            >
+              {[...pdfParams.entries()].map(([k, v], i) => (
+                <input key={`${k}-${i}`} type="hidden" name={k} value={v} />
+              ))}
+              <label>
+                Page break{' '}
+                <select name="page" defaultValue={p.page ?? ''}>
+                  <option value="">None</option>
+                  {dimensions
+                    .filter((d) => d !== p.rows && d !== p.cols)
+                    .map((d) => (
+                      <option key={d} value={d}>
+                        {dimensionLabels[d]}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <Button variant="secondary" size="sm">
+                PDF
+              </Button>
+            </form>
             <form action={saveView} className="flex flex-wrap items-end gap-2">
               <input type="hidden" name="query" value={query} />
               <label>

@@ -66,17 +66,33 @@ export function funderViewTable(
   };
 }
 
+/**
+ * What "Funder view (budget as awarded)" shows on the page (JPH-29 E2): the funder categories
+ * only, no working lines beneath them, so a SUM over any column equals the totals row. A grant
+ * with no funder categories keeps its (loose) lines — the page shows the same table under both
+ * views in that case.
+ */
+export function funderCategoriesTable(
+  grant: { name: string; funder: string },
+  tree: BudgetTree,
+  asOf: Date,
+): PdfTable {
+  const table = funderViewTable(grant, tree, asOf);
+  if (tree.categories.length === 0) return table;
+  const keep = table.rows.map((_, i) => table.rowKinds?.[i] !== 'row');
+  return {
+    ...table,
+    headers: ['Category', ...table.headers.slice(1)],
+    rows: table.rows.filter((_, i) => keep[i]),
+    rowKinds: table.rowKinds?.filter((_, i) => keep[i]),
+  };
+}
+
 /** Category rows only (working lines would double-count under a SUM). */
 export async function funderViewXlsx(
   grant: { name: string; funder: string },
   tree: BudgetTree,
   asOf: Date,
 ): Promise<Buffer> {
-  const table = funderViewTable(grant, tree, asOf);
-  const categoryRows = table.rows.filter((_, i) => table.rowKinds?.[i] !== 'row');
-  return xlsxTable({
-    ...table,
-    rows: categoryRows.length ? categoryRows : table.rows,
-    sumColumns: [1, 2, 3],
-  });
+  return xlsxTable({ ...funderCategoriesTable(grant, tree, asOf), sumColumns: [1, 2, 3] });
 }

@@ -1,6 +1,6 @@
 import type { Matchers } from '@/domain/matchers';
 import { prisma } from '@/lib/db';
-import { formatDate } from '@/domain/format';
+import { describeRule } from '@/domain/describe-rule';
 
 export interface LabelMaps {
   programs: Map<string, string>;
@@ -28,35 +28,11 @@ export async function loadLabelMaps(orgId: string): Promise<LabelMaps> {
   };
 }
 
-const orList = (ids: string[], map: Map<string, string>) =>
-  ids.map((id) => map.get(id) ?? '(deleted)').join(' or ');
-
-/** "Program is CT Culinary Training AND account is 6010 Salaries or 6020 Payroll taxes" */
+/**
+ * List-page wording of a rule's conditions ("Program is CT Culinary Training AND account is …").
+ * Kept for the allocation pages; the rule list pages call describeRule directly (JPH-26 B1).
+ */
 export function describeMatchers(m: Matchers, labels: LabelMaps): string {
-  const parts: string[] = [];
-  if (m.programIds?.length) parts.push(`program is ${orList(m.programIds, labels.programs)}`);
-  if (m.accountIds?.length) parts.push(`account is ${orList(m.accountIds, labels.accounts)}`);
-  if (m.accountRange)
-    parts.push(`account number is between ${m.accountRange.from} and ${m.accountRange.to}`);
-  if (m.classIds?.length) parts.push(`class is ${orList(m.classIds, labels.classes)}`);
-  if (m.locationIds?.length) parts.push(`location is ${orList(m.locationIds, labels.locations)}`);
-  if (m.partyIds?.length) parts.push(`party is ${orList(m.partyIds, labels.parties)}`);
-  if (m.descriptionContains) parts.push(`description contains "${m.descriptionContains}"`);
-  if (m.descriptionContainsAny?.length)
-    parts.push(
-      `description contains ${m.descriptionContainsAny.map((n) => `"${n}"`).join(' or ')}`,
-    );
-  if (m.txnTypes?.length) parts.push(`transaction type is ${m.txnTypes.join(' or ')}`);
-  if (m.amountSign) parts.push(`amount is ${m.amountSign}`);
-  if (m.dateFrom && m.dateTo)
-    parts.push(
-      `date is ${formatDate(new Date(`${m.dateFrom}T00:00:00Z`))} to ${formatDate(new Date(`${m.dateTo}T00:00:00Z`))}`,
-    );
-  else if (m.dateFrom)
-    parts.push(`date is on or after ${formatDate(new Date(`${m.dateFrom}T00:00:00Z`))}`);
-  else if (m.dateTo)
-    parts.push(`date is on or before ${formatDate(new Date(`${m.dateTo}T00:00:00Z`))}`);
-  if (parts.length === 0) return 'every line (no conditions)';
-  const s = parts.join(' AND ');
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  return describeRule({ scope: 'all', matchers: m, target: null, labels }, { wording: 'list' })
+    .conditionsText;
 }

@@ -1,3 +1,4 @@
+import { TERMS, checkLabel, describeStats } from '@/copy/terms';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { DataTable, DateText, PageHeader, StatusPill } from '@/components/ui';
@@ -33,15 +34,21 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
   return (
     <>
       <PageHeader
-        title={`Run ${id.slice(-8)}`}
+        title={`${TERMS.calculation} ${id.slice(-8)}`}
         subtitle={
           <>
-            Started <DateText date={run.startedAt} time /> · config {run.configHash}
+            Started <DateText date={run.startedAt} time />
+            {run.cause ? <> · {run.cause}</> : null}
+            {run.trigger === 'auto' ? ' · automatic' : run.trigger === 'import' ? ' · after import' : ''}
+            <details className="inline-block align-baseline">
+              <summary className="ml-1 inline text-xs">{TERMS.technicalDetails}</summary>
+              <span className="break-all text-xs">{run.configHash}</span>
+            </details>
           </>
         }
         secondaryActions={
-          <Link href="/runs" className="btn btn-secondary btn-sm">
-            All runs
+          <Link href="/activity" className="btn btn-secondary btn-sm">
+            {TERMS.activityLog}
           </Link>
         }
       />
@@ -53,14 +60,14 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
             {run.status.charAt(0).toUpperCase() + run.status.slice(1)}
           </StatusPill>{' '}
           {run.isCurrent ? <StatusPill tone="ok">current</StatusPill> : null}{' '}
-          {run.stale ? <StatusPill tone="warn">stale</StatusPill> : null}
+          {run.stale ? <StatusPill tone="warn">{TERMS.needsUpdateLower}</StatusPill> : null}
         </p>
-        <DataTable caption="Run checks">
+        <DataTable caption={TERMS.healthChecks}>
           <tbody>
             {checks.map((c) => (
               <tr key={c.name}>
                 <th>
-                  {c.href ? <Link href={c.href}>{c.name.replaceAll('_', ' ')}</Link> : c.name}
+                  {c.href ? <Link href={c.href}>{checkLabel(c.name)}</Link> : checkLabel(c.name)}
                 </th>
                 <td>
                   <StatusPill tone={c.status === 'warn' ? 'warn' : c.ok ? 'ok' : 'bad'}>
@@ -69,7 +76,7 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
                 </td>
                 <td>
                   <span className="text-xs break-words">
-                    {typeof c.detail === 'string' ? c.detail : JSON.stringify(c.detail)}
+                    {typeof c.detail === 'string' ? c.detail : describeStats(c.detail)}
                   </span>
                 </td>
               </tr>
@@ -102,7 +109,7 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
                       dateStyle: 'medium',
                       timeStyle: 'short',
                     })}{' '}
-                    · {o.status} · {o.configHash}
+                    · {o.status}
                   </option>
                 ))}
               </select>
@@ -123,7 +130,7 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
             <p className="muted mb-2 text-xs">
               {[...byCode.entries()].map(([code, n]) => `${code}: ${n}`).join(' · ')}
             </p>
-            <DataTable caption="Run warnings">
+            <DataTable caption="Warnings">
               <thead>
                 <tr>
                   <th>Code</th>

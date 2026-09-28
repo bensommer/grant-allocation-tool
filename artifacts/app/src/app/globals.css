@@ -215,6 +215,46 @@
     color: var(--color-harbor);
     border-color: transparent;
   }
+  /* Budget lines editor (JPH-25 A9): icon-only action, dirty-row marker, sticky save bar. */
+  .btn-icon {
+    padding: 4px 6px;
+    line-height: 0;
+    vertical-align: middle;
+  }
+  .btn-icon:hover {
+    color: var(--color-bad);
+    border-color: var(--color-bad);
+  }
+  .budget-line .dirty-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 6px;
+    border-radius: 999px;
+    background: transparent;
+    vertical-align: middle;
+  }
+  .budget-line[data-dirty] {
+    background: var(--color-warn-soft);
+  }
+  .budget-line[data-dirty] .dirty-dot {
+    background: var(--color-warn);
+  }
+  .save-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    margin: -8px 0 16px;
+    padding: 10px 14px;
+    border: 1px solid var(--color-line);
+    border-radius: 4px;
+    background: var(--color-paper);
+    box-shadow: 0 -4px 12px rgb(0 0 0 / 0.06);
+  }
   .btn-sm {
     padding: 3px 8px;
     font-size: 12px;
@@ -249,10 +289,6 @@
     margin-bottom: 20px;
     align-items: flex-end;
   }
-  .breadcrumb {
-    font-size: 12px;
-    margin-bottom: 5px;
-  }
   .key-figure {
     display: grid;
     gap: 5px;
@@ -284,6 +320,31 @@
   }
   .filter-bar > .grid-form {
     flex: 1 1 100%;
+  }
+  /* Server-rendered segmented control (JPH-29 E2): links, one marked aria-current. */
+  .segmented {
+    display: inline-flex;
+    max-width: 100%;
+    flex-wrap: wrap;
+    border: 1px solid var(--color-line);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--color-paper);
+  }
+  .segmented > a {
+    padding: 6px 12px;
+    font-size: 0.875rem;
+    color: var(--color-ink-soft);
+    text-decoration: none;
+    border-right: 1px solid var(--color-line);
+  }
+  .segmented > a:last-child {
+    border-right: 0;
+  }
+  .segmented > a.is-active {
+    background: var(--color-harbor);
+    color: #fff;
+    font-weight: 600;
   }
   .toolbar {
     justify-content: flex-end;
@@ -655,4 +716,238 @@
     size: letter landscape;
     margin: 0.5in;
   }
+}
+
+/* Rule builder (JPH-26 B2). Works before hydration: :has() drives "Rule decides" and
+   "Show all accounts"; the sentence and count live in the sticky save bar. */
+@layer components {
+  .rule-builder-grid {
+    display: grid;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (min-width: 1024px) {
+    .rule-builder-grid {
+      grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    }
+    .rule-builder-side {
+      position: sticky;
+      top: 12px;
+    }
+  }
+  .rule-builder fieldset {
+    margin: 0 0 16px;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+  .rule-builder legend {
+    padding: 0;
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .rule-target select {
+    max-width: 100%;
+  }
+  .rule-decides {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .rule-segment {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border: 1px solid var(--color-line);
+    border-radius: 999px;
+    font-weight: normal;
+    text-transform: none;
+    font-size: 13px;
+  }
+  .rule-segment:has(input:checked) {
+    border-color: var(--color-ink);
+    background: var(--color-ink);
+    color: white;
+  }
+  .rule-segment input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+  }
+  .rule-segment:has(input:focus-visible) {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+  .rule-target .rule-target-select {
+    display: none;
+  }
+  .rule-target:not(:has(input[name='dimension']:checked)) .rule-target-select[data-for='line'],
+  .rule-target:has(input[name='dimension'][value='line']:checked)
+    .rule-target-select[data-for='line'],
+  .rule-target:has(input[name='dimension'][value='activity']:checked)
+    .rule-target-select[data-for='activity'],
+  .rule-target:has(input[name='dimension'][value='category']:checked)
+    .rule-target-select[data-for='category'] {
+    display: block;
+  }
+  .rule-row {
+    min-width: 0;
+  }
+  .rule-and {
+    margin: 8px 0 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--color-ink-soft);
+  }
+  .rule-row-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .rule-row-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-ink-soft);
+  }
+  .chip-select {
+    border: 1px solid var(--color-line);
+    border-radius: 4px;
+    background: white;
+    padding: 6px;
+  }
+  .chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px 2px 8px;
+    border-radius: 999px;
+    background: var(--color-ink);
+    color: white;
+    font-size: 12px;
+  }
+  .chip button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 4px;
+    cursor: pointer;
+  }
+  .chip-search {
+    flex: 1 1 8rem;
+    min-width: 6rem;
+    border: 0;
+    padding: 2px 4px;
+    font-size: 13px;
+  }
+  .chip-search:focus {
+    outline: 1px solid var(--color-ink);
+  }
+  .chip-options {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 11rem;
+    overflow-y: auto;
+  }
+  .chip-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: normal;
+    text-transform: none;
+  }
+  .rule-row:not(:has(.show-all input:checked)) .chip-option[data-dim]:not(:has(input:checked)),
+  .chip-option[hidden] {
+    display: none;
+  }
+  .rule-add {
+    margin-top: 12px;
+  }
+  .rule-add summary {
+    display: inline-block;
+    list-style: none;
+    cursor: pointer;
+  }
+  .rule-add summary::-webkit-details-marker {
+    display: none;
+  }
+  .rule-add-menu {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .rule-add-menu button {
+    padding: 4px 10px;
+    border: 1px solid var(--color-line);
+    border-radius: 999px;
+    background: white;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .rule-add-menu button:hover {
+    border-color: var(--color-ink);
+  }
+  .rule-add-static {
+    margin-top: 8px;
+  }
+  .rule-advanced summary {
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .rule-footer {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    margin-top: 16px;
+  }
+  /* The footer is sticky; keep focused / scrolled-to controls above it. */
+  .rule-builder :is(summary, input, select, button, label) {
+    scroll-margin-bottom: 7rem;
+  }
+  .rule-sentence {
+    flex: 1 1 16rem;
+    min-width: 0;
+    margin: 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .rule-footer-count {
+    margin: 0;
+    white-space: nowrap;
+  }
+  .rule-preview-rows td,
+  .rule-preview-rows th {
+    font-size: 13px;
+  }
+}
+
+/* JPH-27 review queue: the keyboard-focused row (J/K) and the folded description. */
+tr.row-focus > td {
+  background: var(--color-harbor-soft);
+}
+tr.row-focus > td:first-child {
+  box-shadow: inset 3px 0 0 var(--color-harbor);
+}
+details.description > summary::-webkit-details-marker {
+  display: none;
 }

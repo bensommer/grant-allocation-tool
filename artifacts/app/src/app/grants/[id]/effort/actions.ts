@@ -1,6 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { recalculateAfter } from '@/lib/after-mutation';
 import { getOrgId } from '@/lib/org';
 import { bool, list, redirectWithErrors, str, strOrNull } from '@/lib/forms';
 import { MoneyParseError, parseMoneyToCents } from '@/domain/money';
@@ -64,6 +65,7 @@ export async function saveScheduleAction(grantId: string, formData: FormData): P
     if (e instanceof ValidationError) redirectWithErrors(back, e.fieldErrors, formData);
     throw e;
   }
+  await recalculateAfter(orgId, `effort schedule ${scheduleId ? 'updated' : 'created'}`);
   redirect(`${back}?saved=1`);
 }
 
@@ -88,6 +90,7 @@ export async function saveEntryAction(grantId: string, formData: FormData): Prom
     if (e instanceof ValidationError) redirectWithErrors(back, e.fieldErrors, formData);
     throw e;
   }
+  await recalculateAfter(orgId, 'effort count saved');
   redirect(`${back}?saved=1`);
 }
 

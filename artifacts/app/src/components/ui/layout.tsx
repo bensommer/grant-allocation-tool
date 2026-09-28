@@ -58,18 +58,15 @@ export function PageHeader({
   subtitle,
   primaryAction,
   secondaryActions,
-  breadcrumb,
 }: {
   title: string;
   subtitle?: ReactNode;
   primaryAction?: ReactNode;
   secondaryActions?: ReactNode;
-  breadcrumb?: ReactNode;
 }) {
   return (
     <header className="page-header">
       <div>
-        {breadcrumb ? <div className="breadcrumb">{breadcrumb}</div> : null}
         <h1>{title}</h1>
         {subtitle ? <p className="muted mt-1">{subtitle}</p> : null}
       </div>

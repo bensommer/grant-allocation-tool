@@ -114,7 +114,7 @@ describe('incremental CSV re-import', () => {
     });
     expect(checks.find((c) => c.name === 'unassigned_program')).toMatchObject({
       status: 'warn',
-      detail: expect.stringContaining('1 allocation pieces'),
+      detail: expect.stringContaining('1 allocated amounts'),
     });
   });
 

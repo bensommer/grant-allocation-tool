@@ -18,6 +18,7 @@ import { getOrgId } from '@/lib/org';
 import { decodeFormState, pick } from '@/lib/forms';
 import { GRANT_CODING_MISSING_MESSAGE, listDrafts } from '@/services/correcting-entries';
 import { getDefaultDestination, isDestinationSet } from '@/services/settings';
+import { EditGrantButton } from '@/app/grants/[id]/edit-grant-button';
 import { GrantTabs } from '../tabs';
 import { voidDraftAction } from '../effort/actions';
 
@@ -54,6 +55,7 @@ export default async function EntriesPage({
       <PageHeader
         title={`${grant.name} · correcting entries`}
         subtitle="Draft journal entries (reclass and effort true-up) to post in QuickBooks. Export, post, then re-import the grant export; a draft whose code appears in a posted entry's memo is marked posted automatically. Drafts are voided, never deleted."
+        secondaryActions={<EditGrantButton id={id} />}
       />
       <GrantTabs id={id} active="entries" />
       <FormBanner state={state} saved={!!saved} />
@@ -82,9 +84,9 @@ export default async function EntriesPage({
       ) : null}
       {drafts.length === 0 ? (
         <Banner tone="info">
-          No correcting entries yet. Draft one from the <Link href={`/grants/${id}/review`}>review queue</Link>{' '}
-          (exclude with “Draft correcting entry”) or the <Link href={`/grants/${id}/effort`}>effort</Link>{' '}
-          page (Draft true-up).
+          No correcting entries yet. Draft one from the{' '}
+          <Link href={`/grants/${id}/review`}>review queue</Link> (exclude with “Draft correcting
+          entry”) or the <Link href={`/grants/${id}/effort`}>effort</Link> page (Draft true-up).
         </Banner>
       ) : (
         <DataTable caption="Correcting entries">

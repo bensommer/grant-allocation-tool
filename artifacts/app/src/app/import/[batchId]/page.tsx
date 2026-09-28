@@ -58,6 +58,16 @@ export default async function BatchPage({
   const pages = Math.max(1, Math.ceil(errors.length / PAGE_SIZE));
   const slice = errors.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const entities = ['accounts', 'classes', 'locations', 'parties', 'transactions'] as const;
+  const ENTITY_LABEL: Record<(typeof entities)[number], string> = {
+    accounts: 'Accounts',
+    classes: 'Classes',
+    locations: 'Locations',
+    parties: 'Names (customers and vendors)',
+    transactions: 'Transactions',
+  };
+  const txn = counts.transactions;
+  const transactionsInBatch = (txn?.new ?? 0) + (txn?.changed ?? 0) + (txn?.unchanged ?? 0);
+  const changedOrDeleted = (txn?.changed ?? 0) + (txn?.deleted ?? 0);
 
   return (
     <>
@@ -88,7 +98,6 @@ export default async function BatchPage({
         >
           {batch.status.charAt(0).toUpperCase() + batch.status.slice(1)}
         </StatusPill>
-        <span className="muted text-xs break-all">{batch.id}</span>
       </div>
 
       {batch.status === 'failed' ? (
@@ -96,14 +105,21 @@ export default async function BatchPage({
           Import failed with {errors.length} error(s). Nothing was written.
         </div>
       ) : batch.status === 'succeeded' ? (
-        <div className="banner banner-ok">
-          Succeeded — {counts.lines ?? 0} transaction lines in this batch.{' '}
-          <Link href={`/import/${batch.id}/changes`}>View changed and deleted transactions →</Link>
+        <div className="banner banner-ok" data-testid="import-banner">
+          Succeeded — {transactionsInBatch} transaction{transactionsInBatch === 1 ? '' : 's'} (
+          {counts.lines ?? 0} line{counts.lines === 1 ? '' : 's'}) imported.{' '}
+          {changedOrDeleted > 0 ? (
+            <Link href={`/import/${batch.id}/changes`} data-testid="view-changes">
+              View changed and deleted →
+            </Link>
+          ) : (
+            <span data-testid="no-changes">No changes from the previous import.</span>
+          )}
         </div>
       ) : null}
       {!!lockIds.length && (
         <div className="banner banner-warn">
-          This import changed source lines inside a locked reporting period:{' '}
+          This import changed transactions inside a locked reporting period:{' '}
           {lockIds.map((id) => (
             <Link key={id} className="mr-2" href={`/periods/${id}/drift`}>
               View period drift →
@@ -126,7 +142,7 @@ export default async function BatchPage({
               hint={reportMeta.companyName ?? undefined}
             />
             <KeyFigure
-              label="Member lines in range"
+              label="Transactions in range"
               value={scopeTotals ? scopeTotals.memberLines : '—'}
               hint={
                 scopeTotals && scopeTotals.classes.length > 0
@@ -191,9 +207,8 @@ export default async function BatchPage({
         </Card>
       ) : null}
 
-      <div className="card mb-6">
-        <h2 className="mb-3">Counts per entity</h2>
-        <DataTable caption="Counts per entity">
+      <Card title="Counts per entity" className="mb-6">
+        <DataTable>
           <thead>
             <tr>
               <th>Entity</th>
@@ -208,7 +223,7 @@ export default async function BatchPage({
               const c = counts[e];
               return (
                 <tr key={e}>
-                  <td className="capitalize">{e}</td>
+                  <td>{ENTITY_LABEL[e]}</td>
                   <td className="num">{c?.new ?? 0}</td>
                   <td className="num">{c?.changed ?? 0}</td>
                   <td className="num">{c?.unchanged ?? 0}</td>
@@ -218,18 +233,21 @@ export default async function BatchPage({
             })}
           </tbody>
         </DataTable>
-        <h2 className="mb-2 mt-5">File hashes</h2>
-        <DataTable caption="File hashes">
-          <tbody>
-            {Object.entries(batch.fileHashes as Record<string, string>).map(([f, h]) => (
-              <tr key={f}>
-                <td>{f}</td>
-                <td className="text-xs break-all">{h}</td>
-              </tr>
-            ))}
-          </tbody>
-        </DataTable>
-      </div>
+        <details className="mt-4 text-sm" data-testid="technical-details">
+          <summary className="cursor-pointer">Technical details</summary>
+          <p className="muted mt-2 text-xs break-all">Batch {batch.id}</p>
+          <DataTable caption="File hashes (SHA-256)">
+            <tbody>
+              {Object.entries(batch.fileHashes as Record<string, string>).map(([f, h]) => (
+                <tr key={f}>
+                  <td>{f}</td>
+                  <td className="text-xs break-all">{h}</td>
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
+        </details>
+      </Card>
 
       {errors.length > 0 ? (
         <div className="card">

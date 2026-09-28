@@ -7,6 +7,7 @@ import { QboReportDataSource, accountTypeOverrides } from '@/datasource/qbo-repo
 import { parseQboReport } from '@/datasource/qbo-report/parser';
 import { readReportGrid } from '@/datasource/qbo-report/read';
 import { prisma } from '@/lib/db';
+import { recalculateAfter } from '@/lib/after-mutation';
 import { getOrgId } from '@/lib/org';
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -95,6 +96,7 @@ export async function commitQboReport(formData: FormData): Promise<void> {
     accountTypes: overrides,
   });
   let batchId: string;
+  let succeeded = false;
   try {
     const result = await runImport(orgId, source, report.dateRange, {
       scope: {
@@ -104,6 +106,7 @@ export async function commitQboReport(formData: FormData): Promise<void> {
       },
     });
     batchId = result.batchId;
+    succeeded = result.status === 'succeeded';
   } catch (err) {
     // Nothing was recorded; hand the upload back so it can be retried.
     await prisma.qboReportUpload.update({
@@ -113,5 +116,6 @@ export async function commitQboReport(formData: FormData): Promise<void> {
     throw err;
   }
   await prisma.qboReportUpload.update({ where: { id: upload.id }, data: { batchId } });
+  if (succeeded) await recalculateAfter(orgId, 'QuickBooks report imported', 'import');
   redirect(`/import/${batchId}`);
 }

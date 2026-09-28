@@ -54,3 +54,6 @@ Thumbs.db
 
 # Agent scratch outputs (may hold ticket text with private names)
 .agents/outputs/
+
+# Audit before/after screenshots are review evidence, not source (JPH-25)
+artifacts/screenshots/

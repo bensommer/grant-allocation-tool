@@ -15,6 +15,21 @@ export async function getPacingSettings(orgId: string) {
   return pacingSettings(org.settings);
 }
 
+/** Fiscal year start month (1–12); every default date range starts here (JPH-25 A1). */
+export async function getFiscalYearStartMonth(orgId: string): Promise<number> {
+  const org = await prisma.org.findUniqueOrThrow({
+    where: { id: orgId },
+    select: { fiscalYearStartMonth: true },
+  });
+  return org.fiscalYearStartMonth;
+}
+
+export async function saveFiscalYearStartMonth(orgId: string, month: number): Promise<void> {
+  if (!Number.isInteger(month) || month < 1 || month > 12)
+    throw new Error('Fiscal year start month must be 1–12');
+  await prisma.org.update({ where: { id: orgId }, data: { fiscalYearStartMonth: month } });
+}
+
 export async function savePacingSettings(orgId: string, underPercent: number, overPercent: number) {
   if (![underPercent, overPercent].every((n) => Number.isFinite(n) && n >= 0 && n <= 100))
     throw new Error('Thresholds must be between 0 and 100');

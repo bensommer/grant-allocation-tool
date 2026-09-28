@@ -13,13 +13,16 @@ import {
   deriveTrackingMode,
   grantFigures,
   trackingLabel,
+  toReviewCount,
   type FigureLine,
   type GrantFigures,
+  type NeedsReview,
   type ReceiptLine,
   type SpendPiece,
   type TrackingMode,
 } from '@/domain/grant-figures';
 import { getPacingSettings } from '@/services/settings';
+import { proposeReversalPairs, type GrantLineDraft } from '@/engine/grant-stage';
 
 const EXPENSE_TYPES = ['Expense', 'COGS', 'OtherExpense'] as const;
 const INCOME_TYPES = ['Income', 'OtherIncome'] as const;
@@ -117,7 +120,7 @@ export interface LoadedGrant {
   lines: FigureLine[];
   pieces: SpendPiece[];
   receipts: ReceiptLine[];
-  needsReview: { count: number; cents: number };
+  needsReview: NeedsReview;
 }
 
 export interface LoadOptions {
@@ -125,6 +128,131 @@ export interface LoadOptions {
   grantId?: string;
   /** Upper bound for the dated rows fetched; the domain filters again per as-of. */
   through: Date;
+}
+
+/**
+ * Review-queue totals per membership grant in one run: waiting lines, their total and how many
+ * of them a proposed reversal pair accounts for (same proposal as the queue, `proposeReversalPairs`).
+ */
+async function loadNeedsReview(runId: string, grantIds: string[]): Promise<Map<string, NeedsReview>> {
+  const out = new Map<string, NeedsReview>();
+  if (grantIds.length === 0) return out;
+  const [runRows, decisions] = await Promise.all([
+    prisma.grantLineResult.findMany({
+      where: { computeRunId: runId, grantId: { in: grantIds }, source: 'transaction' },
+      select: {
+        grantId: true,
+        transactionLineId: true,
+        effortEntryId: true,
+        effortScheduleId: true,
+        source: true,
+        state: true,
+        budgetLineId: true,
+        activityId: true,
+        ruleId: true,
+        categoryRuleId: true,
+        decisionId: true,
+        reason: true,
+        atRisk: true,
+        amountCents: true,
+        line: {
+          select: {
+            accountId: true,
+            description: true,
+            partyId: true,
+            transaction: { select: { docNumber: true, partyId: true, txnDate: true } },
+          },
+        },
+      },
+    }),
+    // Decisions recorded since the run: the queue shows them settled straight away, so the
+    // badge and the chip must too (same overlay as `reviewQueue`; the run catches up on recompute).
+    prisma.lineDecision.findMany({
+      where: {
+        grantId: { in: grantIds },
+        supersededAt: null,
+        transactionLineId: { not: null },
+        kind: { not: 'at_risk' },
+      },
+      select: { id: true, grantId: true, transactionLineId: true, kind: true, targetBudgetLineId: true },
+    }),
+  ]);
+  const live = new Map(decisions.map((d) => [`${d.grantId}:${d.transactionLineId}`, d]));
+  const results = runRows.map((r) => {
+    const d = r.transactionLineId ? live.get(`${r.grantId}:${r.transactionLineId}`) : undefined;
+    if (!d || r.decisionId === d.id) return r;
+    return {
+      ...r,
+      state: d.kind === 'assign' ? ('assigned' as const) : ('excluded' as const),
+      budgetLineId: d.kind === 'assign' ? d.targetBudgetLineId : null,
+      activityId: null,
+      ruleId: null,
+      categoryRuleId: null,
+      decisionId: d.id,
+    };
+  });
+  const byGrant = new Map<string, typeof results>();
+  for (const r of results) byGrant.set(r.grantId, [...(byGrant.get(r.grantId) ?? []), r]);
+  for (const [grantId, rows] of byGrant) {
+    const info = new Map(
+      rows.map((r) => [
+        r.transactionLineId,
+        {
+          accountId: r.line?.accountId ?? null,
+          docNumber: r.line?.transaction.docNumber ?? null,
+          description: r.line?.description ?? null,
+          partyId: r.line?.partyId ?? r.line?.transaction.partyId ?? null,
+          txnDate: r.line?.transaction.txnDate ?? null,
+        },
+      ]),
+    );
+    const drafts: GrantLineDraft[] = rows.map((r) => ({
+      grantId: r.grantId,
+      source: r.source,
+      transactionLineId: r.transactionLineId,
+      effortEntryId: r.effortEntryId,
+      effortScheduleId: r.effortScheduleId,
+      state: r.state,
+      budgetLineId: r.budgetLineId,
+      activityId: r.activityId,
+      ruleId: r.ruleId,
+      categoryRuleId: r.categoryRuleId,
+      decisionId: r.decisionId,
+      reason: r.reason,
+      atRisk: r.atRisk,
+      amountCents: r.amountCents,
+    }));
+    const paired = new Set(
+      proposeReversalPairs(drafts, (id) => info.get(id) ?? null).flatMap((p) => [
+        p.positiveLineId,
+        p.negativeLineId,
+      ]),
+    );
+    const waiting = rows.filter((r) => r.state === 'needs_review');
+    out.set(grantId, {
+      count: waiting.length,
+      cents: waiting.reduce((n, r) => n + r.amountCents, 0),
+      pairedCount: waiting.filter((r) => r.transactionLineId && paired.has(r.transactionLineId)).length,
+    });
+  }
+  return out;
+}
+
+/** Sidebar "Review" badge: transactions to review across every membership-tracked grant (C5). */
+export async function reviewBadgeCount(orgId: string): Promise<number> {
+  const [run, grants] = await Promise.all([
+    prisma.computeRun.findFirst({ where: { orgId, isCurrent: true }, select: { id: true } }),
+    prisma.grant.findMany({
+      where: { orgId, status: { not: 'archived' } },
+      include: trackingInclude,
+    }),
+  ]);
+  if (!run) return 0;
+  const membershipIds = grants.filter((g) => modeOf(g) === 'membership').map((g) => g.id);
+  const byGrant = await loadNeedsReview(run.id, membershipIds);
+  let n = 0;
+  for (const v of byGrant.values()) n += toReviewCount(v);
+  return n;
 }
 
 /**
@@ -221,19 +349,7 @@ export async function loadGrants(orgId: string, opts: LoadOptions): Promise<Load
       },
       orderBy: [{ transaction: { txnDate: 'asc' } }, { id: 'asc' }],
     }),
-    run && membershipIds.length
-      ? prisma.grantLineResult.groupBy({
-          by: ['grantId'],
-          _count: { _all: true },
-          _sum: { amountCents: true },
-          where: {
-            computeRunId: run.id,
-            grantId: { in: membershipIds },
-            state: 'needs_review',
-            source: 'transaction',
-          },
-        })
-      : [],
+    run ? loadNeedsReview(run.id, membershipIds) : new Map<string, NeedsReview>(),
   ]);
 
   const piecesByGrant = new Map<string, SpendPiece[]>();
@@ -257,9 +373,7 @@ export async function loadGrants(orgId: string, opts: LoadOptions): Promise<Load
       txnDate: r.source === 'effort' ? null : (r.line?.transaction.txnDate ?? null),
       source: r.source,
     });
-  const reviewByGrant = new Map(
-    needsReview.map((r) => [r.grantId, { count: r._count._all, cents: r._sum.amountCents ?? 0 }]),
-  );
+  const reviewByGrant = needsReview;
 
   return grants.map((g) => {
     const delta = new Map<string, number>();
