@@ -904,3 +904,41 @@ badge asserts in `e2e/pilot.spec.ts`.
   with no cause.
 - No JPH-29 work; QuickBooks stays read-only; the engine is untouched.
 - Screenshots of `/` before and after are under `artifacts/screenshots/jph28/` (gitignored).
+
+## G1 — GitHub main as source of truth, template cleanup, CLAUDE.md
+
+### Decisions taken (revisit if wrong)
+
+1. **JPH-25..29 were committed, not uncommitted.** Local `main` carried seven commits past the
+   GitHub head d177232 (JPH-25, 26, 27, 28, 29, the post-merge migration script and a "Published
+   your App" checkpoint). The local and GitHub histories share no ancestor — every push from the
+   workspace replays the tree through the GitHub API, so commit ids never match. They were pushed
+   as one replay commit `JPH-25..29: sync deployed UX phases to git`; the per-phase history stays
+   in the workspace's local `main`. `git diff HEAD origin/main` is the check that matters and it
+   was empty (apart from item 2) after each push.
+2. **`.github/workflows/ci.yml` is not on GitHub.** The GitHub connection available from the
+   workspace lacks the `workflow` OAuth scope; a tree containing that path is rejected. The file
+   is committed locally and must be pushed from a machine with a normal git remote (it is the
+   only difference between local `main` and `origin/main`).
+3. **`vite` became a direct devDependency of `@workspace/app`.** Vitest peer-depends on it and
+   it had only resolved through the removed `mockup-sandbox` package (`autoInstallPeers: false`).
+   Lockfile change only; no test or app behavior changed.
+4. **`pnpm run test -- src/privacy` runs the whole suite.** pnpm forwards the literal `--` and
+   vitest ignores the filter, so the first "privacy scan" of this task ran all 57 files and
+   truncated the dev database (it now holds the last test org, not the demo overlay). It was
+   not restored because `seed:demo` was off-limits; restore with the recipe in CLAUDE.md before
+   using the preview or running e2e. CLAUDE.md documents `pnpm exec vitest run src/privacy`.
+5. **`artifacts/app/AGENTS.md` is a pointer plus the Next.js block.** `next dev` re-appends its
+   `nextjs-agent-rules` block on every start (`generate-agent-files.js`), so a strict one-line
+   file would be dirty after the first run. `artifacts/app/CLAUDE.md` is one line.
+6. **`.replit-artifact/` is now git-ignored and `artifacts/app/.replit-artifact/artifact.toml`
+   was untracked** (file kept on disk). Consequence: importing the GitHub repo into a fresh
+   Replit workspace will not recreate the `artifacts/app: web` service registration; it has to
+   be re-registered there. `.replit` itself stays tracked. `.replit` had no per-workflow entries
+   to remove — the removed workflows were derived from the deleted artifacts' `artifact.toml`.
+7. **`src/services/funder-view.ts` does not exist.** `replit.md` cited it for the JPH-23 funder
+   view; the funder/internal tables read `src/services/bva.ts` and `src/services/grant-budget.ts`
+   through `src/app/grants/[id]/bva/`. CLAUDE.md and replit.md were corrected.
+8. **`replit.md` was trimmed in the CLAUDE.md commit** (removed-package commands, template
+   stack section) rather than left describing packages that no longer exist.
+9. **`attached_assets/` (the pasted task text) is untracked and not ignored.** Left alone.

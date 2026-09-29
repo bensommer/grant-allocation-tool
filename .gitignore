@@ -57,3 +57,6 @@ Thumbs.db
 
 # Audit before/after screenshots are review evidence, not source (JPH-25)
 artifacts/screenshots/
+
+# Replit artifact registration (workspace-local service metadata)
+.replit-artifact/
