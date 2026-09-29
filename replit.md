@@ -1,33 +1,27 @@
 # Grant Allocation Tool
 
-Server-rendered Next.js app (artifacts/app) for nonprofit finance teams: grant × program × GL allocation, reports, restricted-fund balances, AI funder narratives. Spec: docs/jira-epic-JPH-3-spec.txt; decisions: docs/build-decisions.md.
+Server-rendered Next.js app (artifacts/app) for nonprofit finance teams: grant × program × GL allocation, reports, restricted-fund balances, AI funder narratives. Spec: docs/jira-epic-JPH-3-spec.txt; decisions: docs/build-decisions.md. Consolidated agent guardrails (run, architecture rules, ticket guardrails, vocabulary, module map, test data): `CLAUDE.md` at the repo root — keep the two in step.
 
 ## Run & Operate
 
 - Main app: workflow `artifacts/app: web` (Next.js, reads `$PORT`). Do not run `pnpm dev` at root.
 - `pnpm --filter @workspace/app run typecheck|lint|test|e2e|db:migrate:dev` — app checks (see artifacts/app/README.md)
 - e2e on Replit: `E2E_BASE_URL=http://localhost:23863 PLAYWRIGHT_CHROMIUM_PATH=/repl/tools/bin/chromium pnpm --filter @workspace/app run e2e`
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
 - `pnpm test` truncates `DATABASE_URL` and leaves the last test org behind. Restore the demo data before using the preview or running e2e: truncate (same table list as `tests/db/helpers.ts` `resetDatabase`), then in `artifacts/app`: `pnpm run import:csv -- --dir fixtures/demo && pnpm run seed:demo && pnpm run recompute`. After schema changes restart the `artifacts/app: web` workflow (stale Prisma client → 500s).
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- pnpm workspaces, Node.js 24, TypeScript 5.9; the only packages are `artifacts/app` (Next.js 16 App Router, Prisma 7 + pg, Tailwind 4, Vitest, Playwright) and `scripts` (post-merge hook). The template's api-server / mockup-sandbox / lib/* packages were removed (G1).
+- DB: PostgreSQL via Prisma migrations (`artifacts/app/prisma`)
+- Validation: Zod
 
 ## Where things live
 
 - Restricted-grants pilot (JPH-19 phases): schema `artifacts/app/prisma/schema.prisma`; grant stage `src/engine/grant-stage.ts`; effort math `src/domain/effort.ts` (decimal.js, schedule-total rounding); correcting entries `src/domain/correcting-entry.ts` (balance check) + `src/services/correcting-entries.ts` (drafts, codes, void, posted detection aggregated over one-row-per-line report imports; grant side coded from `Grant.qboClassName` / `qboProjectName` or membership ids); effort services `src/services/effort.ts`; exports `src/reports/correcting-entry.ts` (Intuit JE CSV template, URL cited) and routes under `src/app/grants/[id]/entries/[code]/`; pages `src/app/grants/[id]/{effort,entries}`; pilot seed `fixtures/pilot/seed.json` + `src/seed/pilot.ts`; tests `tests/db/jph21-pilot.test.ts`, `tests/db/jph22-effort.test.ts`, `e2e/pilot.spec.ts`.
-- JPH-23 (periods, workspace, rollforward, parity): period/beginning-balance arithmetic `src/domain/periods.ts`; snapshots, drift, reported-period entry and rollforward `src/services/grant-periods.ts` (reported snapshots are never recomputed; `PeriodLock` is org-wide and locking snapshots every grant); workspace read models `src/services/grant-workspace.ts` (header metrics, tie-out, activity grid, working view); funder view `src/services/funder-view.ts`; rollforward XLSX (formulas) `src/reports/rollforward-xlsx.ts`; pages under `src/app/grants/[id]/{funder,working,activity,periods,periods/reported}` and `src/app/grants/rollforward`; print layouts `src/app/grants/rollforward/pdf/route.ts` and `src/app/grants/[id]/tie-out/pdf/route.ts`; rollforward range presets `src/app/grants/rollforward/range.ts`; design-pass decisions (tie-out `clean|pairs|open`, grouped tabs, pacing callout `src/components/pacing-callout.tsx`) in `QUESTIONS.md` §JPH-23 items 12–20; parity report `pnpm parity:report` → `src/cli/parity-report.ts` + `src/reports/parity.ts`, metric keys in `src/services/parity-metrics.ts`, private inputs/outputs `fixtures/private/parity-map.json` → `fixtures/private/parity.md` (never tracked); tests `tests/db/jph23-rollforward.test.ts` (AC4 needs LibreOffice `soffice`; the test forces `OOXMLRecalcMode=0` in a throwaway profile), `tests/db/jph23-workspace.test.ts`.
+- JPH-23 (periods, workspace, rollforward, parity): period/beginning-balance arithmetic `src/domain/periods.ts`; snapshots, drift, reported-period entry and rollforward `src/services/grant-periods.ts` (reported snapshots are never recomputed; `PeriodLock` is org-wide and locking snapshots every grant); workspace read models `src/services/grant-workspace.ts` (header metrics, tie-out, activity grid, working view); rollforward XLSX (formulas) `src/reports/rollforward-xlsx.ts`; pages under `src/app/grants/[id]/{funder,working,activity,periods,periods/reported}` and `src/app/grants/rollforward`; print layouts `src/app/grants/rollforward/pdf/route.ts` and `src/app/grants/[id]/tie-out/pdf/route.ts`; rollforward range presets `src/app/grants/rollforward/range.ts`; design-pass decisions (tie-out `clean|pairs|open`, grouped tabs, pacing callout `src/components/pacing-callout.tsx`) in `QUESTIONS.md` §JPH-23 items 12–20; parity report `pnpm parity:report` → `src/cli/parity-report.ts` + `src/reports/parity.ts`, metric keys in `src/services/parity-metrics.ts`, private inputs/outputs `fixtures/private/parity-map.json` → `fixtures/private/parity.md` (never tracked); tests `tests/db/jph23-rollforward.test.ts` (AC4 needs LibreOffice `soffice`; the test forces `OOXMLRecalcMode=0` in a throwaway profile), `tests/db/jph23-workspace.test.ts`.
 - JPH-30 (Phase 0, one set of grant figures): `Grant.trackingMode` (crosswalk | membership, derived again on read from member classes/projects, member lines and *imported* report uploads) and the single figures module `src/domain/grant-figures.ts` + `src/services/grant-figures.ts` (`loadGrants` once per org, then `grantFigures`/`figuresBookedByClass`); every page, export and the parity report read it — `src/domain/grant-figures.source.test.ts` fails if a page under `src/app` computes spend/received/balance itself. Pacing string lives in `src/components/grant-pace-status.tsx` (`paced=false` for unrestricted gifts). Rollforward is restricted grants only and defaults to books-through (`booksThrough()` in the figures service). Decisions in `QUESTIONS.md` §JPH-23 → JPH-30; tests `tests/db/jph30-figures.test.ts`, `e2e/jph30-figures.spec.ts`.
 - Decisions and open questions per phase: `QUESTIONS.md` (root). Pseudonyms only (`fixtures/private/` is git-ignored; `src/privacy/no-private-data.test.ts` scans every tracked file).
 

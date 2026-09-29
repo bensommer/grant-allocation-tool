@@ -1,3 +1,5 @@
+Agent guardrails for this repo live in the root `../../CLAUDE.md`; this file only hosts the block `next dev` regenerates below.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
