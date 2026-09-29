@@ -39,3 +39,5 @@ workflow is restarted; a feature reading process.env looked "disabled" until the
   for fixture paths in one-off scripts.
 - `pnpm test` (vitest DB files) leaves the dev DB as a pilot/test org: truncate + `import:csv --dir
   fixtures/demo && seed:demo && recompute` before any e2e or screenshot.
+- pnpm forwards a literal `--` to scripts: `pnpm run test -- src/privacy` runs the whole vitest suite (and truncates the dev DB); use `pnpm exec vitest run <path>` / `npx playwright test --project`.
+- vitest peer-depends on `vite`; after removing the template mockup-sandbox package it had to be added to artifacts/app devDependencies or vitest fails with ERR_MODULE_NOT_FOUND 'vite'.

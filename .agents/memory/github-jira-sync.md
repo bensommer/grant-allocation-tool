@@ -26,3 +26,5 @@ in shellExec output).
 - shellExec output carries `\r` at line ends: strip it from every parsed path before fs.readFile inside the impure block, or reads fail with ENOENT on a path that plainly exists.
 - createCommit can return "Tree SHA does not exist" immediately after createTree (eventual consistency); retry with backoff instead of rebuilding the tree.
 - Inside CodeExecution, `git ls-tree` output loses its tab separator (sha and path run together); pipe through `sed 's/\t/|/'` and split on `|`. `-z` does not help — the sandbox still strips it.
+- The GitHub repo is public: `origin` (https) is configured and `git fetch origin main` works without a token, so `git diff --name-status HEAD origin/main` is the verification after every push. Local and GitHub histories share no ancestor (tree replays): compare trees, never SHAs.
+- To push several local commits one by one (so GitHub shows the same messages), replay each range base..head in order with the message from `git log --format=%B -1 <sha>` and read file contents with `git show <sha>:<path>` inside the impure block. Never `git checkout <sha> -- .` to stage the tree — it re-stages files later commits removed.
