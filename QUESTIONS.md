@@ -931,11 +931,14 @@ badge asserts in `e2e/pilot.spec.ts`.
 5. **`artifacts/app/AGENTS.md` is a pointer plus the Next.js block.** `next dev` re-appends its
    `nextjs-agent-rules` block on every start (`generate-agent-files.js`), so a strict one-line
    file would be dirty after the first run. `artifacts/app/CLAUDE.md` is one line.
-6. **`.replit-artifact/` is now git-ignored and `artifacts/app/.replit-artifact/artifact.toml`
-   was untracked** (file kept on disk). Consequence: importing the GitHub repo into a fresh
-   Replit workspace will not recreate the `artifacts/app: web` service registration; it has to
-   be re-registered there. `.replit` itself stays tracked. `.replit` had no per-workflow entries
-   to remove — the removed workflows were derived from the deleted artifacts' `artifact.toml`.
+6. **`artifacts/app/.replit-artifact/artifact.toml` stays tracked; `.replit-artifact/` is not
+   git-ignored.** It was ignored and untracked for one commit; Replit immediately de-registered
+   the "Grant Allocation Tool" artifact and deleted the `artifacts/app: web` workflow (artifact
+   discovery skips git-ignored paths), so the ignore was reverted in the next commit. That file
+   is the only definition of the app's dev command, port and production build/start commands.
+   `.replit` had no per-workflow entries to remove — the two removed workflows were derived
+   from the deleted template artifacts' own `artifact.toml` files. Nothing else from step 2
+   remained tracked, so `.gitignore` is otherwise unchanged.
 7. **`src/services/funder-view.ts` does not exist.** `replit.md` cited it for the JPH-23 funder
    view; the funder/internal tables read `src/services/bva.ts` and `src/services/grant-budget.ts`
    through `src/app/grants/[id]/bva/`. CLAUDE.md and replit.md were corrected.
