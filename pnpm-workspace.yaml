@@ -1,7 +1,5 @@
 packages:
   - artifacts/*
-  - lib/*
-  - lib/integrations/*
   - scripts
 
 autoInstallPeers: false
@@ -26,7 +24,7 @@ catalog:
   tailwind-merge: ^3.3.1
   tailwindcss: 4.3.3
   tsx: 4.23.13
-  vite: ^7.3.2
+  vite: ^7.3.6
   wouter: ^3.3.5
   zod: 3.25.76
 
